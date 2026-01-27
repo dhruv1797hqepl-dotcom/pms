@@ -1,0 +1,128 @@
+import React, { useState } from 'react';
+import { ChevronRight, ArrowLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+
+const LoginPage = () => {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) throw new Error("Invalid credentials");
+
+      const data = await response.json();
+
+      // ✅ FIX 1: Use names that match your AdminProfile.jsx expectations
+      localStorage.setItem("token", data.access); // Dashboard uses 'token'
+      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("role", data.role);
+
+      // ✅ FIX 2: Store user details so the Profile UI isn't empty
+      localStorage.setItem("username", data.username || "Admin User");
+      localStorage.setItem("email", data.email || email);
+
+      // Role-based navigation
+      const role = data.role.toUpperCase(); // Ensure case consistency
+      if (role === "ADMIN") navigate("/admin");
+      else if (role === "HQEPL") navigate("/hqepl");
+      else if (role === "EMPLOYEE") navigate("/employee");
+      else if (role === "SGM") navigate("/sgm");
+      else if (role === "CLIENT") navigate("/client");
+      else navigate("/");
+
+    } catch (err) {
+      setError("Invalid email or password");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+      <Link to="/" className="mb-8 flex items-center gap-2 text-slate-500 hover:text-[#F58A4B] transition-colors font-bold uppercase text-[10px] tracking-[0.2em]">
+        <ArrowLeft size={16} /> Back to Homepage
+      </Link>
+
+      <div className="w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex min-h-[600px] border-2 border-slate-300">
+        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-16 flex-col justify-between relative text-white">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#F58A4B] opacity-10 blur-3xl rounded-full"></div>
+          <div>
+            <span className="text-[10px] font-bold tracking-[0.4em] text-[#F58A4B] uppercase border-b border-white/20 pb-2">
+              System Excellence
+            </span>
+            <h2 className="mt-10 text-5xl font-black leading-[1.1] tracking-tighter">
+              Empowering your <br />
+              <span className="text-[#F58A4B] italic font-light">Transformation.</span>
+            </h2>
+          </div>
+          <div className="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40 italic">
+            © 2026 HQEPL Solutions
+          </div>
+        </div>
+
+        <div className="w-full lg:w-1/2 p-12 md:p-20 flex flex-col justify-center bg-white">
+          <div className="mb-10">
+            <h1 className="text-4xl font-black text-slate-900 tracking-tighter">
+              Login
+            </h1>
+            <div className="h-1 w-12 bg-[#F58A4B] mt-2"></div>
+          </div>
+
+          <form className="space-y-6" onSubmit={handleLogin}>
+            {error && (
+              <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest bg-red-50 p-3 rounded-lg border border-red-100">
+                {error}
+              </p>
+            )}
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                Work Email
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-[#F58A4B] outline-none transition-all font-medium"
+                placeholder="admin@hqepl.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-[#F58A4B] outline-none transition-all font-medium"
+                placeholder="123"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-slate-900 text-white py-5 rounded-full text-xs font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl"
+            >
+              Log In <ChevronRight size={16} />
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LoginPage;

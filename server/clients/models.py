@@ -1,0 +1,54 @@
+from django.db import models
+from django.conf import settings
+
+class Client(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="client_profile"
+    )
+
+    company_name = models.CharField(max_length=255)
+    logo = models.ImageField(upload_to="client_logos/", blank=True, null=True)
+
+    contact_email = models.EmailField()  # ❌ remove unique=True
+    phone = models.CharField(max_length=20)
+    website = models.URLField(blank=True, null=True)
+    address = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=[("active", "Active"), ("inactive", "Inactive")],
+        default="active"
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_clients"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class ExternalTeam(models.Model):
+    client_org = models.ForeignKey(
+        Client,
+        on_delete=models.CASCADE,
+        related_name="external_members"
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+
+    role = models.CharField(
+        max_length=50,
+        default="client_external"   # ✅ REQUIRED
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.email} ({self.client_org.company_name})"
