@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     SGMProjectListView,
+    SGMProjectDetailView,
     EmployeeListView,
     AssignProjectTeamView,
     SGMClientListView ,
@@ -8,6 +9,7 @@ from .views import (
 
 urlpatterns = [
     path("projects/", SGMProjectListView.as_view()),
+    path("projects/<int:project_id>/", SGMProjectDetailView.as_view()),
     path("employees/", EmployeeListView.as_view()),
     path(
         "projects/<int:project_id>/assign-team/",

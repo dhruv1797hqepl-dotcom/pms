@@ -164,17 +164,30 @@ export default function ClientManagement() {
   const fetchClients = async () => {
     try {
       setLoading(true);
+
       const token = localStorage.getItem('access_token');
-      const response = await api.get('clients/list/', {
+      const role = (localStorage.getItem('role') || '').toUpperCase();
+
+      if (!token) return;
+
+      let endpoint = 'clients/list/'; // default (ADMIN / HQEPL)
+
+      if (role === 'SGM') {
+        endpoint = 'sgm/clients/';
+      }
+
+      const response = await api.get(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
       setClients(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error("Fetch Error:", error);
+      console.error("Fetch Error:", error.response?.data || error.message);
     } finally {
       setLoading(false);
     }
   };
+
 
   useEffect(() => { fetchClients(); }, []);
 
@@ -207,9 +220,11 @@ export default function ClientManagement() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <button onClick={() => setIsModalOpen(true)} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-3 shadow-xl hover:bg-[#F58A4B] transition-all">
-              <Plus size={18} /> Create Workspace
-            </button>
+            {((localStorage.getItem('role') || '').toUpperCase() === 'ADMIN') && (
+              <button onClick={() => setIsModalOpen(true)} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-3 shadow-xl hover:bg-[#F58A4B] transition-all">
+                <Plus size={18} /> Create Workspace
+              </button>
+            )}
           </div>
         </div>
 

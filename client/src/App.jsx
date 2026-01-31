@@ -37,7 +37,7 @@ const App = () => {
         <Route path = '/sgm' element={<SGMProfile />} />
         <Route path = "/clients" element={<ClientManagement />} />
         <Route path = "/clients/:clientId/" element={<ClientProjects />} />
-        <Route path = "/clients/:clientId/:projectName" element={<ProjectDetails />} />
+        <Route path = "/projects/:projectId" element={<ProjectDetails />} />
 
         <Route path = "/client" element={<ClientProfile />} />
 

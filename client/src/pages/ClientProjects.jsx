@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, ChevronLeft, Filter, ArrowRight, X, User, Briefcase, FileText, Mail, Shield, Key, Eye, EyeOff, Users, Calendar as CalendarIcon, ShieldCheck, Activity } from 'lucide-react';
+import { Plus, ChevronLeft, Filter, ArrowRight, X, User, Briefcase, FileText, Mail, Shield, Key, Eye, EyeOff, Users, Calendar as CalendarIcon, ShieldCheck, Activity, Trash2, Edit } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import api from '../api';
 import ProjectDetailModal from './ProjectDetailModal';
@@ -68,45 +68,116 @@ const CreateTeamMemberModal = ({ isOpen, onClose, onMemberAdded, clientId }) => 
 
 /* ───────────────────────── MAIN PAGE COMPONENT ───────────────────────── */
 export default function ClientProjects() {
-  const { clientId, clientName } = useParams();
+  const role = (localStorage.getItem("role") || "").toUpperCase();
+
+  const { clientId } = useParams();
   const navigate = useNavigate();
   const [filterQuery, setFilterQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState(null);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [projects, setProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const fetchData = async () => {
     if (!clientId) return;
+
     try {
       setLoading(true);
+
       const token = localStorage.getItem('access_token');
+      const role = (localStorage.getItem('role') || '').toUpperCase();
+
+      if (!token) return;
+
       const headers = { Authorization: `Bearer ${token}` };
-      const projRes = await api.get(`projects/`, { headers });
-      const clientProjects = projRes.data.filter(p => String(p.client) === String(clientId));
+
+      // 🔹 1. Decide project endpoint based on role
+      let endpoint = "projects/";
+
+      if (role === "SGM") endpoint = "sgm/projects/";
+      if (role === "EMPLOYEE") endpoint = "employee/projects/";
+
+      const projRes = await api.get(endpoint, { headers });
+
+
+
+      const clientProjects = projRes.data.filter(
+        p => String(p.client?.id || p.client) === String(clientId)
+      );
+
       setProjects(clientProjects);
-      const teamRes = await api.get(`clients/${clientId}/members/`, { headers });
-      setTeamMembers(teamRes.data);
+
+      // 🔹 3. Fetch external team ONLY for Admin / HQEPL
+      if (role === 'ADMIN' || role === 'HQEPL') {
+        try {
+          const teamRes = await api.get(
+            `clients/${clientId}/members/`,
+            { headers }
+          );
+          setTeamMembers(teamRes.data);
+        } catch (err) {
+          console.warn("External team restricted:", err.response?.data);
+          setTeamMembers([]);
+        }
+      } else {
+        // SGM / EMPLOYEE → never call this
+        setTeamMembers([]);
+      }
+
     } catch (error) {
-      console.error("Fetch error:", error.response || error);
+      console.error(
+        "Fetch error:",
+        error.response?.data || error.message
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  const handleDelete = async (projectId) => {
+    if (!window.confirm("Are you sure you want to delete this project instance? This action cannot be undone.")) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      await api.delete(`projects/${projectId}/`, { headers: { Authorization: `Bearer ${token}` } });
+      fetchData();
+    } catch (error) {
+      alert("Failed to delete project");
+    }
+  };
+
+  const handleEdit = (project) => {
+    setProjectToEdit(project);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setProjectToEdit(null);
+  }
+
   useEffect(() => { fetchData(); }, [clientId]);
   const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(filterQuery.toLowerCase()));
   return (
     <div className="bg-slate-50 min-h-screen antialiased font-sans pb-20">
       <Navbar hideLogin />
-      <ProjectDetailModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onProjectCreated={fetchData} clientId={clientId} />
-      <CreateTeamMemberModal isOpen={isTeamModalOpen} onClose={() => setIsTeamModalOpen(false)} onMemberAdded={fetchData} clientId={clientId} />
+      <ProjectDetailModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onProjectCreated={fetchData}
+        clientId={clientId}
+        projectToEdit={projectToEdit}
+      />
+      {(role === "ADMIN" || role === "HQEPL") && (
+        <CreateTeamMemberModal isOpen={isTeamModalOpen} onClose={() => setIsTeamModalOpen(false)} onMemberAdded={fetchData} clientId={clientId} />)}
       <div className="max-w-[1600px] mx-auto px-6 md:px-10 pt-8">
         <button onClick={() => navigate('/clients')} className="flex items-center gap-2 text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-10 hover:text-[#F58A4B] transition-all group">
           <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Workspace Directory
         </button>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
           <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">{decodeURIComponent(clientName)} <span className="text-[#F58A4B]">Portfolio</span></h1>
+            <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">client <span className="text-[#F58A4B]">Portfolio</span></h1>
             <div className="flex items-center gap-4">
               <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] flex items-center gap-2"><Activity size={14} className="text-[#F58A4B]" /> Strategic Asset Management</p>
               <div className="h-4 w-[1px] bg-slate-200"></div>
@@ -114,8 +185,10 @@ export default function ClientProjects() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <button onClick={() => setIsTeamModalOpen(true)} className="px-6 py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:border-[#F58A4B] transition-all flex items-center gap-2 shadow-sm"><Shield size={14} className="text-[#F58A4B]" /> Team Credentials</button>
-            <button onClick={() => setIsModalOpen(true)} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#F58A4B] transition-all flex items-center gap-3 shadow-xl active:scale-95"><Plus size={18} strokeWidth={3} /> New Project Instance</button>
+            {(role === "ADMIN" || role === "HQEPL") && (
+              <button onClick={() => setIsTeamModalOpen(true)} className="px-6 py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:border-[#F58A4B] transition-all flex items-center gap-2 shadow-sm"><Shield size={14} className="text-[#F58A4B]" /> Team Credentials</button>)}
+            {(role === "ADMIN" || role === "HQEPL") && (
+              <button onClick={() => setIsModalOpen(true)} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#F58A4B] transition-all flex items-center gap-3 shadow-xl active:scale-95"><Plus size={18} strokeWidth={3} /> New Project Instance</button>)}
           </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
@@ -130,7 +203,8 @@ export default function ClientProjects() {
               <div className="py-24 text-center border-2 border-dashed border-slate-200 rounded-[3rem] bg-white/50">
                 <Briefcase size={32} className="mx-auto text-slate-300 mb-4" />
                 <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-xs">No project instances found for this workspace</p>
-                <button onClick={() => setIsModalOpen(true)} className="mt-6 text-[#F58A4B] text-[10px] font-black uppercase tracking-widest hover:underline">Launch first project</button>
+                {(role === "ADMIN" || role === "HQEPL") && (
+                  <button onClick={() => setIsModalOpen(true)} className="mt-6 text-[#F58A4B] text-[10px] font-black uppercase tracking-widest hover:underline">Launch first project</button>)}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -146,38 +220,50 @@ export default function ClientProjects() {
                     <div className="space-y-4 mb-8 pt-6 border-t border-slate-50 text-[10px]">
                       <div className="flex justify-between items-center">
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Internal SGM</span>
-                        <span className="font-black text-slate-900 truncate max-w-[150px]">{proj.assigned_sgm_email || "Not Assigned"}</span>
+                        {role !== "SGM" && (
+                          <span className="font-black text-slate-900 truncate max-w-[150px]">{proj.assigned_sgm_email || "Not Assigned"}</span>
+                        )}
                       </div>
                     </div>
-                    <button onClick={() => navigate(`/clients/${clientId}/${encodeURIComponent(proj.name)}`)} className="w-full py-4 bg-slate-900 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-2 hover:bg-[#F58A4B] transition-all group/btn">
-                      View Project Analysis <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => navigate(`/projects/${proj.id}`)} className="flex-1 py-4 bg-slate-900 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-2 hover:bg-[#F58A4B] transition-all group/btn">
+                        View Project <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                      </button>
+                      {(role === "ADMIN" || role === "HQEPL") && (
+                        <>
+                          <button onClick={() => handleEdit(proj)} className="p-4 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:border-[#F58A4B] hover:text-[#F58A4B] transition-all"><Edit size={16} /></button>
+                          <button onClick={() => handleDelete(proj.id)} className="p-4 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:border-red-500 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm sticky top-28">
-              <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900 flex items-center gap-2"><Users size={16} className="text-[#F58A4B]" /> External Team</h3>
-                <span className="text-[10px] font-black text-slate-300">{teamMembers.length}</span>
-              </div>
-              <div className="space-y-5">
-                {teamMembers.map((member) => (
-                  <div key={member.id} className="flex items-center gap-4 group">
-                    <div className="w-10 h-10 rounded-2xl bg-slate-900 text-[#F58A4B] flex items-center justify-center font-black text-xs group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-md">{member.username?.charAt(0).toUpperCase() || 'U'}</div>
-                    <div className="overflow-hidden">
-                      <p className="text-[12px] font-black text-slate-900 truncate uppercase">{member.username}</p>
-                      <p className="text-[10px] text-slate-400 font-bold truncate lowercase flex items-center gap-1"><Mail size={10} /> {member.email}</p>
+          {(role === "ADMIN" || role === "HQEPL") && (
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm sticky top-28">
+                <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900 flex items-center gap-2"><Users size={16} className="text-[#F58A4B]" /> External Team</h3>
+                  <span className="text-[10px] font-black text-slate-300">{teamMembers.length}</span>
+                </div>
+                <div className="space-y-5">
+                  {teamMembers.map((member) => (
+                    <div key={member.id} className="flex items-center gap-4 group">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-900 text-[#F58A4B] flex items-center justify-center font-black text-xs group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-md">{member.username?.charAt(0).toUpperCase() || 'U'}</div>
+                      <div className="overflow-hidden">
+                        <p className="text-[12px] font-black text-slate-900 truncate uppercase">{member.username}</p>
+                        <p className="text-[10px] text-slate-400 font-bold truncate lowercase flex items-center gap-1"><Mail size={10} /> {member.email}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {teamMembers.length === 0 && (<div className="text-center py-4"><p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No members provisioned</p></div>)}
-                <button onClick={() => setIsTeamModalOpen(true)} className="w-full mt-4 py-3 border-2 border-dashed border-slate-100 rounded-xl text-[9px] font-black text-slate-400 uppercase tracking-widest hover:border-[#F58A4B] hover:text-[#F58A4B] transition-all flex items-center justify-center gap-2"><Plus size={14} /> Add Access Key</button>
+                  ))}
+                  {teamMembers.length === 0 && (<div className="text-center py-4"><p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No members provisioned</p></div>)}
+                  <button onClick={() => setIsTeamModalOpen(true)} className="w-full mt-4 py-3 border-2 border-dashed border-slate-100 rounded-xl text-[9px] font-black text-slate-400 uppercase tracking-widest hover:border-[#F58A4B] hover:text-[#F58A4B] transition-all flex items-center justify-center gap-2"><Plus size={14} /> Add Access Key</button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

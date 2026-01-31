@@ -30,9 +30,26 @@ class SGMProjectListView(APIView):
         return Response(serializer.data)
 
 
+
 # -------------------------------
 # 2. Get Internal Employees
 # -------------------------------
+class SGMProjectDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsSGM]
+
+    def get(self, request, project_id):
+        try:
+            project = Project.objects.get(id=project_id, assigned_sgm=request.user)
+        except Project.DoesNotExist:
+            return Response(
+                {"error": "Project not found or not assigned to you"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = ProjectSerializer(project)
+        return Response(serializer.data)
+
+
 class EmployeeListView(APIView):
     permission_classes = [IsAuthenticated, IsSGM]
 
@@ -65,12 +82,27 @@ class AssignProjectTeamView(APIView):
 
         employee_ids = serializer.validated_data["employees"]
 
+        # 1. Remove employees not in the new list
+        ProjectTeam.objects.filter(
+            project=project
+        ).exclude(
+            employee__id__in=employee_ids
+        ).delete()
+
+        # 2. Add new employees
         for emp_id in employee_ids:
-            employee = User.objects.get(id=emp_id, role="EMPLOYEE")
-            ProjectTeam.objects.get_or_create(
-                project=project,
-                employee=employee
-            )
+            try:
+                employee = User.objects.get(id=emp_id, role="EMPLOYEE")
+                ProjectTeam.objects.get_or_create(
+                    project=project,
+                    employee=employee
+                )
+            except User.DoesNotExist:
+                print(f"User with ID {emp_id} not found or not EMPLOYEE")
+                continue
+            except Exception as e:
+                print(f"Error assigning user {emp_id}: {e}")
+                continue
 
         return Response(
             {"message": "Team assigned successfully"},

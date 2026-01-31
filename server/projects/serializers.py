@@ -15,8 +15,15 @@ class ProjectSerializer(serializers.ModelSerializer):
         allow_null=True
     )
 
+    external_team = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role="EXTERNAL"),
+        many=True,
+        required=False
+    )
+
     external_lead_email = serializers.ReadOnlyField(source="external_lead.email")
     external_team_emails = serializers.SerializerMethodField()
+    external_team_details = serializers.SerializerMethodField()
     created_by_email = serializers.ReadOnlyField(source="created_by.email")
 
     class Meta:
@@ -46,9 +53,20 @@ class ProjectSerializer(serializers.ModelSerializer):
             "created_by_email",
             "created_at",
             "updated_at",
+            "external_team_details",
         ]
 
         read_only_fields = ("created_by", "created_at", "updated_at")
+
+    def get_external_team_details(self, obj):
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email
+            }
+            for u in obj.external_team.all()
+        ]
 
     def get_external_team_emails(self, obj):
         return [u.email for u in obj.external_team.all()]
