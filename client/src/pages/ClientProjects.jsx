@@ -97,7 +97,7 @@ export default function ClientProjects() {
       let endpoint = "projects/";
 
       if (role === "SGM") endpoint = "sgm/projects/";
-      if (role === "EMPLOYEE") endpoint = "employee/projects/";
+      if (role === "EMPLOYEE") endpoint = "employees/my-projects/";
 
       const projRes = await api.get(endpoint, { headers });
 

@@ -135,6 +135,9 @@ export default function ProjectDetails() {
       if (role === 'SGM') {
         endpoint = `sgm/projects/${projectId}/`;
       }
+      if (role === 'EMPLOYEE') {
+        endpoint = `employees/projects/${projectId}/`;
+      }
 
       const projRes = await api.get(endpoint, { headers });
       setProject(projRes.data);

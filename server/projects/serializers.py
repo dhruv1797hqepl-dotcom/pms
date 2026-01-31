@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Project
 from django.contrib.auth import get_user_model
+from sgm.models import ProjectTeam  # Import ProjectTeam
 
 User = get_user_model()
 
@@ -24,6 +25,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     external_lead_email = serializers.ReadOnlyField(source="external_lead.email")
     external_team_emails = serializers.SerializerMethodField()
     external_team_details = serializers.SerializerMethodField()
+    team_members_details = serializers.SerializerMethodField()  # Add field
     created_by_email = serializers.ReadOnlyField(source="created_by.email")
 
     class Meta:
@@ -54,9 +56,22 @@ class ProjectSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "external_team_details",
+            "team_members_details",  # Add to fields
         ]
 
         read_only_fields = ("created_by", "created_at", "updated_at")
+
+    def get_team_members_details(self, obj):
+        # Fetch internal employees assigned via ProjectTeam
+        team_members = ProjectTeam.objects.filter(project=obj)
+        return [
+            {
+                "id": tm.employee.id,
+                "username": tm.employee.username,
+                "email": tm.employee.email
+            }
+            for tm in team_members
+        ]
 
     def get_external_team_details(self, obj):
         return [

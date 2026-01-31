@@ -176,6 +176,10 @@ export default function ClientManagement() {
         endpoint = 'sgm/clients/';
       }
 
+      if (role === 'EMPLOYEE') {
+        endpoint = 'employees/clients/';
+      }
+
       const response = await api.get(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
       });

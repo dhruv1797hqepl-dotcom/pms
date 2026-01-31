@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from clients.models import Client
+from employees.models import Employee
 
 class Project(models.Model):
     
@@ -46,6 +47,12 @@ class Project(models.Model):
         settings.AUTH_USER_MODEL,
         related_name="projects",
         limit_choices_to={"role": "EXTERNAL"}
+    )
+
+    assigned_employees = models.ManyToManyField(
+        Employee,
+        blank=True,
+        related_name="projects"
     )
 
     created_by = models.ForeignKey(
