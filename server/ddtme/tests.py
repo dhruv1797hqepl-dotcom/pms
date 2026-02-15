@@ -1,4 +1,38 @@
 from django.test import TestCase
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+from rest_framework import status
+from clients.models import Client
+from .models import DDTMESubmission
+
+User = get_user_model()
+
+class DDTMESGMVisibilityTest(TestCase):
+    def setUp(self):
+        self.client_obj = Client.objects.create(company_name="Test Client", email="test@client.com")
+        self.employee = User.objects.create_user(username='emp', password='password', role='EMPLOYEE')
+        self.sgm = User.objects.create_user(username='sgm', password='password', role='SGM')
+        
+        # Submissions
+        self.submission = DDTMESubmission.objects.create(
+            client=self.client_obj,
+            month=2,
+            year=2026,
+            status='Submitted',
+            submitted_by=self.employee
+        )
+
+    def test_sgm_sees_submission(self):
+        client = APIClient()
+        client.force_authenticate(user=self.sgm)
+        
+        response = client.get(f'/api/ddtme/submissions/?client_id={self.client_obj.id}&month=2&year=2026')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # SGM should see the submission
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['status'], 'Submitted')
+
 from datetime import date
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient

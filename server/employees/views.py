@@ -32,6 +32,11 @@ class EmployeeMyProjectsView(APIView):
 # -------------------------------
 # 2. Get Employee Clients (Assigned Projects Only)
 # -------------------------------
+from django.db.models import Count, Q
+
+# -------------------------------
+# 2. Get Employee Clients (Assigned Projects Only)
+# -------------------------------
 class EmployeeClientListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -45,7 +50,14 @@ class EmployeeClientListView(APIView):
         
         # Get unique clients from these projects
         client_ids = projects.values_list('client_id', flat=True).distinct()
-        clients = Client.objects.filter(id__in=client_ids)
+        
+        # Annotate with count of ACTIVE projects assigned to this user
+        clients = Client.objects.filter(id__in=client_ids).annotate(
+            project_count=Count(
+                'projects',
+                filter=Q(projects__assigned_employees__user=user, projects__status='ACTIVE')
+            )
+        )
         
         # We need a serializer for Client. We can import it or define a simple one.
         # Ideally, import from clients.serializers

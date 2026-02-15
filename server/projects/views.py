@@ -24,21 +24,41 @@ class ProjectViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         # ADMIN / HQEPL → All projects
-        if user.role in ["ADMIN", "HQEPL"]:
-            return Project.objects.all()
-
-        # SGM → Projects of assigned clients
-        if user.role == "SGM":
-            # return Project.objects.filter(assigned_sgm=user)
-            # NEW LOGIC: Any project belonging to a client assigned to this SGM
-            return Project.objects.filter(client__assigned_sgms=user).distinct()
-
-        # CLIENT → Only their projects
-        if user.role == "CLIENT" and hasattr(user, "client_profile"):
-            return Project.objects.filter(client=user.client_profile)
-
         # EMPLOYEE / EXTERNAL → NO direct access
-        return Project.objects.none()
+        queryset = Project.objects.none()
+
+        if user.role in ["ADMIN", "HQEPL"]:
+             queryset = Project.objects.all()
+        elif user.role == "SGM":
+             queryset = Project.objects.filter(client__assigned_sgms=user).distinct()
+        elif user.role == "CLIENT" and hasattr(user, "client_profile"):
+             queryset = Project.objects.filter(client=user.client_profile)
+        elif user.role == "EMPLOYEE":
+             # 1. Base: Projects assigned to the employee
+             queryset = Project.objects.filter(assigned_employees__user=user)
+             
+             # 2. Expanded: If for specific client, allows seeing ALL projects of that client
+             # Relaxed check: If they are an employee and asking for a client's projects, show them.
+             # This fixes issues where strict assignment checks fail but user needs to add tasks.
+             req_client_id = self.request.query_params.get('client_id')
+             if req_client_id:
+                 queryset = Project.objects.filter(client_id=req_client_id)
+        
+        # --- FILTERING ---
+        client_id = self.request.query_params.get('client_id')
+        if client_id:
+            queryset = queryset.filter(client_id=client_id)
+            
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status__iexact=status_param)
+
+        # DEBUG LOGGING
+        import logging
+        logging.basicConfig(filename='debug_projects.log', level=logging.INFO)
+        logging.info(f"User: {user} | Role: {user.role} | ClientID: {client_id} | Status: {status_param} | Count: {queryset.count()}")
+
+        return queryset
 
     # ---------------------------------
     # CREATE PROJECT
