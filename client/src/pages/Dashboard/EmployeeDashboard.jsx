@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import axios from "axios";
+import api from "../../api";
 import Navbar from "../../components/Navbar";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
@@ -9,6 +11,7 @@ import {
 } from "lucide-react";
 
 const EmployeeDashboard = () => {
+  const location = useLocation();
   // MODAL STATES
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -103,32 +106,179 @@ const EmployeeDashboard = () => {
   const [delegatedTasks, setDelegatedTasks] = useState([]); // Tasks assigned BY me
 
   const splitTasksForUser = (tasks, user) => {
-    const isMine = (t) => (t.assigned_to_name === user.username || t.assigned_to === user.id);
-    const isSelfAssigned = (t) =>
-      (t.assigned_by_name === user.username || t.assigned_by === user.id) && isMine(t);
+    if (!user) {
+      console.log("No user object provided to splitTasksForUser");
+      return { my_active: [], my_completed: [], delegated: [] };
+    }
+
+    console.log("====== TASK FILTERING DEBUG ======");
+    console.log("Filtering for User ID:", user.id, "Username:", user.username);
+
+    const isMine = (t) => {
+      // Try multiple field name variations
+      const taskAssignedToName = t.assigned_to_name || t.assigned_to_username;
+      const taskAssignedToId = t.assigned_to || t.assigned_to_id || t.assigned_to_employee;
+      
+      const matchByName = taskAssignedToName && (taskAssignedToName === user.username || taskAssignedToName === user.full_name);
+      const matchById = taskAssignedToId && taskAssignedToId === user.id;
+      
+      const result = matchByName || matchById;
+      if (result) {
+        console.log(`✓ Task "${t.title}" is mine - assigned_to: ${taskAssignedToName} (${taskAssignedToId}), match by: ${matchByName ? 'name' : 'id'}`);
+      }
+      return result;
+    };
+
+    const isSelfAssigned = (t) => {
+      const taskAssignedByName = t.assigned_by_name || t.assigned_by_username;
+      const taskAssignedById = t.assigned_by || t.assigned_by_id;
+      
+      const matchByName = taskAssignedByName && (taskAssignedByName === user.username || taskAssignedByName === user.full_name);
+      const matchById = taskAssignedById && taskAssignedById === user.id;
+      
+      return (matchByName || matchById) && isMine(t);
+    };
 
     const my_active = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.status !== 'Completed');
     const my_completed = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.status === 'Completed');
-    const delegated = tasks.filter(t =>
-      (t.assigned_by_name === user.username || t.assigned_by === user.id) && (t.assigned_to !== user.id)
-    );
+    const delegated = tasks.filter(t => {
+      const taskAssignedByName = t.assigned_by_name || t.assigned_by_username;
+      const taskAssignedById = t.assigned_by || t.assigned_by_id;
+      const taskAssignedToId = t.assigned_to || t.assigned_to_id || t.assigned_to_employee;
+      
+      const isAssignedBy = (taskAssignedByName && (taskAssignedByName === user.username || taskAssignedByName === user.full_name)) || 
+                          (taskAssignedById && taskAssignedById === user.id);
+      const isAssignedToOther = taskAssignedToId && taskAssignedToId !== user.id;
+      
+      return isAssignedBy && isAssignedToOther;
+    });
 
+    console.log("====== FILTERING RESULTS ======");
+    console.log("My Active Tasks:", my_active.length);
+    console.log("My Completed Tasks:", my_completed.length);
+    console.log("Delegated Tasks:", delegated.length);
     return { my_active, my_completed, delegated };
+  };
+
+  const splitTasksForMember = (tasks, member) => {
+    if (!member) {
+      return { my_active: [], my_completed: [] };
+    }
+
+    const normalizeId = (value) => {
+      if (value === null || value === undefined) return null;
+      const num = Number(value);
+      return Number.isNaN(num) ? null : num;
+    };
+
+    const normalizeName = (value) => {
+      if (!value) return "";
+      return String(value).trim().toLowerCase();
+    };
+
+    const isAssignedToMember = (t) => {
+      const taskAssignedToName = t.assigned_to_name || t.assigned_to_username;
+      const taskAssignedToId = t.assigned_to || t.assigned_to_id || t.assigned_to_employee;
+
+      const memberId = normalizeId(member.id);
+      const taskId = normalizeId(taskAssignedToId);
+
+      const memberUsername = normalizeName(member.username);
+      const memberFullName = normalizeName(member.full_name);
+      const taskName = normalizeName(taskAssignedToName);
+
+      const matchByName = taskName && (taskName === memberUsername || taskName === memberFullName);
+      const matchById = taskId !== null && memberId !== null && taskId === memberId;
+
+      return matchByName || matchById;
+    };
+
+    const my_active = tasks.filter(t => isAssignedToMember(t) && t.status !== 'Completed');
+    const my_completed = tasks.filter(t => isAssignedToMember(t) && t.status === 'Completed');
+
+    return { my_active, my_completed };
   };
 
   // FETCH DATA ON MOUNT
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
+      setMyTasks([]);
+      setCompletedTasks([]);
+      setDelegatedTasks([]);
+      setClientProjectMap({});
+      setDashboardStats({
+        total_tasks: 0,
+        on_time_count: 0,
+        otc_score: "0%",
+        ats_score: "0%",
+        chart_data: [
+          { name: "On Time", value: 0, color: "#22c55e" },
+          { name: "In Progress", value: 0, color: "#3b82f6" },
+          { name: "Delayed", value: 0, color: "#facc15" },
+          { name: "Overdue", value: 0, color: "#ef4444" },
+        ]
+      });
       try {
-        const token = localStorage.getItem("token");
-        const headers = { Authorization: `Bearer ${token}` };
-
-        // 1. Fetch User Profile
-        const userRes = await axios.get("http://127.0.0.1:8000/api/me/", { headers });
-        setUserName(userRes.data.username || "Employee");
+        const memberParam = new URLSearchParams(window.location.search).get('member');
+        const memberId = Number(memberParam);
+        const hasValidMemberId = Number.isFinite(memberId) && memberId > 0;
+        console.log("====== MEMBER PARAM DEBUG ======");
+        console.log("Member Param from URL:", memberParam);
+        console.log("Full URL:", window.location.href);
+        console.log("Search String:", window.location.search);
+        
+        let userData;
+        let isMemberView = false;
+        
+        // If viewing another employee (from internal team view)
+        if (hasValidMemberId) {
+          console.log("Attempting to fetch member ID:", memberId);
+          try {
+            const url = `admin/users/${memberId}/`;
+            console.log("Fetching from URL:", url);
+            
+            const memberRes = await api.get(url);
+            userData = memberRes.data;
+            isMemberView = true;
+            console.log("✓ Member Data Fetched Successfully");
+            console.log("Member ID:", userData?.id);
+            console.log("Member Name:", userData?.full_name);
+            
+            if (userData?.id != memberId) {
+              console.error("⚠ WARNING: Fetched user ID does not match requested member ID!");
+              console.error("Requested:", memberId, "Got:", userData?.id);
+            }
+          } catch (err) {
+            console.error("✗ Failed to fetch member data:");
+            console.error("Status:", err.response?.status);
+            console.error("Status Text:", err.response?.statusText);
+            console.error("Error Message:", err.message);
+            console.error("Full Error Response:", err.response?.data);
+            console.error("Falling back to current user and clearing member param");
+            const userRes = await api.get("me/");
+            userData = userRes.data;
+            isMemberView = false;
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+        } else {
+          // Fetch current user
+          console.log("No member param - fetching current user data");
+          const userRes = await api.get("me/");
+          userData = userRes.data;
+          isMemberView = false;
+        }
+        
+        console.log("====== USER DATA ======");
+        console.log("Is Member View:", isMemberView);
+        console.log("UserData ID:", userData?.id);
+        console.log("UserData Full Name:", userData?.full_name);
+        
+        const displayName = userData?.full_name || userData?.username || "Employee";
+        setUserName(displayName);
 
         // 2. Fetch Projects
-        const projRes = await axios.get("http://127.0.0.1:8000/api/projects/", { headers });
+        const projRes = await api.get("projects/");
         console.log("Projects API Response:", projRes.data); // DEBUG
 
         // Handle potential pagination
@@ -149,19 +299,76 @@ const EmployeeDashboard = () => {
 
 
         // 3. Fetch Dashboard Stats
-        const statsRes = await axios.get("http://127.0.0.1:8000/api/tasks/dashboard_stats/", { headers });
-        setDashboardStats(statsRes.data);
-
+        let statsData;
+        
         // 4. Fetch All Tasks (Assigned To & By)
-        const tasksRes = await axios.get("http://127.0.0.1:8000/api/tasks/", { headers });
+        const tasksUrl = isMemberView && hasValidMemberId
+          ? `tasks/?assigned_to=${memberId}`
+          : "tasks/";
+        const tasksRes = await api.get(tasksUrl);
 
         // Split tasks
         const allFetchedTasks = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data.results || []);
+        console.log("====== TASKS DEBUG ======");
+        console.log("Total Tasks Fetched:", allFetchedTasks.length);
+        if (allFetchedTasks.length > 0) {
+          console.log("First Task:", allFetchedTasks[0]);
+          console.log("Task assigned_to:", allFetchedTasks[0].assigned_to);
+          console.log("Task assigned_to_name:", allFetchedTasks[0].assigned_to_name);
+        }
+        console.log("Filtering tasks for - ID:", userData?.id, "Username:", userData?.username);
 
-        const { my_active, my_completed, delegated } = splitTasksForUser(allFetchedTasks, userRes.data);
+        const { my_active, my_completed, delegated } = isMemberView
+          ? { ...splitTasksForMember(allFetchedTasks, userData), delegated: [] }
+          : splitTasksForUser(allFetchedTasks, userData);
+
+        console.log("My Active Tasks:", my_active);
+        console.log("My Completed Tasks:", my_completed);
+
         setMyTasks(my_active);
         setCompletedTasks(my_completed);
         setDelegatedTasks(delegated);
+
+        // Fetch dashboard stats
+        if (isMemberView) {
+          // When viewing another employee, calculate stats from their tasks
+          const totalTasks = my_active.length + my_completed.length;
+          const onTimeCount = my_completed.filter(t => {
+            if (!t.target_date || !t.completion_date) return false;
+            const targetDate = new Date(t.target_date);
+            const completedDate = new Date(t.completion_date);
+            return completedDate <= targetDate;
+          }).length;
+          
+          const atsScore = totalTasks > 0 ? Math.round((my_completed.length / totalTasks) * 100) : 0;
+          const otcScore = my_completed.length > 0 ? Math.round((onTimeCount / my_completed.length) * 100) : 0;
+
+          console.log("Stats - Total:", totalTasks, "OnTime:", onTimeCount, "ATS:", atsScore, "OTC:", otcScore);
+
+          setDashboardStats({
+            total_tasks: totalTasks,
+            on_time_count: onTimeCount,
+            otc_score: `${otcScore}%`,
+            ats_score: `${atsScore}%`,
+            chart_data: [
+              { name: "On Time", value: onTimeCount, color: "#22c55e" },
+              { name: "Late", value: my_completed.length - onTimeCount, color: "#ef4444" },
+              { name: "In Progress", value: my_active.length, color: "#3b82f6" },
+              { name: "Overdue", value: my_active.filter(t => {
+                if (!t.target_date) return false;
+                const targetDate = new Date(t.target_date);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                targetDate.setHours(0,0,0,0);
+                return targetDate < today;
+              }).length, color: "#f59e0b" }
+            ]
+          });
+        } else {
+          // For current user, fetch from dashboard_stats endpoint
+          const statsRes = await api.get("tasks/dashboard_stats/");
+          setDashboardStats(statsRes.data);
+        }
 
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
@@ -171,7 +378,7 @@ const EmployeeDashboard = () => {
     };
 
     fetchData();
-  }, []);
+  }, [location.search]);
 
 
   // AUTO-FETCH LOGIC
@@ -197,7 +404,7 @@ const EmployeeDashboard = () => {
   const handleCompleteSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token");
       const headers = { Authorization: `Bearer ${token}` };
 
       if (!completionData.id) {
@@ -251,7 +458,7 @@ const EmployeeDashboard = () => {
     try {
       if (!confirm(`Are you sure you want to complete task "${task.title}"?`)) return;
 
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token");
       const headers = { Authorization: `Bearer ${token}` };
 
       const payload = {
@@ -301,7 +508,7 @@ const EmployeeDashboard = () => {
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token");
       const headers = { Authorization: `Bearer ${token}` };
 
       // Find IDs from names/objects
@@ -393,7 +600,7 @@ const EmployeeDashboard = () => {
   const handleBulkAssignSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token");
       const headers = { Authorization: `Bearer ${token}` };
 
       // Filter out empty rows (conceptually, though UI enforces some fields)
@@ -529,7 +736,7 @@ const EmployeeDashboard = () => {
     if (!confirm(`Are you sure you want to complete ${selectedTasks.length} tasks?`)) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token");
       const headers = { Authorization: `Bearer ${token}` };
 
       const payload = {

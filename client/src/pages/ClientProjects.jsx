@@ -118,7 +118,7 @@ export default function ClientProjects() {
               <p className="text-slate-500 font-medium text-sm flex items-center gap-2"><Briefcase size={16} /> Workspace Overview & Management</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={() => hasProjects && navigate(`/projects/${projects[0].id}/actionplan`)}
                 disabled={!hasProjects}
@@ -133,12 +133,20 @@ export default function ClientProjects() {
 
               {(role === "ADMIN" || role === "HQEPL" || role === "SGM") && (
                 <>
+                  {/* Internal Team Members View */}
+                  <button
+                    onClick={() => navigate(`/clients/${clientId}/internal-team`)}
+                    className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+                  >
+                    <User size={16} className="text-[#F58A4B]" /> Internal Team ({teamMembers.filter(m => m.role === 'EMPLOYEE').length})
+                  </button>
+
                   {/* NEW: Navigates to dedicated management page */}
                   <button
                     onClick={() => navigate(`/clients/${clientId}/external-management`)}
                     className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
                   >
-                    <Users size={16} className="text-[#F58A4B]" /> Team Management ({teamMembers.length})
+                    <Users size={16} className="text-[#F58A4B]" /> External Management ({teamMembers.length})
                   </button>
                   <button onClick={() => setIsModalOpen(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-[#F58A4B] transition-all shadow-lg flex items-center gap-2">
                     <Plus size={16} /> New Project
@@ -215,7 +223,7 @@ export default function ClientProjects() {
                   <div className="space-y-4 mb-8 flex-1">
                     <div className="flex justify-between text-xs border-b border-slate-50 pb-2">
                       <span className="text-slate-400 font-bold uppercase tracking-tighter">Lead</span>
-                      <span className="text-slate-700 font-bold"> {proj.assigned_sgm_details?.username || proj.assigned_sgm_details?.email || "Unassigned"}</span>
+                      <span className="text-slate-700 font-bold text-right ml-2">{proj.assigned_sgm_details?.full_name || proj.assigned_sgm_details?.username || proj.assigned_sgm_details?.email || "Unassigned"}</span>
                     </div>
 
                     <div className="flex justify-between text-xs border-b border-slate-50 pb-2">

@@ -4,8 +4,11 @@ from rest_framework.response import Response
 from django.db import models
 from django.db.models import Q, Avg
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from .models import Task
 from .serializers import TaskSerializer
+
+User = get_user_model()
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -16,6 +19,17 @@ class TaskViewSet(viewsets.ModelViewSet):
         Handles the 3 tables: Returns tasks where user is the receiver or assigner.
         """
         user = self.request.user
+        assigned_to = self.request.query_params.get('assigned_to')
+
+        if assigned_to and user.role in [User.SGM]:
+            try:
+                assigned_to_id = int(assigned_to)
+            except (TypeError, ValueError):
+                assigned_to_id = None
+
+            if assigned_to_id:
+                return Task.objects.filter(assigned_to_id=assigned_to_id).order_by('-id')
+
         return Task.objects.filter(Q(assigned_to=user) | Q(assigned_by=user)).order_by('-id')
 
     def perform_create(self, serializer):

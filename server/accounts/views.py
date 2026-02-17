@@ -119,7 +119,12 @@ class AdminUserListView(generics.ListAPIView):
 class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = AdminListUserSerializer  # Reusing list serializer for now as it has editable fields
-    permission_classes = [IsAuthenticated, IsAdmin | IsHQEPL]
+
+    def get_permissions(self):
+        # Allow SGM to read user details, but keep write access for Admin/HQEPL only.
+        if self.request.method in permissions.SAFE_METHODS:
+            return [IsAuthenticated(), (IsAdmin | IsHQEPL | IsSGM)()]
+        return [IsAuthenticated(), (IsAdmin | IsHQEPL)()]
 
     def perform_destroy(self, instance):
         # Optional: Prevent deleting self

@@ -711,3 +711,54 @@ INFO:root:User: saurav@gmail.com (EXTERNAL) | ClientID: None | Month: None | Yea
 INFO:root:User: saurav@gmail.com (EXTERNAL) | ClientID: None | Month: None | Year: None | Count: 1
 WARNING:django.request:Forbidden: /api/projects/12/
 INFO:django.utils.autoreload:C:\Users\yash\OneDrive\Desktop\MERN\ProjectManagementBase\server\tasks\serializers.py changed, reloading.
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 4
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 4
+INFO:django.utils.autoreload:C:\Users\yash\OneDrive\Desktop\MERN\ProjectManagementBase\server\projects\serializers.py changed, reloading.
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 1
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 1
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 6
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 1
+WARNING:django.request:Forbidden: /api/admin/users/28/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 0
+INFO:root:User: arjun.verma@example.com (SGM) | ClientID: None | Month: None | Year: None | Count: 0
+WARNING:django.request:Forbidden: /api/admin/users/27/
+WARNING:django.request:Forbidden: /api/admin/users/27/
+WARNING:django.request:Forbidden: /api/admin/users/27/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/28/
+WARNING:django.request:Forbidden: /api/admin/users/28/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/28/
+WARNING:django.request:Forbidden: /api/admin/users/28/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+WARNING:django.request:Forbidden: /api/admin/users/29/
+INFO:django.utils.autoreload:C:\Users\yash\OneDrive\Desktop\MERN\ProjectManagementBase\server\accounts\views.py changed, reloading.

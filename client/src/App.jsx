@@ -8,6 +8,7 @@ import EmployeeDashboard from './pages/Dashboard/EmployeeDashboard';
 import SGMProfile from './pages/profile/SGMProfile';
 import ClientManagement from './pages/ClientManagement';
 import ClientProjects from './pages/ClientProjects';
+import InternalTeamView from './pages/InternalTeamView';
 import ProjectDetails from './pages/ProjectDetails';
 import AdminProfile from './pages/profile/AdminProfile';
 import Createuser from './pages/createuser/Createuser';
@@ -40,6 +41,7 @@ const App = () => {
         <Route path='/sgm' element={<SGMProfile />} />
         <Route path="/clients" element={<ClientManagement />} />
         <Route path="/clients/:clientId/" element={<ClientProjects />} />
+        <Route path="/clients/:clientId/internal-team" element={<InternalTeamView />} />
         <Route path="/clients/:clientId/external-management" element={<ExternalManagement />} />
         <Route path="/projects/:projectId" element={<ProjectDetails />} />
 
