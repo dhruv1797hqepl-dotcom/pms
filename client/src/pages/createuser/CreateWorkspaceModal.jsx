@@ -203,8 +203,9 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                 <ModalSelect
                                     icon={Briefcase}
-                                    label="Assign SGMs"
+                                    label="Assign SGM"
                                     multiple
+                                    singleSelect
                                     options={sgmOptions}
                                     value={formData.assigned_sgms}
                                     onChange={(v) => setFormData({ ...formData, assigned_sgms: v })}
@@ -267,7 +268,7 @@ const ModalInput = ({ icon: Icon, label, value, onChange, type = "text", placeho
     </div>
 );
 
-const ModalSelect = ({ icon: Icon, label, options, value, onChange, multiple }) => (
+const ModalSelect = ({ icon: Icon, label, options, value, onChange, multiple, singleSelect }) => (
     <div className="space-y-1.5 group">
         <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-[0.15em] group-focus-within:text-[#F58A4B]">{label}</label>
 
@@ -283,9 +284,9 @@ const ModalSelect = ({ icon: Icon, label, options, value, onChange, multiple }) 
                                 <div
                                     key={opt.id}
                                     onClick={() => {
-                                        const newValue = isSelected
-                                            ? value.filter(v => v !== opt.id)
-                                            : [...value, opt.id];
+                                        const newValue = singleSelect
+                                            ? (isSelected ? [] : [opt.id])
+                                            : (isSelected ? value.filter(v => v !== opt.id) : [...value, opt.id]);
                                         onChange(newValue);
                                     }}
                                     className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${isSelected

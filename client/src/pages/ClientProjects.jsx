@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Plus, ChevronLeft, Filter, ArrowRight, User, Briefcase,
-  Users, Activity, Trash2, Edit, LayoutGrid
+  Users, Activity, Trash2, Edit, LayoutGrid, MoreHorizontal
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import api from '../api';
@@ -23,8 +23,10 @@ export default function ClientProjects() {
   const [projects, setProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]); // Kept for the count badge
   const [loading, setLoading] = useState(true);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   const hasProjects = projects.length > 0;
+  const canToggleProjectStatus = ['ADMIN', 'SGM'].includes(role);
 
   const fetchData = async () => {
     if (!clientId) return;
@@ -74,6 +76,19 @@ export default function ClientProjects() {
   const handleEdit = (project) => {
     setProjectToEdit(project);
     setIsModalOpen(true);
+  };
+
+  const handleProjectStatusToggle = async (project) => {
+    try {
+      const currentStatus = (project.status || 'ACTIVE').toUpperCase();
+      const nextStatus = currentStatus === 'ACTIVE' ? 'HOLD' : 'ACTIVE';
+      await api.patch(`projects/${project.id}/`, { status: nextStatus });
+      fetchData();
+    } catch (error) {
+      console.error("Project status update failed:", error);
+      const msg = error.response?.data?.detail || "Failed to update project status.";
+      alert(msg);
+    }
   };
 
   const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(filterQuery.toLowerCase()));
@@ -165,6 +180,32 @@ export default function ClientProjects() {
                     </div>
                     {['ADMIN', 'HQEPL', 'SGM'].includes(role) && (
                       <div className="flex gap-1">
+                        {canToggleProjectStatus && (
+                          <div className="relative">
+                            <button
+                              onClick={() => setOpenMenuId(openMenuId === proj.id ? null : proj.id)}
+                              onBlur={() => setTimeout(() => setOpenMenuId(null), 200)}
+                              className="p-2 text-slate-300 hover:text-[#F58A4B] transition-colors"
+                              aria-label="Project status menu"
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+                            {openMenuId === proj.id && (
+                              <div className="absolute right-0 top-full mt-2 w-36 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-[50] p-1">
+                                <button
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    handleProjectStatusToggle(proj);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider hover:bg-yellow-50 flex items-center gap-2 text-yellow-700 rounded-xl"
+                                >
+                                  {(proj.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'Hold' : 'Active'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <button onClick={() => handleEdit(proj)} className="p-2 text-slate-300 hover:text-slate-900 transition-colors"><Edit size={16} /></button>
                         <button onClick={() => handleDelete(proj.id)} className="p-2 text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                       </div>

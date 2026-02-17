@@ -208,7 +208,7 @@ export default function ClientManagement() {
                 onEdit={() => handleEdit(client)}
                 onDelete={() => confirmDelete(client.id)}
                 onToggleStatus={() => handleStatusToggle(client)}
-                canToggleStatus={role === 'SGM'}
+                canToggleStatus={role === 'SGM' || role === 'ADMIN'}
               />
             ))}
           </div>

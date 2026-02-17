@@ -32,7 +32,7 @@ const Navbar = ({ hideLogin = false }) => {
               <span className="text-slate-900 font-extrabold tracking-tight text-2xl md:text-3xl italic">
                 PROJECT
               </span>
-              <span className="text-blue-600 font-light tracking-[0.2em] text-2xl md:text-3xl uppercase">
+              <span className="text-blue-400 font-light tracking-[0.2em] text-2xl md:text-3xl uppercase">
                 Management
               </span>
             </h1>
@@ -49,7 +49,7 @@ const Navbar = ({ hideLogin = false }) => {
 
       {/* ORANGE PILL NAVBAR */}
       <div className="max-w-7xl mx-auto px-6 pb-6">
-        <div className="mx-auto flex items-center justify-between bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500 rounded-full px-2 py-2 shadow-xl shadow-blue-200/60">
+        <div className="mx-auto flex items-center justify-between bg-gradient-to-r from-sky-800 via-blue-600 to-sky-800 rounded-full px-2 py-2 shadow-xl shadow-blue-200/60">
 
           {/* NAV LINKS */}
           {/* Only show nav links if NOT logged in (hideLogin is false) */}
