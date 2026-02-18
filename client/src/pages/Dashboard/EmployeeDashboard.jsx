@@ -7,7 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   Calendar, Search, Filter, ClipboardList, Plus, CheckCircle,
   LayoutGrid, Clock, AlertCircle, TrendingUp, User, Download,
-  X, Upload, SearchCode, SendHorizonal, FileCheck, BarChart3
+  X, Upload, SearchCode, SendHorizonal, FileCheck, BarChart3, FileText
 } from "lucide-react";
 
 const EmployeeDashboard = () => {
@@ -17,6 +17,8 @@ const EmployeeDashboard = () => {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
+  const [showExcelImportModal, setShowExcelImportModal] = useState(false);
+  const [excelUploadStatus, setExcelUploadStatus] = useState(null);
 
   // FORM STATES FOR TASK COMPLETION
 
@@ -1172,6 +1174,95 @@ const EmployeeDashboard = () => {
     setPasteColumnType(null);
   };
 
+  const handleExcelImport = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.xlsx')) {
+      setExcelUploadStatus({ error: "Only .xlsx files are supported" });
+      return;
+    }
+
+    setExcelUploadStatus({ loading: true });
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/tasks/import_tasks_from_excel/`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+            // Note: DO NOT set Content-Type manually with FormData
+            // axios will automatically set the correct multipart/form-data boundary
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setExcelUploadStatus({
+          success: true,
+          tasksCreated: response.data.tasks_created,
+          taskIds: response.data.task_ids,
+          warnings: response.data.warnings
+        });
+        // Refresh tasks
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        // Backend returned errors (success: false)
+        setExcelUploadStatus({
+          error: response.data.error || 'Import failed',
+          backendErrors: response.data.errors || [],
+          warnings: response.data.warnings || [],
+          tasksCreated: response.data.tasks_created || 0
+        });
+      }
+    } catch (err) {
+      console.error('Excel import error:', err);
+      console.error('Response status:', err.response?.status);
+      console.error('Response data:', err.response?.data);
+      
+      let errorMsg = 'Upload failed';
+      let backendErrors = [];
+      let warnings = [];
+      
+      if (err.response?.data) {
+        const data = err.response.data;
+        
+        // If backend returned structured error response
+        if (data.error) {
+          errorMsg = data.error;
+        }
+        if (data.errors && Array.isArray(data.errors)) {
+          backendErrors = data.errors;
+        }
+        if (data.warnings && Array.isArray(data.warnings)) {
+          warnings = data.warnings;
+        }
+        
+        // If no structured error but we have a response
+        if (!errorMsg && err.response?.status === 400) {
+          errorMsg = 'Bad request - check file format or columns';
+        } else if (!errorMsg && err.response?.status === 500) {
+          errorMsg = 'Server error processing file';
+        }
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      
+      setExcelUploadStatus({ 
+        error: errorMsg,
+        backendErrors,
+        warnings
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20 relative">
       <Navbar hideLogin={true} />
@@ -1269,6 +1360,12 @@ const EmployeeDashboard = () => {
           className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-slate-900 text-white shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
         >
           <Plus size={14} /> ASSIGN
+        </button>
+        <button
+          onClick={() => setShowExcelImportModal(true)}
+          className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-blue-100 border border-blue-300 text-blue-700 shadow-sm hover:bg-blue-200 transition-all active:scale-95"
+        >
+          <FileText size={14} /> IMPORT EXCEL
         </button>
         {/* SEARCH BAR */}
         <div className="relative group">
@@ -1909,6 +2006,157 @@ const EmployeeDashboard = () => {
         </div>
       )
       }
+
+      {showExcelImportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800">
+              <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><FileText size={18} className="text-blue-400" /> Import Tasks from Excel</h2>
+              <button onClick={() => { setShowExcelImportModal(false); setExcelUploadStatus(null); }}><X size={20} /></button>
+            </div>
+            <div className="p-10 space-y-6">
+              {!excelUploadStatus && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600">Upload an Excel file (.xlsx) with your tasks. Supported columns:</p>
+                  <ul className="text-xs text-slate-500 space-y-1 ml-4">
+                    <li>• <strong>Task</strong> (required): Task title</li>
+                    <li>• <strong>Client</strong>: Client name</li>
+                    <li>• <strong>Project</strong>: Project name</li>
+                    <li>• <strong>Assigned To</strong>: Email or assignee name</li>
+                    <li>• <strong>Target Date</strong>: Due date (YYYY-MM-DD)</li>
+                  </ul>
+                  <label className="flex items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      onChange={handleExcelImport}
+                      className="hidden"
+                    />
+                    <div className="text-center">
+                      <FileText size={32} className="mx-auto text-blue-400 mb-2" />
+                      <p className="text-xs font-bold text-slate-700">Click to upload or drag and drop</p>
+                      <p className="text-[10px] text-slate-500">Only .xlsx files accepted</p>
+                    </div>
+                  </label>
+                </div>
+              )}
+              {excelUploadStatus?.loading && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  <div className="animate-spin">
+                    <Upload size={32} className="text-blue-400" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-600">Uploading and processing your file...</p>
+                </div>
+              )}
+              {excelUploadStatus?.success && (
+                <div className="space-y-4">
+                  <div className={`rounded-lg p-4 border ${excelUploadStatus.backendErrors?.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                    {excelUploadStatus.backendErrors?.length > 0 ? (
+                      <>
+                        <p className="text-sm font-bold text-amber-700">⚠️ Partial Import Success</p>
+                        <p className="text-xs text-amber-600 mt-2">
+                          {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully, but {excelUploadStatus.backendErrors.length} row{excelUploadStatus.backendErrors.length !== 1 ? 's' : ''} had errors and were skipped.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-emerald-700">✓ Import Successful!</p>
+                        <p className="text-xs text-emerald-600 mt-2">
+                          {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully.
+                        </p>
+                      </>
+                    )}
+                    
+                    {/* Show detailed errors if any */}
+                    {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
+                      <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
+                        <p className="font-bold text-red-700 mb-1">Errors (rows skipped):</p>
+                        {excelUploadStatus.backendErrors.map((err, i) => (
+                          <p key={i} className="text-red-600 mb-1">
+                            {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Show warnings if any */}
+                    {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
+                      <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-32 overflow-y-auto">
+                        <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
+                        {excelUploadStatus.warnings.map((w, i) => (
+                          <p key={i} className="text-yellow-600 mb-1">
+                            {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { 
+                      setShowExcelImportModal(false); 
+                      setExcelUploadStatus(null);
+                      // Only refresh if we had some successful tasks
+                      if (excelUploadStatus.tasksCreated > 0) {
+                        setTimeout(() => {
+                          window.location.reload();
+                        }, 500);
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
+                  >
+                    {excelUploadStatus.tasksCreated > 0 ? 'Reload & Close' : 'Close'}
+                  </button>
+                </div>
+              )}
+              {excelUploadStatus?.error && (
+                <div className="space-y-4">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-sm font-bold text-red-700">✕ Import Failed</p>
+                    <p className="text-xs text-red-600 mt-2">{excelUploadStatus.error}</p>
+                    
+                    {/* Show number of tasks created if any */}
+                    {excelUploadStatus.tasksCreated > 0 && (
+                      <p className="text-xs text-orange-600 mt-2">
+                        ⚠️ {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} were created before errors occurred
+                      </p>
+                    )}
+                    
+                    {/* Show detailed backend errors if available */}
+                    {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
+                      <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
+                        <p className="font-bold text-red-700 mb-1">Errors:</p>
+                        {excelUploadStatus.backendErrors.map((err, i) => (
+                          <p key={i} className="text-red-600 mb-1">
+                            {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Show warnings if any */}
+                    {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
+                      <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-40 overflow-y-auto">
+                        <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
+                        {excelUploadStatus.warnings.map((w, i) => (
+                          <p key={i} className="text-yellow-600 mb-1">
+                            {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setExcelUploadStatus(null)}
+                    className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
