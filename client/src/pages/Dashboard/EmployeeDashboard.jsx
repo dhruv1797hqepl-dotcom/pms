@@ -880,40 +880,6 @@ const EmployeeDashboard = () => {
   const [showSmartPasteConfirm, setShowSmartPasteConfirm] = useState(false);
   const [pasteColumnType, setPasteColumnType] = useState(null); // 'title', 'date', 'assignee', 'client', 'project'
 
-  // Detect what column type is being pasted
-  const detectColumnType = (values) => {
-    if (!values || values.length === 0) return null;
-    
-    const sample = values[0].toLowerCase();
-    
-    // Check if it looks like a date (YYYY-MM-DD, MM/DD/YYYY)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(sample) || /^\d{2}\/\d{2}\/\d{4}$/.test(sample)) {
-      return 'date';
-    }
-    
-    // Check if it looks like an email
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sample)) {
-      return 'assignee';
-    }
-    
-    // Check if it matches a known client (with fuzzy matching)
-    if (findBestClientMatch(values[0])) {
-      return 'client';
-    }
-    
-    // Check if it matches a known project (with fuzzy matching across all clients)
-    const allProjects = Object.values(clientProjectMap).flat();
-    for (const project of allProjects) {
-      const distance = calculateEditDistance(values[0], project.name);
-      if (distance <= 1) {
-        return 'project';
-      }
-    }
-    
-    // Default to title
-    return 'title';
-  };
-
   // Parse pasted data into rows
   const parsePasteData = (data) => {
     return data.trim().split('\n').map(line => line.trim()).filter(line => line);
@@ -1016,15 +982,28 @@ const EmployeeDashboard = () => {
   const handleSmartPaste = () => {
     if (!pasteContent.trim()) return;
 
+    if (!pasteColumnType) {
+      alert("Please select a column button before pasting.");
+      return;
+    }
+
     const values = parsePasteData(pasteContent);
-    const detectedType = detectColumnType(values);
+    const selectedType = pasteColumnType;
 
     if (draftTasks.length === 0) {
+      if (selectedType !== 'title') {
+        alert("Please paste the Title column first to create draft tasks.");
+        return;
+      }
       // First paste - create draft tasks
       const newDrafts = createDraftTasksFromPaste(values);
       setDraftTasks(newDrafts);
-      setPasteColumnType('title');
-      alert(`✓ Created ${newDrafts.length} draft tasks from first column (${detectedType})\n\nNow paste the next column to add more details (dates, assignees, etc.)`);
+      alert(`✓ Created ${newDrafts.length} draft tasks from Title column\n\nNow select another column and paste to add more details.`);
+    } else if (selectedType === 'title') {
+      // Allow adding more titles to append new draft tasks
+      const newDrafts = createDraftTasksFromPaste(values);
+      setDraftTasks([...draftTasks, ...newDrafts]);
+      alert(`✓ Added ${newDrafts.length} more draft tasks\n\nNow select another column and paste to add more details.`);
     } else {
       // Subsequent paste - update existing draft tasks
       if (values.length !== draftTasks.length) {
@@ -1032,14 +1011,14 @@ const EmployeeDashboard = () => {
         return;
       }
 
-      const { updated, skippedRows } = updateDraftTasksFromPaste(values, detectedType);
+      const { updated, skippedRows } = updateDraftTasksFromPaste(values, selectedType);
       setDraftTasks(updated);
       
-      let message = `✓ Updated ${updated.length} draft tasks with ${detectedType} data`;
+      let message = `✓ Updated ${updated.length} draft tasks with ${selectedType} data`;
       if (skippedRows.length > 0) {
         message += `\n\n⚠ ${skippedRows.length} rows couldn't be matched:\n${skippedRows.slice(0, 3).join('\n')}${skippedRows.length > 3 ? '\n...' : ''}`;
       }
-      message += `\n\nPaste another column or click "Submit All" to create tasks.`;
+      message += `\n\nSelect another column to paste or click "Submit All" to create tasks.`;
       
       alert(message);
     }
@@ -1699,16 +1678,34 @@ const EmployeeDashboard = () => {
 
             <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
               {/* PASTE INPUT TEXTAREA */}
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'title', label: 'Title' },
+                    { key: 'client', label: 'Client' },
+                    { key: 'project', label: 'Project' },
+                    { key: 'assignee', label: 'Assigned To' },
+                    { key: 'date', label: 'Date' }
+                  ].map((col) => (
+                    <button
+                      key={col.key}
+                      type="button"
+                      onClick={() => setPasteColumnType(col.key)}
+                      className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${pasteColumnType === col.key ? "bg-emerald-500 text-white border-emerald-500 shadow" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                    >
+                      {col.label}
+                    </button>
+                  ))}
+                </div>
                 <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">
-                  {draftTasks.length > 0 ? `📋 Paste Column ${pasteColumnType === 'title' ? '1 (Titles)' : '2+'}` : "📋 Paste First Column (Task Titles)"}
+                  {pasteColumnType ? `📋 Paste ${pasteColumnType} column` : "📋 Select a column, then paste"}
                 </h3>
                 <textarea
                   value={pasteContent}
                   onChange={(e) => setPasteContent(e.target.value)}
-                  placeholder={draftTasks.length === 0 
-                    ? "Paste task titles (one per line)" 
-                    : `Paste next column (dates, clients, assignees, etc.)`}
+                  placeholder={pasteColumnType
+                    ? `Paste ${pasteColumnType} values (one per line)`
+                    : "Select a column button above, then paste"}
                   className="w-full h-32 p-4 text-sm font-mono bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 ring-emerald-400 resize-none"
                 />
               </div>
