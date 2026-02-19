@@ -51,9 +51,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         my_tasks = Task.objects.filter(assigned_to=user)
         
         total = my_tasks.count()
-        # total_completed = my_tasks.filter(status='Completed').count()
         in_progress = my_tasks.filter(status='In Progress').count()
-        on_time_completed = my_tasks.filter(status='Completed', completion_date__lte=models.F('target_date')).count()
+        on_time_completed = my_tasks.filter(status='On Time').count()
         delayed_completed = my_tasks.filter(status='Delayed').count()
         overdue = my_tasks.filter(status='Overdue').count()
         
@@ -63,10 +62,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         if denominator > 0:
             otc_val = round((on_time_completed / denominator) * 100, 1)
 
-        # ATS Logic: Average of all relevant tasks (Completed + Overdue)
+        # ATS Logic: Average of all relevant tasks (On Time, Delayed, Overdue)
         # In Progress marked as None (skipped by Avg), Overdue marked as 0 (included in Avg)
-        # Safe filter: status inside ['Completed', 'Overdue'] or ats_score not None
-        relevant_for_ats = my_tasks.filter(status__in=['Completed', 'Delayed', 'Overdue'])
+        relevant_for_ats = my_tasks.filter(status__in=['On Time', 'Completed', 'Delayed', 'Overdue'])
         ats_avg = relevant_for_ats.aggregate(Avg('ats_score'))['ats_score__avg']
         if ats_avg is None: ats_avg = 0
 
@@ -90,7 +88,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         Expected request format:
         - POST /api/tasks/import_tasks_from_excel/
-        - Body (multipart/form-data): 'file' key with .xlsx file
+        - Body (multipart/form-data): 'file' key with .xlsx file, optional 'column_mapping' with JSON
         
         Response:
         {
@@ -124,6 +122,20 @@ class TaskViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Get column mapping if provided
+            column_mapping = None
+            if request.POST.get('column_mapping'):
+                import json
+                try:
+                    column_mapping = json.loads(request.POST.get('column_mapping'))
+                    print(f"DEBUG: Column mapping provided: {column_mapping}")
+                except json.JSONDecodeError:
+                    print(f"DEBUG: Invalid column_mapping JSON")
+                    return Response(
+                        {"success": False, "error": "Invalid column mapping format"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             # Save to temporary file
             temp_file_path = None
             try:
@@ -145,7 +157,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                 importer = ExcelTaskImporter()
                 result = importer.import_tasks(
                     temp_file_path,
-                    assigned_by=request.user
+                    assigned_by=request.user,
+                    column_mapping=column_mapping
                 )
                 
                 print(f"DEBUG: Import result: {result}")

@@ -7,7 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   Calendar, Search, Filter, ClipboardList, Plus, CheckCircle,
   LayoutGrid, Clock, AlertCircle, TrendingUp, User, Download,
-  X, Upload, SearchCode, SendHorizonal, FileCheck, BarChart3, FileText
+  X, Upload, SearchCode, SendHorizontal, FileCheck, BarChart3, FileText
 } from "lucide-react";
 
 const EmployeeDashboard = () => {
@@ -19,6 +19,9 @@ const EmployeeDashboard = () => {
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
   const [showExcelImportModal, setShowExcelImportModal] = useState(false);
   const [excelUploadStatus, setExcelUploadStatus] = useState(null);
+  const [excelPreview, setExcelPreview] = useState(null); // { columns: [], rows: [] }
+  const [columnMapping, setColumnMapping] = useState({}); // { 'task': 0, 'assigned_to': 2, etc }
+  const [mappingStep, setMappingStep] = useState(false); // true = show mapping UI, false = show upload UI
 
   // FORM STATES FOR TASK COMPLETION
 
@@ -62,6 +65,22 @@ const EmployeeDashboard = () => {
     return combined;
   };
 
+  const withCurrentUser = (members) => {
+    if (!currentUser) return members;
+
+    const currentEmail = currentUser.email ? currentUser.email.toLowerCase() : "";
+    const hasCurrentUser = members.some(m => {
+      const memberEmail = m.email ? m.email.toLowerCase() : "";
+      const matchByEmail = currentEmail && memberEmail && memberEmail === currentEmail;
+      const matchById = m.id && currentUser.id && m.id === currentUser.id;
+      return matchByEmail || matchById;
+    });
+
+    if (hasCurrentUser) return members;
+
+    return [{ ...currentUser, role: currentUser.role || "EMPLOYEE" }, ...members];
+  };
+
   // Helper to get unique users from all projects (excluding externals for internal tasks)
   const getAllUniqueUsers = () => {
     const users = new Map();
@@ -75,7 +94,7 @@ const EmployeeDashboard = () => {
         }
       });
     });
-    return Array.from(users.values());
+    return withCurrentUser(Array.from(users.values()));
   };
 
   const chartData = [
@@ -88,6 +107,7 @@ const EmployeeDashboard = () => {
   // DATA ARRAYS
   // STATE FOR DYNAMIC DATA
   const [userName, setUserName] = useState("Employee");
+  const [currentUser, setCurrentUser] = useState(null);
   const [clientProjectMap, setClientProjectMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,8 +162,8 @@ const EmployeeDashboard = () => {
       return (matchByName || matchById) && isMine(t);
     };
 
-    const my_active = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.status !== 'Completed');
-    const my_completed = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.status === 'Completed');
+    const my_active = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && !t.completion_date);
+    const my_completed = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.completion_date);
     const delegated = tasks.filter(t => {
       const taskAssignedByName = t.assigned_by_name || t.assigned_by_username;
       const taskAssignedById = t.assigned_by || t.assigned_by_id;
@@ -196,8 +216,8 @@ const EmployeeDashboard = () => {
       return matchByName || matchById;
     };
 
-    const my_active = tasks.filter(t => isAssignedToMember(t) && t.status !== 'Completed');
-    const my_completed = tasks.filter(t => isAssignedToMember(t) && t.status === 'Completed');
+    const my_active = tasks.filter(t => isAssignedToMember(t) && !t.completion_date);
+    const my_completed = tasks.filter(t => isAssignedToMember(t) && t.completion_date);
 
     return { my_active, my_completed };
   };
@@ -279,6 +299,7 @@ const EmployeeDashboard = () => {
         
         const displayName = userData?.full_name || userData?.username || "Employee";
         setUserName(displayName);
+        setCurrentUser(userData || null);
 
         // 2. Fetch Projects
         const projRes = await api.get("projects/");
@@ -529,7 +550,7 @@ const EmployeeDashboard = () => {
         selectedUser = allUsers.find(m => m.email === assignData.assignedTo);
       } else {
         selectedProjectObj = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-        selectedUser = getProjectMembers(selectedProjectObj).find(m => m.email === assignData.assignedTo);
+        selectedUser = withCurrentUser(getProjectMembers(selectedProjectObj)).find(m => m.email === assignData.assignedTo);
       }
 
       if ((!assignData.isInternal && !selectedProjectObj) || !selectedUser) {
@@ -624,7 +645,7 @@ const EmployeeDashboard = () => {
           selectedUser = allUsers.find(m => m.email === task.assignedTo);
         } else {
           selectedProjectObj = clientProjectMap[task.client]?.find(p => p.name === task.project);
-          selectedUser = getProjectMembers(selectedProjectObj).find(m => m.email === task.assignedTo);
+          selectedUser = withCurrentUser(getProjectMembers(selectedProjectObj)).find(m => m.email === task.assignedTo);
         }
 
         if ((!task.isInternal && !selectedProjectObj) || !selectedUser) {
@@ -1076,7 +1097,7 @@ const EmployeeDashboard = () => {
         } else {
           if (task.client && task.project) {
             selectedProjectObj = clientProjectMap[task.client]?.find(p => p.name === task.project);
-            selectedUser = getProjectMembers(selectedProjectObj).find(m => m.email === task.assignedTo);
+            selectedUser = withCurrentUser(getProjectMembers(selectedProjectObj)).find(m => m.email === task.assignedTo);
           } else {
             // Try to find the user globally
             const allUsers = getAllUniqueUsers();
@@ -1186,8 +1207,76 @@ const EmployeeDashboard = () => {
     setExcelUploadStatus({ loading: true });
 
     try {
+      // Read file using FileReader
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          // Dynamically import xlsx to avoid build issues
+          const { read, utils } = await import('xlsx');
+          const workbook = read(data, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (rows.length === 0) {
+            setExcelUploadStatus({ error: "Excel file is empty" });
+            return;
+          }
+
+          const headers = rows[0] || [];
+          const dataRows = rows.slice(1, 6); // Show first 5 data rows for preview
+
+          setExcelPreview({
+            columns: headers,
+            rows: dataRows,
+            file: file
+          });
+
+          // Initialize mapping with empty values
+          const initialMapping = {};
+          setColumnMapping(initialMapping);
+          setMappingStep(true);
+          setExcelUploadStatus(null);
+        } catch (err) {
+          console.error('File read error:', err);
+          setExcelUploadStatus({ error: "Failed to read Excel file: " + err.message });
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      console.error('Excel import error:', err);
+      setExcelUploadStatus({ error: err.message || "Upload failed" });
+    }
+  };
+
+  const handleConfirmMapping = async () => {
+    if (!excelPreview?.file) {
+      setExcelUploadStatus({ error: "No file selected" });
+      return;
+    }
+
+    // Validate that at least 'task' column is mapped
+    // columnMapping is now: { 'task': 0, 'assigned_to': 1, ... }
+    const hasTaskMapping = columnMapping['task'] !== undefined && columnMapping['task'] !== '';
+    if (!hasTaskMapping) {
+      setExcelUploadStatus({ error: "Please map the 'Task' column (required)" });
+      return;
+    }
+
+    setExcelUploadStatus({ loading: true });
+
+    try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', excelPreview.file);
+      
+      // Convert back to backend expected format: { 0: 'task', 1: 'assigned_to', ... }
+      const backendMapping = {};
+      Object.entries(columnMapping).forEach(([fieldName, colIdx]) => {
+        if (colIdx !== '') {
+          backendMapping[colIdx] = fieldName;
+        }
+      });
+      formData.append('column_mapping', JSON.stringify(backendMapping));
 
       const token = localStorage.getItem('access_token');
       const response = await axios.post(
@@ -1196,8 +1285,6 @@ const EmployeeDashboard = () => {
         {
           headers: {
             Authorization: `Bearer ${token}`
-            // Note: DO NOT set Content-Type manually with FormData
-            // axios will automatically set the correct multipart/form-data boundary
           }
         }
       );
@@ -1209,58 +1296,37 @@ const EmployeeDashboard = () => {
           taskIds: response.data.task_ids,
           warnings: response.data.warnings
         });
-        // Refresh tasks
+        setMappingStep(false);
+        setExcelPreview(null);
+        
         setTimeout(() => {
           window.location.reload();
         }, 2000);
       } else {
-        // Backend returned errors (success: false)
         setExcelUploadStatus({
           error: response.data.error || 'Import failed',
           backendErrors: response.data.errors || [],
           warnings: response.data.warnings || [],
           tasksCreated: response.data.tasks_created || 0
         });
+        setMappingStep(false);
       }
     } catch (err) {
-      console.error('Excel import error:', err);
-      console.error('Response status:', err.response?.status);
-      console.error('Response data:', err.response?.data);
-      
-      let errorMsg = 'Upload failed';
-      let backendErrors = [];
-      let warnings = [];
-      
-      if (err.response?.data) {
-        const data = err.response.data;
-        
-        // If backend returned structured error response
-        if (data.error) {
-          errorMsg = data.error;
-        }
-        if (data.errors && Array.isArray(data.errors)) {
-          backendErrors = data.errors;
-        }
-        if (data.warnings && Array.isArray(data.warnings)) {
-          warnings = data.warnings;
-        }
-        
-        // If no structured error but we have a response
-        if (!errorMsg && err.response?.status === 400) {
-          errorMsg = 'Bad request - check file format or columns';
-        } else if (!errorMsg && err.response?.status === 500) {
-          errorMsg = 'Server error processing file';
-        }
-      } else if (err.message) {
-        errorMsg = err.message;
-      }
-      
-      setExcelUploadStatus({ 
-        error: errorMsg,
-        backendErrors,
-        warnings
+      console.error('Import error:', err);
+      setExcelUploadStatus({
+        error: err.response?.data?.error || err.message || "Import failed",
+        backendErrors: err.response?.data?.errors || [],
+        warnings: err.response?.data?.warnings || []
       });
+      setMappingStep(false);
     }
+  };
+
+  const handleBackToUpload = () => {
+    setMappingStep(false);
+    setExcelPreview(null);
+    setColumnMapping({});
+    setExcelUploadStatus(null);
   };
 
   return (
@@ -1441,7 +1507,7 @@ const EmployeeDashboard = () => {
 
                 <div className="col-span-1 flex items-end">
                   <button type="submit" className="w-full bg-emerald-500 text-white font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all active:scale-95">
-                    <SendHorizonal size={18} /> Submit Final Report
+                    <SendHorizontal size={18} /> Submit Final Report
                   </button>
                 </div>
               </div>
@@ -1554,7 +1620,7 @@ const EmployeeDashboard = () => {
                                 members = getAllUniqueUsers();
                               } else {
                                 const selectedProject = clientProjectMap[task.client]?.find(p => p.name === task.project);
-                                members = getProjectMembers(selectedProject);
+                                members = withCurrentUser(getProjectMembers(selectedProject));
                               }
                               return members.map((m, i) => (
                                 <option key={i} value={m.email}>{m.email} ({m.role})</option>
@@ -1700,7 +1766,7 @@ const EmployeeDashboard = () => {
                                     } else {
                                       if (task.client && !task.client.startsWith('[INVALID]') && task.project && !task.project.startsWith('[INVALID]')) {
                                         const project = clientProjectMap[task.client]?.find(p => p.name === task.project);
-                                        members = getProjectMembers(project) || [];
+                                        members = withCurrentUser(getProjectMembers(project) || []);
                                       }
                                     }
                                     return members.map((m, i) => (
@@ -1786,7 +1852,7 @@ const EmployeeDashboard = () => {
                 let selectedUserRole = null;
                 if (!assignData.isInternal && assignData.project && assignData.assignedTo) {
                   const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                  const members = getProjectMembers(selectedProject);
+                  const members = withCurrentUser(getProjectMembers(selectedProject));
                   const selectedMember = members.find(m => m.email === assignData.assignedTo);
                   selectedUserRole = selectedMember?.role;
                 }
@@ -1872,7 +1938,7 @@ const EmployeeDashboard = () => {
                         members = getAllUniqueUsers();
                       } else {
                         const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                        members = getProjectMembers(selectedProject);
+                        members = withCurrentUser(getProjectMembers(selectedProject));
                       }
                       const selectedMember = members.find(m => m.email === e.target.value);
                       const isExternalUser = selectedMember?.role === "(EXTERNAL)";
@@ -1894,7 +1960,7 @@ const EmployeeDashboard = () => {
                         members = getAllUniqueUsers();
                       } else {
                         const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                        members = getProjectMembers(selectedProject);
+                        members = withCurrentUser(getProjectMembers(selectedProject));
                       }
                       return members.map((m, i) => (
                         <option key={i} value={m.email}>{m.email} ({m.role})</option>
@@ -2009,13 +2075,17 @@ const EmployeeDashboard = () => {
 
       {showExcelImportModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800">
-              <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><FileText size={18} className="text-blue-400" /> Import Tasks from Excel</h2>
-              <button onClick={() => { setShowExcelImportModal(false); setExcelUploadStatus(null); }}><X size={20} /></button>
+          <div className={`bg-white w-full ${mappingStep ? 'max-w-4xl' : 'max-w-md'} rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col`}>
+            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
+              <h2 className="font-black uppercase tracking-widest flex items-center gap-2">
+                <FileText size={18} className="text-blue-400" /> 
+                {mappingStep ? 'Map Excel Columns' : 'Import Tasks from Excel'}
+              </h2>
+              <button onClick={() => { setShowExcelImportModal(false); setExcelUploadStatus(null); setMappingStep(false); setExcelPreview(null); }}><X size={20} /></button>
             </div>
-            <div className="p-10 space-y-6">
-              {!excelUploadStatus && (
+            <div className={`p-10 space-y-6 ${mappingStep ? 'overflow-y-auto flex-1' : ''}`}>
+              {/* UPLOAD STEP */}
+              {!mappingStep && !excelUploadStatus && (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600">Upload an Excel file (.xlsx) with your tasks. Supported columns:</p>
                   <ul className="text-xs text-slate-500 space-y-1 ml-4">
@@ -2040,6 +2110,75 @@ const EmployeeDashboard = () => {
                   </label>
                 </div>
               )}
+
+              {/* MAPPING STEP */}
+              {mappingStep && excelPreview && !excelUploadStatus && (
+                <div className="space-y-6">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm font-bold text-blue-700">Map your Excel columns to Task fields</p>
+                    <p className="text-xs text-blue-600 mt-1">Select which Excel column contains each field. Leave as "Skip" if not in your file.</p>
+                  </div>
+
+                  {/* FIELD MAPPINGS - One row per Task field */}
+                  <div className="space-y-3">
+                    {[
+                      { field: 'task', label: 'Task (Required)', required: true },
+                      { field: 'client', label: 'Client', required: false },
+                      { field: 'project', label: 'Project', required: false },
+                      { field: 'assigned_to', label: 'Assigned To', required: false },
+                      { field: 'target_date', label: 'Target Date', required: false },
+                      { field: 'description', label: 'Description', required: false }
+                    ].map(({ field, label, required }) => (
+                      <div key={field} className="flex items-end gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <div className="flex-1">
+                          <label className="text-[10px] font-black uppercase text-slate-500">
+                            {label} {required && <span className="text-red-500">*</span>}
+                          </label>
+                          <select
+                            value={columnMapping[field] ?? ''}
+                            onChange={(e) => {
+                              const newMapping = { ...columnMapping };
+                              if (e.target.value !== '') {
+                                newMapping[field] = parseInt(e.target.value);
+                              } else {
+                                delete newMapping[field];
+                              }
+                              setColumnMapping(newMapping);
+                            }}
+                            className="w-full mt-2 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:ring-2 ring-blue-400 cursor-pointer"
+                          >
+                            <option value="">Skip</option>
+                            {excelPreview.columns.map((colName, colIdx) => (
+                              <option key={colIdx} value={colIdx}>
+                                Column {colIdx + 1}: {colName || '(No Header)'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ACTION BUTTONS */}
+                  <div className="flex justify-between gap-3 pt-4 border-t border-slate-200">
+                    <button
+                      onClick={handleBackToUpload}
+                      className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
+                    >
+                      ← Back
+                    </button>
+                    <button
+                      onClick={handleConfirmMapping}
+                      disabled={columnMapping['task'] === undefined || columnMapping['task'] === ''}
+                      className="px-8 py-3 bg-blue-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      Import Now
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* LOADING STATE */}
               {excelUploadStatus?.loading && (
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
                   <div className="animate-spin">
@@ -2288,7 +2427,6 @@ const StatusBadge = ({ status }) => {
   return <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${map[status] || "bg-slate-100"}`}>{status}</span>;
 };
 
-/* ===== AUTOCOMPLETE INPUT COMPONENT ===== */
 const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, className }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [show, setShow] = useState(false);

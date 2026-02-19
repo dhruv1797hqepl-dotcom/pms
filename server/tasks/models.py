@@ -98,8 +98,8 @@ class Task(models.Model):
             if val < 0: val = 0.0  # Sanity check
             return round(val, 2)
             
-        # For Completed Tasks
-        if self.status == 'Completed' and self.completion_date:
+        # For Completed/On Time Tasks
+        if self.status in ['Completed', 'On Time'] and self.completion_date:
             # Case 4: Target > Completion (Finished early) -> 100%
             if self.target_date > self.completion_date:
                 return 100.0
@@ -138,14 +138,14 @@ class Task(models.Model):
             last_task = Task.objects.all().order_by('id').last()
             self.task_id = f'T-{last_task.id + 101}' if last_task else 'T-101'
 
-        # If completion_date is set, derive Completed vs Delayed from dates
+        # If completion_date is set, derive On Time vs Delayed from dates
         if self.completion_date:
             if self.completion_date > self.target_date:
                 self.status = 'Delayed'
             else:
-                self.status = 'Completed'
+                self.status = 'On Time'
         # Auto-update status to Overdue if today > target_date and not completed
-        elif self.status != 'Completed' and date.today() > self.target_date:
+        elif self.status not in ['Completed', 'On Time'] and date.today() > self.target_date:
             self.status = 'Overdue'
 
         # ATS Logic Update
@@ -155,7 +155,7 @@ class Task(models.Model):
              self.ats_score = 0.0
         elif self.status == 'Delayed':
              self.ats_score = self.calculate_ats_value()
-        elif self.status == 'Completed':
+        elif self.status in ['Completed', 'On Time']:
              self.ats_score = self.calculate_ats_value()
         else:
              # Default fallback

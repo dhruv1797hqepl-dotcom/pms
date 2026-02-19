@@ -77,6 +77,9 @@ class TaskSerializer(serializers.ModelSerializer):
                 member_ids.update(team.internal_members.values_list('id', flat=True))
                 member_ids.update(team.external_members.values_list('id', flat=True))
 
+            if assigned_to.role == "SGM":
+                return data
+
             if assigned_to.id not in member_ids:
                 raise serializers.ValidationError(
                     f"User {assigned_to.username} is not a member of project '{project.name}'."

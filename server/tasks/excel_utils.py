@@ -20,7 +20,6 @@ class ExcelTaskImporter:
     Supports flexible column ordering and extra columns.
     """
 
-    # Required and optional field mappings
     FIELD_MAPPINGS = {
         'task': ['task', 'title', 'task_name', 'task_title', 'task name', 'task title'],
         'client': ['client', 'client_name', 'client_org', 'organization', 'client name', 'client org'],
@@ -30,7 +29,7 @@ class ExcelTaskImporter:
         'description': ['description', 'remarks', 'notes', 'comment'],
     }
 
-    REQUIRED_FIELDS = ['task']  # Only 'task' title is absolutely required
+    REQUIRED_FIELDS = ['task']  
 
     def __init__(self):
         self.errors = []
@@ -56,7 +55,6 @@ class ExcelTaskImporter:
         for i, c1 in enumerate(s1):
             current_row = [i + 1]
             for j, c2 in enumerate(s2):
-                # j+1 instead of j since previous_row and current_row are one character longer
                 insertions = previous_row[j + 1] + 1
                 deletions = current_row[j] + 1
                 substitutions = previous_row[j] + (c1 != c2)
@@ -492,13 +490,15 @@ class ExcelTaskImporter:
         except Exception as e:
             raise ValueError(f"Row {row_number} error: {str(e)}")
 
-    def import_tasks(self, file_path, assigned_by):
+    def import_tasks(self, file_path, assigned_by, column_mapping=None):
         """
         Main import function: Read Excel file and create tasks.
         
         Args:
             file_path: Path to .xlsx file
             assigned_by: Django User object who is creating the tasks
+            column_mapping: Optional manual mapping from frontend 
+                           Format: {column_index: field_name} or {field_name: column_index}
             
         Returns:
             dict with:
@@ -516,15 +516,49 @@ class ExcelTaskImporter:
             df = self.read_excel(file_path)
 
             # Find column mapping
-            try:
-                column_mapping = self.find_column_mapping(df.columns.tolist())
-            except ValueError as e:
-                return {
-                    'success': False,
-                    'tasks_created': 0,
-                    'errors': [str(e)],
-                    'warnings': []
-                }
+            if column_mapping:
+                # Use provided mapping from frontend
+                print(f"DEBUG: Using provided column mapping: {column_mapping}")
+                
+                # Convert mapping format if needed
+                # Frontend sends: { 0: 'task', 1: 'assigned_to', 2: 'target_date' }
+                # We need: { 'task': 0, 'assigned_to': 1, 'target_date': 2 }
+                provided_mapping = column_mapping
+                field_to_idx = {}
+                
+                for key, value in provided_mapping.items():
+                    # Check if key is string (already field_name) or int (column_index)
+                    try:
+                        col_idx = int(key)
+                        # key is column index, value is field name
+                        if value:  # Skip if value is empty/None/Skip
+                            field_to_idx[value] = col_idx
+                    except (ValueError, TypeError):
+                        # key is field name, value is column index
+                        if value is not None:
+                            field_to_idx[key] = value
+                
+                # Validate required field 'task'
+                if 'task' not in field_to_idx:
+                    return {
+                        'success': False,
+                        'tasks_created': 0,
+                        'errors': ["Required 'Task' column not mapped"],
+                        'warnings': []
+                    }
+                
+                column_mapping = field_to_idx
+            else:
+                # Auto-detect column mapping
+                try:
+                    column_mapping = self.find_column_mapping(df.columns.tolist())
+                except ValueError as e:
+                    return {
+                        'success': False,
+                        'tasks_created': 0,
+                        'errors': [str(e)],
+                        'warnings': []
+                    }
 
             # Process each row
             for idx, (row_idx, row) in enumerate(df.iterrows(), start=2):  # Start at row 2 (skip header)
