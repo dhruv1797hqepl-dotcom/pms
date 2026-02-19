@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import api from '../../api';
 
@@ -83,6 +83,8 @@ const DDTMETable = () => {
   const [clientProjects, setClientProjects] = useState([]); // [NEW] Active Projects
   const [additionalTasks, setAdditionalTasks] = useState([]); // [NEW] Ad-hoc tasks
   const [clientEmployees, setClientEmployees] = useState([]);
+  const [sgmName, setSgmName] = useState(null); // SGM name from project
+  const [sgmId, setSgmId] = useState(null); // SGM user ID for fetching hours
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
   const [userRole, setUserRole] = useState(null); // To determine if SGM or Employee
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,6 +94,15 @@ const DDTMETable = () => {
   const [editingRemarkKey, setEditingRemarkKey] = useState(null);
   const [savingRemarkKey, setSavingRemarkKey] = useState(null);
   const [isRejecting, setIsRejecting] = useState(false);
+  const hasInitializedManDayData = useRef(false);
+  const [editingDeliverableKey, setEditingDeliverableKey] = useState(null);
+  const [deliverableDraft, setDeliverableDraft] = useState({
+    title: '',
+    projectId: '',
+    targetDate: ''
+  });
+  const [savingDeliverableKey, setSavingDeliverableKey] = useState(null);
+  const [deletingDeliverableKey, setDeletingDeliverableKey] = useState(null);
 
   const { clientId } = useParams();
   const navigate = useNavigate();
@@ -175,6 +186,11 @@ const DDTMETable = () => {
           const tasksData = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data.results || []);
           setClientBigTasks(tasksData);
 
+          // Extract SGM name from first big task if available
+          if (tasksData.length > 0 && tasksData[0].sgm_name && tasksData[0].sgm_name !== '-') {
+            setSgmName(tasksData[0].sgm_name);
+          }
+
           // 1.2 Fetch Projects
           const projRes = await api.get(`projects/?client_id=${clientId}`, { headers });
           const projData = Array.isArray(projRes.data) ? projRes.data : (projRes.data.results || []);
@@ -187,12 +203,17 @@ const DDTMETable = () => {
 
           // 1.8 Fetch Objectives
           const objRes = await api.get(`ddtme/monthly-objectives/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers });
-          setObjectives(objRes.data.results || []);
+          const objData = Array.isArray(objRes.data) ? objRes.data : (objRes.data.results || []);
+          setObjectives(objData);
 
           // 2. Fetch Client Employees (Columns)
           const empsRes = await api.get(`clients/${clientId}/employees/`, { headers });
           const empsData = Array.isArray(empsRes.data) ? empsRes.data : (empsRes.data.results || []);
-          setClientEmployees(empsData);
+          const normalizedEmployees = empsData.map((employee) => ({
+            ...employee,
+            employee_id: employee.employee_id ?? employee.id
+          }));
+          setClientEmployees(normalizedEmployees);
 
           // 3. Fetch Submission Status
           const subRes = await api.get(`ddtme/submissions/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers });
@@ -204,25 +225,39 @@ const DDTMETable = () => {
           }
 
           // 4. Fetch Man-Day Entries
-          const entriesRes = await api.get(`ddtme/man-day-entries/?month=${selectedMonth}&year=${selectedYear}`, { headers });
-          const entriesData = Array.isArray(entriesRes.data) ? entriesRes.data : (entriesRes.data.results || []);
+          const entriesRes = await api.get(`ddtme/man-day-entries/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers });
+
+          // Debug: Log full response to see structure
+          console.log('FULL entries response:', entriesRes);
+          console.log('Response data type:', typeof entriesRes.data);
+          console.log('Is array?', Array.isArray(entriesRes.data));
+          console.log('Response data:', entriesRes.data);
+
+          // Handle both paginated and non-paginated responses
+          let entriesData = [];
+          if (Array.isArray(entriesRes.data)) {
+            entriesData = entriesRes.data;
+          } else if (entriesRes.data && Array.isArray(entriesRes.data.results)) {
+            entriesData = entriesRes.data.results;
+          } else if (entriesRes.data && typeof entriesRes.data === 'object') {
+            // If it's an object but not paginated, try to extract
+            entriesData = entriesRes.data.results || [];
+          }
+
+          console.log('Normalized entriesData:', entriesData);
+          console.log('Number of entries:', entriesData.length);
 
           // Populate manDayData
           const mapping = {};
           entriesData.forEach(entry => {
             const taskId = entry.big_task || entry.additional_task;
-            // We need to know if it's big or additional. The entry has null for one field.
-            // But state key must be unique. Let's use prefix 'big_' or 'add_'?
-            // Current getHours uses `${taskId}_${empId}`. Assuming task IDs don't collide? 
-            // They are different tables, so IDs might collide.
-            // We need a prefix system.
-            // Let's UPDATE existing state logic to handle prefixes.
-
             const typePrefix = entry.big_task ? 'big' : 'add';
             const key = `${typePrefix}_${taskId}_${entry.employee}`;
             mapping[key] = { on: entry.plan_hours, off: entry.off_hours };
+            console.log('Adding manday entry:', { key, entry });
           });
           setManDayData(mapping);
+          console.log('Final manDayData mapping:', mapping);
 
         } catch (error) {
           console.error("Failed to fetch DDTME data", error);
@@ -278,6 +313,19 @@ const DDTMETable = () => {
     return manDayData[`${type}_${taskId}_${empId}`]?.[field] || 0;
   };
 
+  const getEmployeeId = (employee) => employee?.employee_id ?? employee?.id;
+
+  const tablePeople = [
+    ...(sgmName ? [{ id: 'sgm', label: sgmName, isSgm: true }] : []),
+    ...(Array.isArray(clientEmployees)
+      ? clientEmployees.map((employee) => ({
+        id: getEmployeeId(employee),
+        label: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+        isSgm: false
+      }))
+      : [])
+  ];
+
   const getTotalHoursForEmp = (empId) => {
     let total = 0;
     if (Array.isArray(clientBigTasks)) {
@@ -308,7 +356,7 @@ const DDTMETable = () => {
     return total;
   };
 
-  const grandTotal = Array.isArray(clientEmployees) ? clientEmployees.reduce((acc, emp) => acc + getTotalHoursForEmp(emp.id), 0) : 0;
+  const grandTotal = Array.isArray(clientEmployees) ? clientEmployees.reduce((acc, emp) => acc + getTotalHoursForEmp(getEmployeeId(emp)), 0) : 0;
 
   // --- ACTIONS ---
 
@@ -334,7 +382,8 @@ const DDTMETable = () => {
     }
   };
 
-  const handleSaveManDays = async () => {
+  const handleSaveManDays = async (options = {}) => {
+    const { showAlerts = true } = options;
     setIsSaving(true);
     try {
       const token = localStorage.getItem('access_token');
@@ -358,20 +407,69 @@ const DDTMETable = () => {
         });
       });
 
-      await api.post('ddtme/man-day-entries/bulk_update_hours/', { entries }, { headers });
-      alert("Saved successfully!");
+      const saveRes = await api.post('ddtme/man-day-entries/bulk_update_hours/', { entries }, { headers });
+      if (Array.isArray(saveRes?.data?.failed) && saveRes.data.failed.length > 0) {
+        console.error('Man-day save failed entries:', saveRes.data.failed);
+        if (showAlerts) {
+          alert('Failed to save some hours. Please retry.');
+        }
+        return false;
+      }
+      if (showAlerts) {
+        alert("Saved successfully!");
+      }
+      return true;
     } catch (error) {
       console.error("Error saving man-days", error);
-      alert("Failed to save hours");
+      if (showAlerts) {
+        alert("Failed to save hours");
+      }
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
+  useEffect(() => {
+    hasInitializedManDayData.current = false;
+  }, [clientId, selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    const isEditableRole = userRole === 'EMPLOYEE' || userRole === 'ADMIN';
+    const status = submission?.status ? String(submission.status).toUpperCase() : 'DRAFT';
+    const isReadOnlyStatus = status === 'SUBMITTED' || status === 'APPROVED';
+
+    if (!isEditableRole || isReadOnlyStatus) {
+      return;
+    }
+
+    if (!hasInitializedManDayData.current) {
+      hasInitializedManDayData.current = true;
+      return;
+    }
+
+    const hasEntries = Object.keys(manDayData).length > 0;
+    if (!hasEntries || isSaving) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      handleSaveManDays({ showAlerts: false });
+    }, 600);
+
+    return () => clearTimeout(timeoutId);
+  }, [manDayData, userRole, submission?.status, isSaving]);
+
   const handleSendForApproval = async () => {
     if (!window.confirm("Are you sure you want to submit the DDTME plan? This will notify the SGM.")) return;
     setIsSubmitting(true);
     try {
+      const saveOk = await handleSaveManDays({ showAlerts: false });
+      if (!saveOk) {
+        alert('Unable to submit because saving latest hours failed. Please retry.');
+        return;
+      }
+
       const token = localStorage.getItem('access_token');
       const headers = { Authorization: `Bearer ${token}` };
       if (submission?.id && submission?.status === 'Rejected') {
@@ -472,6 +570,123 @@ const DDTMETable = () => {
     }
   };
 
+  const handleStartEditDeliverable = (type, task) => {
+    const key = `${type}_${task.id}`;
+    setEditingDeliverableKey(key);
+    setDeliverableDraft({
+      title: task.title || '',
+      projectId: task.project ? String(task.project) : '',
+      targetDate: task.target_date || ''
+    });
+  };
+
+  const handleCancelEditDeliverable = () => {
+    setEditingDeliverableKey(null);
+    setDeliverableDraft({ title: '', projectId: '', targetDate: '' });
+  };
+
+  const handleSaveDeliverable = async (type, taskId) => {
+    const key = `${type}_${taskId}`;
+    const nextTitle = deliverableDraft.title.trim();
+    const nextProjectId = deliverableDraft.projectId ? parseInt(deliverableDraft.projectId, 10) : null;
+    const nextTargetDate = deliverableDraft.targetDate || null;
+
+    if (!nextTitle) {
+      alert('Deliverable title cannot be empty.');
+      return;
+    }
+
+    if (type === 'big' && !nextProjectId) {
+      alert('Project is required for deliverable.');
+      return;
+    }
+
+    setSavingDeliverableKey(key);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const endpoint = type === 'big' ? `ddtme/big-tasks/${taskId}/` : `ddtme/additional-tasks/${taskId}/`;
+      const selectedProject = clientProjects.find((project) => String(project.id) === String(deliverableDraft.projectId));
+
+      const payload = {
+        title: nextTitle,
+        project: nextProjectId,
+        target_date: nextTargetDate
+      };
+
+      await api.patch(endpoint, payload, { headers });
+
+      if (type === 'big') {
+        setClientBigTasks((prev) => prev.map((task) => (
+          task.id === taskId
+            ? {
+              ...task,
+              title: nextTitle,
+              project: nextProjectId,
+              project_name: selectedProject?.name || '-',
+              target_date: nextTargetDate
+            }
+            : task
+        )));
+      } else {
+        setAdditionalTasks((prev) => prev.map((task) => (
+          task.id === taskId
+            ? {
+              ...task,
+              title: nextTitle,
+              project: nextProjectId,
+              project_name: selectedProject?.name || '-',
+              target_date: nextTargetDate
+            }
+            : task
+        )));
+      }
+
+      setEditingDeliverableKey(null);
+      setDeliverableDraft({ title: '', projectId: '', targetDate: '' });
+    } catch (error) {
+      console.error('Error updating deliverable', error);
+      alert('Failed to update deliverable');
+    } finally {
+      setSavingDeliverableKey(null);
+    }
+  };
+
+  const handleDeleteDeliverableTask = async (type, taskId) => {
+    if (!window.confirm('Delete this deliverable?')) return;
+
+    const key = `${type}_${taskId}`;
+    setDeletingDeliverableKey(key);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const endpoint = type === 'big' ? `ddtme/big-tasks/${taskId}/` : `ddtme/additional-tasks/${taskId}/`;
+
+      await api.delete(endpoint, { headers });
+
+      if (type === 'big') {
+        setClientBigTasks((prev) => prev.filter((task) => task.id !== taskId));
+      } else {
+        setAdditionalTasks((prev) => prev.filter((task) => task.id !== taskId));
+      }
+
+      setManDayData((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((entryKey) => {
+          if (entryKey.startsWith(`${type}_${taskId}_`)) {
+            delete next[entryKey];
+          }
+        });
+        return next;
+      });
+    } catch (error) {
+      console.error('Error deleting deliverable', error);
+      alert('Failed to delete deliverable');
+    } finally {
+      setDeletingDeliverableKey(null);
+    }
+  };
+
   // derived state for read-only
   const isReadOnly = submission?.status === 'Submitted' || submission?.status === 'Approved';
 
@@ -494,131 +709,137 @@ const DDTMETable = () => {
     <div className="p-6 max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
 
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600 transition-colors">
-              <span className="text-xs font-bold tracking-wider uppercase">← Back</span>
-            </button>
-          </div>
+      {/* HEADER: BIG BAR */}
+      <div className="relative flex items-center justify-between gap-4 px-6 py-4 bg-slate-50 border border-slate-200 rounded-3xl shadow-sm">
+
+        {/* Left Group: Back + Status */}
+        <div className="flex items-center gap-6 z-10">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 -ml-2 text-slate-400 hover:text-slate-800 transition-colors rounded-full hover:bg-slate-200"
+            title="Go Back"
+          >
+            <ArrowLeft size={24} />
+          </button>
+
           <div className="flex items-center gap-3">
-            <span className="px-3 py-1 bg-black text-white text-[10px] font-black tracking-widest uppercase rounded-full">
-              Man-days Estimation
-            </span>
             {planStatus === 'SUBMITTED' && (
-              <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-[10px] font-black tracking-widest uppercase rounded-full">
+              <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-[10px] font-black tracking-widest uppercase rounded-full border border-yellow-200">
                 Submitted
               </span>
             )}
             {planStatus === 'APPROVED' && (
-              <span className="px-3 py-1 bg-green-100 text-green-800 text-[10px] font-black tracking-widest uppercase rounded-full">
+              <span className="px-3 py-1 bg-green-100 text-green-800 text-[10px] font-black tracking-widest uppercase rounded-full border border-green-200">
                 Approved
               </span>
             )}
             {planStatus === 'REJECTED' && (
-              <span className="px-3 py-1 bg-red-100 text-red-800 text-[10px] font-black tracking-widest uppercase rounded-full">
+              <span className="px-3 py-1 bg-red-100 text-red-800 text-[10px] font-black tracking-widest uppercase rounded-full border border-red-200">
                 Rejected
               </span>
             )}
-            {/* DIAGNOSTIC RE-ADDED */}
-            <span className="text-[10px] text-slate-400 font-mono border border-slate-200 px-2 py-1 rounded">
-              DEBUG: Role={userRole || 'null'} | Status={submission?.status || 'null'} | M={selectedMonth}/Y={selectedYear}
+            {submission?.approved_by && (
+              <span className="px-3 py-1 bg-blue-50 text-blue-800 text-[10px] font-black tracking-widest uppercase rounded-full border border-blue-200">
+                Approved By: {submission.approved_by_name || submission.approved_by}
+              </span>
+            )}
+            {/* Debug Info (Hidden) */}
+            <span className="text-[10px] text-slate-300 font-mono hidden xl:inline-block">
+              Role={userRole} | Status={submission?.status}
             </span>
-
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight mt-2">DDTME</h1>
-          <p className="text-slate-500 font-medium italic">Deliverable Distribution Table</p>
         </div>
 
-        {/* ACTION BUTTONS */}
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-2">
+        {/* CENTER Group: Title */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-0 pointer-events-none">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">DDTME</h1>
+        </div>
+
+        {/* Right Group: SGM + Month + Actions */}
+        <div className="flex items-center gap-6 z-10">
+
+          {/* SGM Name */}
+          {sgmName && (
+            <div className="hidden lg:flex flex-col items-end border-r border-slate-200 pr-4">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SGM</span>
+              <span className="text-xs font-bold text-slate-700 uppercase">{sgmName}</span>
+            </div>
+          )}
+
+          {/* Month Controls */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-full p-1.5 shadow-sm">
             <button
               type="button"
               onClick={handlePrevMonth}
-              className="p-2 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 w-24 text-center">
               {buildMonthLabel(selectedMonth, selectedYear)}
             </span>
             <button
               type="button"
               onClick={handleNextMonth}
-              className="p-2 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all"
             >
               <ChevronRight size={16} />
             </button>
           </div>
 
+          {/* Actions */}
           <div className="flex items-center gap-3">
+            {/* REJECTION REMARKS POPUP/IN-LINE */}
+            {planStatus === 'REJECTED' && rejectionRemarksText && (
+              <div className="hidden xl:block bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs max-w-[200px] truncate" title={rejectionRemarksText}>
+                {rejectionRemarksText}
+              </div>
+            )}
 
-          {/* REJECTION REMARKS */}
-          {planStatus === 'REJECTED' && rejectionRemarksText && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm max-w-md">
-              <span className="font-bold block text-xs uppercase mb-1">Rejection Remarks:</span>
-              {rejectionRemarksText}
-            </div>
-          )}
-
-          {/* EMPLOYEE ACTIONS */}
-          {/* Can submit if Draft OR Rejected AND not SGM (or SGM acting as submitter) */}
-          {canSubmit && !canApprove && (
-            <button
-              onClick={handleSendForApproval}
-              disabled={isSubmitting}
-              className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-xl hover:-translate-y-0.5 transition-all text-xs tracking-wider uppercase"
-            >
-              {isSubmitting ? 'Sending...' : (planStatus === 'REJECTED' ? 'Resubmit Plan' : 'Send for Approval')}
-            </button>
-          )}
-
-          {/* SGM ACTIONS */}
-          {canApprove && !isRejecting && (
-            <>
+            {/* Submit / Approve / Reject Buttons */}
+            {canSubmit && !canApprove && (
               <button
-                className="px-6 py-2.5 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:shadow-xl hover:-translate-y-0.5 transition-all text-xs tracking-wider uppercase"
-                onClick={handleApprove}
+                onClick={handleSendForApproval}
+                disabled={isSubmitting}
+                className="px-5 py-2 bg-black text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
               >
-                Approve
+                {isSubmitting ? '...' : (planStatus === 'REJECTED' ? 'Resubmit' : 'Send Approval')}
               </button>
-              <button
-                className="px-6 py-2.5 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 hover:shadow-xl hover:-translate-y-0.5 transition-all text-xs tracking-wider uppercase"
-                onClick={handleStartRejecting}
-              >
-                Reject
-              </button>
-            </>
-          )}
+            )}
 
-          {canApprove && isRejecting && (
-            <>
-              <button
-                className="px-6 py-2.5 bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-red-200 hover:bg-red-800 hover:shadow-xl hover:-translate-y-0.5 transition-all text-xs tracking-wider uppercase"
-                onClick={handleSubmitRejection}
-              >
-                Send Rejection
-              </button>
-              <button
-                className="px-4 py-2.5 text-slate-600 font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-all text-xs tracking-wider uppercase"
-                onClick={handleCancelRejecting}
-              >
-                Cancel
-              </button>
-            </>
-          )}
+            {canApprove && !isRejecting && (
+              <>
+                <button
+                  className="px-5 py-2 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+                  onClick={handleApprove}
+                >
+                  Approve
+                </button>
+                <button
+                  className="px-5 py-2 bg-red-50 text-red-600 border border-red-200 font-bold rounded-xl hover:bg-red-100 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+                  onClick={handleStartRejecting}
+                >
+                  Reject
+                </button>
+              </>
+            )}
 
-          {/* Save Button always visible if editable? Or distinct from Send? */}
-          {canEdit && planStatus !== 'APPROVED' && (
-            <button
-              onClick={handleSaveManDays} // Fixed handler name
-              className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-0.5 transition-all text-xs tracking-wider uppercase"
-            >
-              Save Man-days
-            </button>
-          )}
-
+            {canApprove && isRejecting && (
+              <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-red-200 shadow-lg absolute right-0 top-full mt-2 z-50 animate-in fade-in slide-in-from-top-2">
+                <button
+                  className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 text-[10px] uppercase"
+                  onClick={handleSubmitRejection}
+                >
+                  Confirm Reject
+                </button>
+                <button
+                  className="px-3 py-2 text-slate-500 hover:text-slate-800 font-bold text-[10px] uppercase"
+                  onClick={handleCancelRejecting}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -747,7 +968,6 @@ const DDTMETable = () => {
             <h2 className="text-xl font-black text-slate-900">
               Man-days Plan <span className="text-slate-400">({new Date().toLocaleString('default', { month: 'long' })} {new Date().getFullYear()})</span>
             </h2>
-            <p className="text-slate-500 text-xs font-semibold mt-1">Grand Total: {grandTotal} hrs</p>
           </div>
           {canEdit && (
             <button
@@ -764,37 +984,40 @@ const DDTMETable = () => {
             <thead>
               <tr className="bg-slate-900 text-white">
                 <th className="px-4 py-3 text-left text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-10">SR</th>
-                <th className="px-6 py-3 text-left text-[10px] font-black uppercase sticky left-10 bg-slate-900 z-10">IT Deliverable</th>
+                <th className="px-6 py-3 text-left text-[10px] font-black uppercase sticky left-10 bg-slate-900 z-10">Deliverable</th>
                 <th className="px-4 py-3 text-left text-[10px] font-black uppercase">Project</th>
                 <th className="px-4 py-3 text-left text-[10px] font-black uppercase">Target Date</th>
                 {showRowRemarks && (
                   <th className="px-4 py-3 text-left text-[10px] font-black uppercase">Remarks</th>
                 )}
 
-                {/* Dynamic Employee Headers */}
-                {clientEmployees.length === 0 ? (
+                {/* Dynamic People Headers (SGM + Employees) */}
+                {tablePeople.length === 0 ? (
                   <th className="px-4 py-3 text-center text-[10px] font-black uppercase border-l border-slate-700 text-slate-400">
                     No Employees Assigned
                   </th>
                 ) : (
-                  clientEmployees.map(emp => (
-                    <th key={emp.id} colSpan="2" className="px-4 py-3 text-center text-[10px] font-black uppercase border-l border-slate-700">
-                      {emp.first_name} {emp.last_name || ''}
+                  tablePeople.map((person) => (
+                    <th
+                      key={person.id}
+                      colSpan="2"
+                      className="px-4 py-3 text-center text-[10px] font-black uppercase border-l border-slate-700"
+                    >
+                      {person.label}
                     </th>
                   ))
                 )}
 
-                <th className="px-4 py-3 text-center text-[10px] font-black uppercase border-l border-slate-700">Action</th>
               </tr>
               <tr className="bg-slate-800 text-white">
-                <th colSpan={showRowRemarks ? 4 : 3} className="sticky left-0 bg-slate-800 z-10"></th>
-                {clientEmployees.map(emp => (
-                  <React.Fragment key={emp.id}>
-                    <th className="px-3 py-2 text-center text-[9px] font-bold border-l border-slate-700">ON</th>
+                <th colSpan={showRowRemarks ? 5 : 4} className="sticky left-0 bg-slate-800 z-10"></th>
+                {tablePeople.map((person) => (
+                  <React.Fragment key={`sub-${person.id}`}>
+                    <th className="px-3 py-2 text-center text-[9px] font-bold border-l border-slate-700">On</th>
                     <th className="px-3 py-2 text-center text-[9px] font-bold">Off</th>
                   </React.Fragment>
                 ))}
-                {clientEmployees.length === 0 && <th></th>}
+                {tablePeople.length === 0 && <th></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -803,7 +1026,72 @@ const DDTMETable = () => {
                 <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50">{idx + 1}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50">
-                    {task.title}
+                    {editingDeliverableKey === `big_${task.id}` ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          type="text"
+                          value={deliverableDraft.title}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('big', task.id)}
+                          className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          autoFocus
+                        />
+                        <select
+                          value={deliverableDraft.projectId}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+                          className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+                        >
+                          <option value="">Select Project</option>
+                          {clientProjects.map((project) => (
+                            <option key={project.id} value={project.id}>{project.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={deliverableDraft.targetDate}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+                          className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleSaveDeliverable('big', task.id)}
+                          disabled={savingDeliverableKey === `big_${task.id}`}
+                          className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+                        >
+                          {savingDeliverableKey === `big_${task.id}` ? 'Saving' : 'Save'}
+                        </button>
+                        <button
+                          onClick={handleCancelEditDeliverable}
+                          className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <span>{task.title}</span>
+                          {canEdit && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleStartEditDeliverable('big', task)}
+                                className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                title="Edit deliverable"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDeliverableTask('big', task.id)}
+                                disabled={deletingDeliverableKey === `big_${task.id}`}
+                                className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
+                                title="Delete deliverable"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </td>
                   <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase">{task.project_name}</td>
                   <td className="px-4 py-4 text-xs text-slate-600 font-mono">{task.target_date || '-'}</td>
@@ -856,28 +1144,40 @@ const DDTMETable = () => {
                     </td>
                   )}
 
-                  {clientEmployees.map(emp => (
-                    <React.Fragment key={emp.id}>
-                      <td className="px-2 py-4 text-center border-l border-slate-100">
-                        <input
-                          type="number"
-                          value={getHours(task.id, emp.id, 'on', 'big')}
-                          onChange={(e) => handleHourChange(task.id, emp.id, 'on', e.target.value, 'big')}
-                          disabled={!canEdit}
-                          className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-blue-50 focus:border-blue-500 focus:bg-white'}`}
-                        />
-                      </td>
-                      <td className="px-2 py-4 text-center">
-                        <input
-                          type="number"
-                          value={getHours(task.id, emp.id, 'off', 'big')}
-                          onChange={(e) => handleHourChange(task.id, emp.id, 'off', e.target.value, 'big')}
-                          disabled={!canEdit}
-                          className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-yellow-50 focus:border-yellow-500 focus:bg-white'}`}
-                        />
-                      </td>
-                    </React.Fragment>
-                  ))}
+                  {tablePeople.map((person) => {
+                    if (person.isSgm) {
+                      return (
+                        <React.Fragment key={`big-sgm-${task.id}`}>
+                          <td className="px-2 py-4 text-center border-l border-slate-100 text-xs text-slate-700 font-bold">{getHours(task.id, 'sgm', 'on', 'big')}</td>
+                          <td className="px-2 py-4 text-center text-xs text-slate-500 font-bold">{getHours(task.id, 'sgm', 'off', 'big')}</td>
+                        </React.Fragment>
+                      );
+                    }
+
+                    const employeeId = person.id;
+                    return (
+                      <React.Fragment key={employeeId}>
+                        <td className="px-2 py-4 text-center border-l border-slate-100">
+                          <input
+                            type="number"
+                            value={getHours(task.id, employeeId, 'on', 'big')}
+                            onChange={(e) => handleHourChange(task.id, employeeId, 'on', e.target.value, 'big')}
+                            disabled={!canEdit}
+                            className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-blue-50 focus:border-blue-500 focus:bg-white'}`}
+                          />
+                        </td>
+                        <td className="px-2 py-4 text-center">
+                          <input
+                            type="number"
+                            value={getHours(task.id, employeeId, 'off', 'big')}
+                            onChange={(e) => handleHourChange(task.id, employeeId, 'off', e.target.value, 'big')}
+                            disabled={!canEdit}
+                            className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-yellow-50 focus:border-yellow-500 focus:bg-white'}`}
+                          />
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
 
                 </tr>
               ))}
@@ -887,8 +1187,73 @@ const DDTMETable = () => {
                 <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                   <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50">{clientBigTasks.length + idx + 1}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50">
-                    {task.title}
-                    <div className="text-[10px] text-green-600 font-bold uppercase mt-1">Additional Deliverable</div>
+                    {editingDeliverableKey === `add_${task.id}` ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          type="text"
+                          value={deliverableDraft.title}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('add', task.id)}
+                          className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          autoFocus
+                        />
+                        <select
+                          value={deliverableDraft.projectId}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+                          className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+                        >
+                          <option value="">Select Project</option>
+                          {clientProjects.map((project) => (
+                            <option key={project.id} value={project.id}>{project.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={deliverableDraft.targetDate}
+                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+                          className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleSaveDeliverable('add', task.id)}
+                          disabled={savingDeliverableKey === `add_${task.id}`}
+                          className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+                        >
+                          {savingDeliverableKey === `add_${task.id}` ? 'Saving' : 'Save'}
+                        </button>
+                        <button
+                          onClick={handleCancelEditDeliverable}
+                          className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <span>{task.title}</span>
+                          {canEdit && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleStartEditDeliverable('add', task)}
+                                className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                title="Edit deliverable"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDeliverableTask('add', task.id)}
+                                disabled={deletingDeliverableKey === `add_${task.id}`}
+                                className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
+                                title="Delete deliverable"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-green-600 font-bold uppercase mt-1">Additional Deliverable</div>
+                      </>
+                    )}
                   </td>
                   <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase">{task.project_name || '-'}</td>
                   <td className="px-4 py-4 text-xs text-slate-400 font-mono">{task.target_date || '-'}</td>
@@ -941,28 +1306,40 @@ const DDTMETable = () => {
                     </td>
                   )}
 
-                  {clientEmployees.map(emp => (
-                    <React.Fragment key={emp.id}>
-                      <td className="px-2 py-4 text-center border-l border-slate-100">
-                        <input
-                          type="number"
-                          value={getHours(task.id, emp.id, 'on', 'add')}
-                          onChange={(e) => handleHourChange(task.id, emp.id, 'on', e.target.value, 'add')}
-                          disabled={!canEdit}
-                          className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-blue-50 focus:border-blue-500 focus:bg-white'}`}
-                        />
-                      </td>
-                      <td className="px-2 py-4 text-center">
-                        <input
-                          type="number"
-                          value={getHours(task.id, emp.id, 'off', 'add')}
-                          onChange={(e) => handleHourChange(task.id, emp.id, 'off', e.target.value, 'add')}
-                          disabled={!canEdit}
-                          className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-yellow-50 focus:border-yellow-500 focus:bg-white'}`}
-                        />
-                      </td>
-                    </React.Fragment>
-                  ))}
+                  {tablePeople.map((person) => {
+                    if (person.isSgm) {
+                      return (
+                        <React.Fragment key={`add-sgm-${task.id}`}>
+                          <td className="px-2 py-4 text-center border-l border-slate-100 text-xs text-slate-700 font-bold">{getHours(task.id, 'sgm', 'on', 'add')}</td>
+                          <td className="px-2 py-4 text-center text-xs text-slate-500 font-bold">{getHours(task.id, 'sgm', 'off', 'add')}</td>
+                        </React.Fragment>
+                      );
+                    }
+
+                    const employeeId = person.id;
+                    return (
+                      <React.Fragment key={employeeId}>
+                        <td className="px-2 py-4 text-center border-l border-slate-100">
+                          <input
+                            type="number"
+                            value={getHours(task.id, employeeId, 'on', 'add')}
+                            onChange={(e) => handleHourChange(task.id, employeeId, 'on', e.target.value, 'add')}
+                            disabled={!canEdit}
+                            className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-blue-50 focus:border-blue-500 focus:bg-white'}`}
+                          />
+                        </td>
+                        <td className="px-2 py-4 text-center">
+                          <input
+                            type="number"
+                            value={getHours(task.id, employeeId, 'off', 'add')}
+                            onChange={(e) => handleHourChange(task.id, employeeId, 'off', e.target.value, 'add')}
+                            disabled={!canEdit}
+                            className={`w-12 text-center text-slate-800 font-bold text-xs p-1 rounded border-transparent transition-all outline-none ${!canEdit ? 'bg-transparent' : 'bg-yellow-50 focus:border-yellow-500 focus:bg-white'}`}
+                          />
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
 
                 </tr>
               ))}
@@ -971,7 +1348,7 @@ const DDTMETable = () => {
               {showAddDeliverable && canEdit && (
                 <tr className="bg-indigo-50">
                   <td className="text-center font-bold text-indigo-300">{clientBigTasks.length + additionalTasks.length + 1}</td>
-                  <td colSpan={2 + (clientEmployees.length * 2) + (showRowRemarks ? 1 : 0)} className="p-2">
+                  <td colSpan={3 + (tablePeople.length * 2) + (showRowRemarks ? 1 : 0)} className="p-2">
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1010,20 +1387,32 @@ const DDTMETable = () => {
               )}
 
               {/* Totals Row */}
-              {(clientBigTasks.length > 0 || additionalTasks.length > 0) && clientEmployees.length > 0 && (
+              {(clientBigTasks.length > 0 || additionalTasks.length > 0) && tablePeople.length > 0 && (
                 <tr className="bg-yellow-50 font-bold sticky bottom-0 z-10 shadow-t">
-                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-0 bg-yellow-50 z-20">Total Hours</td>
+                  <td colSpan={showRowRemarks ? 5 : 4} className="px-6 py-4 text-right text-sm sticky left-0 bg-yellow-50 z-20">Total Hours</td>
 
-                  {clientEmployees.map(emp => (
-                    <React.Fragment key={emp.id}>
-                      <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800">
-                        {getTotalHoursForEmp(emp.id)}
-                      </td>
-                      <td className="px-3 py-4 text-center text-sm text-slate-500">
-                        {getTotalOffHoursForEmp(emp.id)}
-                      </td>
-                    </React.Fragment>
-                  ))}
+                  {tablePeople.map((person) => {
+                    if (person.isSgm) {
+                      return (
+                        <React.Fragment key="total-sgm">
+                          <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800">{getTotalHoursForEmp('sgm')}</td>
+                          <td className="px-3 py-4 text-center text-sm text-slate-500">{getTotalOffHoursForEmp('sgm')}</td>
+                        </React.Fragment>
+                      );
+                    }
+
+                    const employeeId = person.id;
+                    return (
+                      <React.Fragment key={employeeId}>
+                        <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800">
+                          {getTotalHoursForEmp(employeeId)}
+                        </td>
+                        <td className="px-3 py-4 text-center text-sm text-slate-500">
+                          {getTotalOffHoursForEmp(employeeId)}
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
 
                 </tr>
               )}

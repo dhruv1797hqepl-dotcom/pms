@@ -338,7 +338,9 @@ class ClientEmployeesView(APIView):
         data = []
         for emp in employees:
             data.append({
-                "id": emp.user.id,
+                "id": emp.id,
+                "employee_id": emp.id,
+                "user_id": emp.user.id,
                 "first_name": emp.user.first_name,
                 "last_name": emp.user.last_name,
                 "email": emp.user.email,

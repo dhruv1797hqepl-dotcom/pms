@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import api from "../../api";
 import Navbar from "../../components/Navbar";
@@ -7,11 +7,15 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   Calendar, Search, Filter, ClipboardList, Plus, CheckCircle,
   LayoutGrid, Clock, AlertCircle, TrendingUp, User, Download,
-  X, Upload, SearchCode, SendHorizontal, FileCheck, BarChart3, FileText
+  X, Upload, SearchCode, SendHorizontal, FileCheck, BarChart3, FileText, ArrowLeft
 } from "lucide-react";
 
 const EmployeeDashboard = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  // DATE RANGE STATE
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   // MODAL STATES
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -99,7 +103,6 @@ const EmployeeDashboard = () => {
 
   const chartData = [
     { name: "On Time", value: 40, color: "#22c55e" },
-    { name: "In Progress", value: 30, color: "#3b82f6" },
     { name: "Delayed", value: 20, color: "#facc15" },
     { name: "Overdue", value: 10, color: "#ef4444" },
   ];
@@ -1314,18 +1317,38 @@ const EmployeeDashboard = () => {
 
       {/* ===== HEADER ===== */}
       <div className="max-w-7xl mx-auto mt-5 bg-slate-900 rounded-2xl px-6 py-4 grid grid-cols-3 items-center text-white shadow-xl">
-        {/* Empty div to balance the grid (Left) */}
-        <div className="hidden md:block"></div>
+        {/* Back Button (Left) */}
+        <button
+          onClick={() => navigate("/sgm")}
+          className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors w-fit"
+          title="Back to Dashboard"
+        >
+          <ArrowLeft size={18} />
+          <span className="hidden sm:inline text-xs font-semibold">Back</span>
+        </button>
 
         {/* Username in the exact center (Middle) */}
         <h1 className="text-xl font-extrabold text-[#F58A4B] text-center">
           {userName}'s Dashboard
         </h1>
 
-        {/* Date range on the right (Right) */}
-        <div className="flex items-center justify-end gap-2 text-xs text-slate-300">
-          <Calendar size={14} />
-          <span className="hidden sm:inline">Select date range</span>
+        {/* Date range filter on the right (Right) */}
+        <div className="flex items-center justify-end gap-3">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            title="Start date"
+          />
+          <span className="text-slate-400">to</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            title="End date"
+          />
         </div>
       </div>
 
@@ -1386,7 +1409,7 @@ const EmployeeDashboard = () => {
       </div>
 
       {/* ===== ACTION BAR (FMS instead of Complete) ===== */}
-      <div className="flex justify-center mt-8 gap-20 items-center">
+      <div className="flex justify-center mt-8 gap-12 items-center flex-wrap px-4">
         <MidBtn label="FILTER" icon={<Filter size={14} />} />
         <button
           onClick={() => setShowSmartPasteModal(true)}
@@ -1669,7 +1692,7 @@ const EmployeeDashboard = () => {
       {showSmartPasteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
           <div className="bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="bg-emerald-500 p-6 flex justify-between items-center text-white">
+            <div className="bg-blue-900 p-6 flex justify-between items-center text-white">
               <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
                 <Upload size={24} /> Smart Paste Task Builder
               </h2>

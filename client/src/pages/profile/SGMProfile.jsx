@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../../components/Navbar';
+import Sidebar from '../../components/Sidebar';
 import api from '../../api'; // Assuming you use the api instance we set up
 import {
   Users, Briefcase, Box, Eye, LayoutGrid,
@@ -13,6 +13,7 @@ const SGMProfile = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [userProfile, setUserProfile] = useState({
     name: "SGM User",
@@ -88,13 +89,15 @@ const SGMProfile = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 antialiased font-sans">
-      <Navbar hideLogin={true} />
+    <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
+      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
-      <main className="max-w-[1600px] mx-auto px-6 md:px-10 py-8 space-y-10 animate-in fade-in duration-700">
+      <main className={`flex-1 overflow-y-auto transition-all duration-300 py-8 space-y-16 animate-in fade-in duration-700`}>
+        <div className="max-w-[1600px] mx-auto px-6 md:px-10">
+
 
         {/* 1. EXECUTIVE OVERVIEW */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-2  mt-14 md:grid-cols-4 gap-6 md:gap-8">
           {sgmStats.map((stat, index) => (
             <button
               key={index}
@@ -111,6 +114,7 @@ const SGMProfile = () => {
         </div>
 
         {/* 2. SGM IDENTITY CARD */}
+        <div className="mt-12 pt-12 border-t border-slate-200">
         <div className="bg-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden text-white">
           <div className="absolute top-0 right-0 w-96 h-96 bg-[#F58A4B] rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
 
@@ -136,16 +140,13 @@ const SGMProfile = () => {
                   <Mail size={16} className="text-[#F58A4B]" />
                   <span className="text-sm font-bold">{userProfile.email}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck size={16} className="text-emerald-500" />
-                  <span className="text-xs uppercase font-black tracking-tighter">Verified Lead</span>
-                </div>
               </div>
             </div>
           </div>
         </div>
+        </div>
 
-
+        </div>
       </main>
     </div>
   );

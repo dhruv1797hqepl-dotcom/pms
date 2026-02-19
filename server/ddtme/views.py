@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+from django.db import models
 from .models import BigTask
 from .serializers import BigTaskSerializer
 
@@ -205,17 +206,52 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
     serializer_class = ManDayEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = ManDayEntry.objects.all()
+    pagination_class = None
+
+    def list(self, request, *args, **kwargs):
+        print("\n=== ManDayEntry LIST called ===")
+        print(f"Pagination class: {self.pagination_class}")
+        response = super().list(request, *args, **kwargs)
+        print(f"Response type: {type(response.data)}")
+        print(f"Response data (first 5): {response.data[:5] if isinstance(response.data, list) else response.data}")
+        print("=== End LIST ===\n")
+        return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
         # Filter by client/month/year via relations if needed, but basic params support is good
+        client_id = self.request.query_params.get('client_id')
         month = self.request.query_params.get('month')
         year = self.request.query_params.get('year')
         employee_id = self.request.query_params.get('employee_id')
+
+        print(f"\n=== ManDayEntry Query Debug ===")
+        print(f"User: {self.request.user} | Role: {getattr(self.request.user, 'role', 'N/A')}")
+        print(f"Client ID: {client_id} | Month: {month} | Year: {year} | Employee ID: {employee_id}")
+        print(f"Initial queryset count: {queryset.count()}")
+
+        if client_id:
+            queryset = queryset.filter(
+                models.Q(big_task__project__client__id=client_id) |
+                models.Q(additional_task__client_id=client_id)
+            )
+            print(f"After client filter, count: {queryset.count()}")
         
-        if month: queryset = queryset.filter(month=month)
-        if year: queryset = queryset.filter(year=year)
-        if employee_id: queryset = queryset.filter(employee_id=employee_id)
+        if month: 
+            queryset = queryset.filter(month=month)
+            print(f"After month filter, count: {queryset.count()}")
+            
+        if year: 
+            queryset = queryset.filter(year=year)
+            print(f"After year filter, count: {queryset.count()}")
+            
+        if employee_id: 
+            queryset = queryset.filter(employee_id=employee_id)
+            print(f"After employee filter, count: {queryset.count()}")
+        
+        print(f"Final queryset count: {queryset.count()}")
+        print(f"Sample entries: {list(queryset[:3].values())}")
+        print("=== End Debug ===\n")
         
         return queryset
 
@@ -225,6 +261,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         # Entry format: { task_id, task_type ('big' or 'additional'), employee_id, month, year, plan_hours, off_hours }
         
         results = []
+        errors = []
         for entry in entries:
             try:
                 emp_id = entry.get('employee_id')
@@ -255,7 +292,14 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
                 )
                 results.append(obj.id)
             except Exception as e:
-                print(f"Error saving entry: {e}")
+                errors.append({
+                    "entry": entry,
+                    "error": str(e)
+                })
+                print(f"Error saving entry: {e} | entry={entry}")
                 
-        return Response({"updated": len(results), "ids": results})
+        if errors:
+            return Response({"updated": len(results), "ids": results, "failed": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"updated": len(results), "ids": results, "failed": []})
 

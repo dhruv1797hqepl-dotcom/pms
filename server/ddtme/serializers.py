@@ -3,11 +3,17 @@ from .models import BigTask, DDTMESubmission, DDTMEAdditionalTask, ManDayEntry, 
 
 class BigTaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True)
+    sgm_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = BigTask
-        fields = ['id', 'project', 'project_name', 'title', 'start_date', 'target_date', 'status', 'type', 'created_at']
+        fields = ['id', 'project', 'project_name', 'sgm_name', 'title', 'start_date', 'target_date', 'status', 'type', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_sgm_name(self, obj):
+        if obj.project and obj.project.assigned_sgm:
+            return f"{obj.project.assigned_sgm.first_name} {obj.project.assigned_sgm.last_name}"
+        return "-"
 
     def validate(self, data):
         # Resolve values for Create vs Update
@@ -62,11 +68,22 @@ class DDTMESubmissionSerializer(serializers.ModelSerializer):
 
 class DDTMEAdditionalTaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True)
+    sgm_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DDTMEAdditionalTask
-        fields = ['id', 'client', 'project', 'project_name', 'month', 'year', 'title', 'target_date', 'created_at']
+        fields = ['id', 'client', 'project', 'project_name', 'sgm_name', 'month', 'year', 'title', 'target_date', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_sgm_name(self, obj):
+        # Try to get from project first
+        if obj.project and obj.project.assigned_sgm:
+            return f"{obj.project.assigned_sgm.first_name} {obj.project.assigned_sgm.last_name}"
+        # If no project SGM, try to get from client
+        if obj.client and obj.client.assigned_sgms.exists():
+            sgm = obj.client.assigned_sgms.first()
+            return f"{sgm.first_name} {sgm.last_name}"
+        return "-"
 
 
 class DDTMEMonthlyObjectiveSerializer(serializers.ModelSerializer):
@@ -87,5 +104,9 @@ class ManDayEntrySerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def get_employee_name(self, obj):
-        return f"{obj.employee.first_name} {obj.employee.last_name}"
+        user = getattr(obj.employee, 'user', None)
+        if not user:
+            return ""
+        full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+        return full_name or user.username or user.email
 

@@ -58,12 +58,18 @@ const Navbar = ({ hideLogin = false }) => {
               <a href="/" className="bg-white text-blue-700 px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">
                 Home
               </a>
-              <div className="flex items-center gap-4 px-6 text-white/95 text-[11px] font-bold uppercase tracking-widest">
-                {["About", "Solutions", "Industries", "Media", "Contact"].map((item) => (
+              <div className="flex items-center gap-10 px-6 text-white/95 text-[11px] font-bold uppercase tracking-widest">
+                {["About", "Industries", "Media"].map((item) => (
                   <a key={item} href={`#${item.toLowerCase()}`} className="hover:opacity-80 transition-opacity">
                     {item}
                   </a>
                 ))}
+                <button
+                  onClick={() => navigate('/contact')}
+                  className="hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-none p-0 text-white/95 font-bold uppercase tracking-widest"
+                >
+                  Contact
+                </button>
               </div>
             </nav>
           )}

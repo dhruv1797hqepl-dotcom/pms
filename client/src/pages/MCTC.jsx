@@ -275,11 +275,11 @@ const MCTC = () => {
                 
 
                 {/* CALENDAR GRID */}
-                <div className="bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100 p-6">
+                <div className="bg-white rounded-[4rem]  shadow-2xl shadow-slate-200/50 border border-slate-100 p-6">
                     {/* Days Header */}
                     <div className="grid grid-cols-7 mb-4 gap-px">
                         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, i) => (
-                            <div key={day} className={`text-center font-black uppercase text-xs tracking-widest py-4 rounded-xl ${i === 0 ? "text-red-600 bg-red-100/40" : "text-blue-600 bg-blue-100/40"
+                            <div key={day} className={`text-center font-black uppercase text-xs tracking-widest py-4 rounded-[4rem] ${i === 0 ? "text-red-600 bg-red-100/40" : "text-blue-600 bg-blue-100/40"
                                 }`}>
                                 {day}
                             </div>

@@ -130,7 +130,7 @@ const HQEPLProfile = () => {
                 </span>
               </div>
             </div>
-            <p className="text-lg text-slate-500 font-medium">Leading Project Excellence & Hindustan Quality Engineering Private Limited</p>
+            <p className="text-lg text-slate-500 font-medium">Here Quality Engineering Private Limited</p>
             <div className="flex flex-wrap justify-center md:justify-start gap-6 text-sm font-bold text-slate-400 pt-2">
               <span className="flex items-center gap-2"><MapPin size={16} /> Vadodara, Gujarat</span>
               <span className="flex items-center gap-2"><Calendar size={16} /> Since idk</span>

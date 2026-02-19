@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 import HomePage from './pages/Home';
 import LoginPage from './pages/LoginPage';
+import ContactPage from './pages/ContactPage';
 import EmployeeProfile from './pages/profile/EmployeeProfile';
 import EmployeeDashboard from './pages/Dashboard/EmployeeDashboard';
 import SGMProfile from './pages/profile/SGMProfile';
@@ -30,6 +31,7 @@ const App = () => {
 
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/contact" element={<ContactPage />} />
 
         <Route path='/admin' element={<AdminProfile />} />
         <Route path='/admin/createuser' element={<Createuser />} />
