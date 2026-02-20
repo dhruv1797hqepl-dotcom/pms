@@ -48,7 +48,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     <>
       {/* Sidebar */}
       <aside
-        className={`relative h-full bg-gradient-to-b from-sky-800 via-blue-600 to-sky-800 text-white shadow-lg transition-all duration-300 ease-in-out flex flex-col ${
+        className={`relative h-full bg-blue-900 text-white shadow-lg transition-all duration-300 ease-in-out flex flex-col ${
           isOpen ? 'w-64' : 'w-20'
         }`}
       >

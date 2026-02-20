@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import api from "../../api";
@@ -16,6 +16,10 @@ const EmployeeDashboard = () => {
   // DATE RANGE STATE
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [showDateFilterDropdown, setShowDateFilterDropdown] = useState(false);
+  const [draftStartDate, setDraftStartDate] = useState("");
+  const [draftEndDate, setDraftEndDate] = useState("");
+  const dateFilterRef = useRef(null);
   // MODAL STATES
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -112,6 +116,8 @@ const EmployeeDashboard = () => {
   const [userName, setUserName] = useState("Employee");
   const [currentUser, setCurrentUser] = useState(null);
   const [clientProjectMap, setClientProjectMap] = useState({});
+  const [selectedClients, setSelectedClients] = useState([]);
+  const [includeAllTasks, setIncludeAllTasks] = useState(true);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [dashboardStats, setDashboardStats] = useState({
@@ -406,6 +412,165 @@ const EmployeeDashboard = () => {
 
     fetchData();
   }, [location.search]);
+
+  useEffect(() => {
+    const clients = Object.keys(clientProjectMap);
+    if (clients.length === 0) {
+      setSelectedClients([]);
+      return;
+    }
+
+    setSelectedClients((prev) => {
+      if (prev.length === 0) return clients;
+      const retained = prev.filter((client) => clients.includes(client));
+      return retained.length > 0 ? retained : clients;
+    });
+  }, [clientProjectMap]);
+
+  const toggleClientSelection = (clientName) => {
+    setIncludeAllTasks(false);
+    setSelectedClients((prev) =>
+      (includeAllTasks ? Object.keys(clientProjectMap) : prev).includes(clientName)
+        ? (includeAllTasks ? Object.keys(clientProjectMap) : prev).filter((client) => client !== clientName)
+        : [...(includeAllTasks ? Object.keys(clientProjectMap) : prev), clientName]
+    );
+  };
+
+  const parseYMDToDate = (ymd) => {
+    if (!ymd) return null;
+    const [year, month, day] = ymd.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const formatDisplayDate = (ymd) => {
+    if (!ymd) return "dd-mm-yyyy";
+    const [year, month, day] = ymd.split("-");
+    return `${day}-${month}-${year}`;
+  };
+
+  const getTaskDate = (task) => {
+    const dateCandidates = [task.target_date, task.completion_date, task.created_at, task.updated_at];
+    for (const value of dateCandidates) {
+      if (!value) continue;
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        date.setHours(0, 0, 0, 0);
+        return date;
+      }
+    }
+    return null;
+  };
+
+  const isTaskInDateRange = (task) => {
+    const start = parseYMDToDate(startDate);
+    const end = parseYMDToDate(endDate);
+    if (!start && !end) return true;
+
+    const taskDate = getTaskDate(task);
+    if (!taskDate) return false;
+
+    if (start && taskDate < start) return false;
+    if (end && taskDate > end) return false;
+    return true;
+  };
+
+  const filterTasksByDateRange = (tasks) => tasks.filter(isTaskInDateRange);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (!showDateFilterDropdown) return;
+      if (dateFilterRef.current && !dateFilterRef.current.contains(event.target)) {
+        setShowDateFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [showDateFilterDropdown]);
+
+  const handleApplyDateFilter = () => {
+    setStartDate(draftStartDate);
+    setEndDate(draftEndDate);
+    setShowDateFilterDropdown(false);
+  };
+
+  const handleResetFilters = () => {
+    setStartDate("");
+    setEndDate("");
+    setDraftStartDate("");
+    setDraftEndDate("");
+    setIncludeAllTasks(true);
+    setSelectedClients(Object.keys(clientProjectMap));
+    setSearchQuery("");
+    setShowDateFilterDropdown(false);
+  };
+
+  const filteredDashboardStats = useMemo(() => {
+    const normalizeText = (value) => String(value || "").trim().toLowerCase();
+
+    const normalizeClientName = (task) =>
+      task.client_name || task.client_org_name || task.client || "Unknown Client";
+
+    const selectedClientSet = new Set(selectedClients.map(normalizeText));
+
+    const isClientSelected = (task) => {
+      if (includeAllTasks) return true;
+      return selectedClientSet.has(normalizeText(normalizeClientName(task)));
+    };
+
+    const activeTasks = myTasks.filter(isTaskInDateRange).filter(isClientSelected);
+    const doneTasks = completedTasks.filter(isTaskInDateRange).filter(isClientSelected);
+
+    const isDelayedStatus = (task) => {
+      const status = normalizeText(task.status);
+      return status.includes("delay") || status.includes("late");
+    };
+
+    const isOverdueTask = (task) => {
+      if (!task.target_date) return false;
+      const targetDate = new Date(task.target_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      targetDate.setHours(0, 0, 0, 0);
+      return targetDate < today;
+    };
+
+    const delayedCount = [...activeTasks, ...doneTasks].filter(isDelayedStatus).length;
+    const overdueCount = activeTasks.filter((task) => !isDelayedStatus(task) && isOverdueTask(task)).length;
+    const inProgressCount = activeTasks.filter((task) => !isDelayedStatus(task) && !isOverdueTask(task)).length;
+
+    const onTimeCount = doneTasks.filter((task) => {
+      if (!task.target_date || !task.completion_date) return false;
+      const targetDate = new Date(task.target_date);
+      const completedDate = new Date(task.completion_date);
+      targetDate.setHours(0, 0, 0, 0);
+      completedDate.setHours(0, 0, 0, 0);
+      return completedDate <= targetDate;
+    }).length;
+
+    const totalTasks = activeTasks.length + doneTasks.length;
+    const atsScore = totalTasks > 0 ? `${Math.round((doneTasks.length / totalTasks) * 100)}%` : "0%";
+    const otcDenominator = totalTasks - inProgressCount;
+    const otcScore = otcDenominator > 0 ? `${((onTimeCount / otcDenominator) * 100).toFixed(1)}%` : "0%";
+
+    return {
+      total_tasks: totalTasks,
+      on_time_count: onTimeCount,
+      delayed_count: delayedCount,
+      overdue_count: overdueCount,
+      in_progress_count: inProgressCount,
+      ats_score: atsScore,
+      otc_score: otcScore,
+      chart_data: [
+        { name: "On Time", value: onTimeCount, color: "#22c55e" },
+        { name: "Delayed", value: delayedCount, color: "#facc15" },
+        { name: "Overdue", value: overdueCount, color: "#ef4444" },
+      ]
+    };
+  }, [myTasks, completedTasks, selectedClients, includeAllTasks, startDate, endDate]);
 
 
   // AUTO-FETCH LOGIC
@@ -1332,23 +1497,70 @@ const EmployeeDashboard = () => {
           {userName}'s Dashboard
         </h1>
 
-        {/* Date range filter on the right (Right) */}
-        <div className="flex items-center justify-end gap-3">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-            title="Start date"
-          />
-          <span className="text-slate-400">to</span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-            title="End date"
-          />
+        {/* Date filter dropdown on the right (Right) */}
+        <div className="flex items-center justify-end gap-3 relative" ref={dateFilterRef}>
+          <button
+            type="button"
+            onClick={() => {
+              const nextOpen = !showDateFilterDropdown;
+              setShowDateFilterDropdown(nextOpen);
+              if (nextOpen) {
+                setDraftStartDate(startDate);
+                setDraftEndDate(endDate);
+              }
+            }}
+            className="px-4 py-2 rounded-lg bg-white text-slate-900 text-xs font-bold border border-slate-300 hover:bg-slate-50 transition-all flex items-center gap-2"
+          >
+            <Calendar size={14} /> Date Filter
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 hover:bg-slate-200 transition-all"
+          >
+            Reset
+          </button>
+
+          {showDateFilterDropdown && (
+            <div className="absolute right-0 mt-2 top-full w-[460px] bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-30">
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Start Date</label>
+                  <input
+                    type="date"
+                    value={draftStartDate}
+                    onChange={(e) => setDraftStartDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    title="Start date"
+                  />
+                  <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftStartDate)}</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">End Date</label>
+                  <input
+                    type="date"
+                    value={draftEndDate}
+                    onChange={(e) => setDraftEndDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    title="End date"
+                  />
+                  <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftEndDate)}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-4 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleApplyDateFilter}
+                  className="px-5 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-900 text-white hover:bg-black transition-all"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1356,11 +1568,34 @@ const EmployeeDashboard = () => {
       <div className="max-w-7xl mx-auto grid grid-cols-12 gap-6 mt-6 px-6">
         <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm text-center">
           <h3 className="font-black text-slate-900 uppercase text-xs mb-3 tracking-widest text-left">Client Filter</h3>
-          {loading ? <p className="text-xs text-slate-400">Loading...</p> : Object.keys(clientProjectMap).map((client, i) => (
-            <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
-              <input type="checkbox" defaultChecked className="accent-slate-900" /> {client}
+          {loading ? <p className="text-xs text-slate-400">Loading...</p> : (
+            <>
+              <label className="flex items-center gap-2 text-[12px] text-slate-700 mb-2 cursor-pointer font-semibold">
+                <input
+                  type="checkbox"
+                  checked={includeAllTasks}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIncludeAllTasks(checked);
+                    if (checked) {
+                      setSelectedClients(Object.keys(clientProjectMap));
+                    }
+                  }}
+                  className="accent-slate-900"
+                /> All Tasks
+              </label>
+              {Object.keys(clientProjectMap).map((client, i) => (
+                <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeAllTasks || selectedClients.includes(client)}
+                onChange={() => toggleClientSelection(client)}
+                className="accent-slate-900"
+              /> {client}
             </label>
-          ))}
+              ))}
+            </>
+          )}
         </div>
         <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
           <div className="flex justify-between items-center mb-2">
@@ -1376,14 +1611,14 @@ const EmployeeDashboard = () => {
             <ResponsiveContainer>
               <PieChart>
                 <Pie
-                  data={dashboardStats.chart_data}
+                  data={filteredDashboardStats.chart_data}
                   dataKey="value"
                   innerRadius={60}
                   outerRadius={90}
                   paddingAngle={4}
                   stroke="none"
                 >
-                  {dashboardStats.chart_data.map((d, i) => (
+                  {filteredDashboardStats.chart_data.map((d, i) => (
                     <Cell key={i} fill={d.color} />
                   ))}
                 </Pie>
@@ -1393,18 +1628,18 @@ const EmployeeDashboard = () => {
             {/* OTC CENTER OVERLAY */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">OTC</span>
-              <span className="text-3xl font-black text-slate-900">{dashboardStats.otc_score}</span>
+              <span className="text-3xl font-black text-slate-900">{filteredDashboardStats.otc_score}</span>
             </div>
           </div>
         </div>
 
         <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4">
-          <Stat title="Total Task" value={dashboardStats.total_tasks} color="#6366f1" icon={<LayoutGrid size={18} />} />
-          <Stat title="On Time Completion" value={dashboardStats.on_time_count} color="#22c55e" icon={<CheckCircle size={18} />} />
-          <Stat title="Overdue" value={dashboardStats.chart_data.find(d => d.name === "Overdue")?.value || 0} color="#ef4444" icon={<AlertCircle size={18} />} />
-          <Stat title="Delayed" value={dashboardStats.chart_data.find(d => d.name === "Delayed")?.value || 0} color="#facc15" icon={<Clock size={18} />} />
-          <Stat title="In Progress" value={dashboardStats.chart_data.find(d => d.name === "In Progress")?.value || 0} color="#3b82f6" icon={<TrendingUp size={18} />} />
-          <Stat title="ATS SCORE" value={dashboardStats.ats_score} color="#a855f7" icon={<TrendingUp size={18} />} />
+          <Stat title="Total Task" value={filteredDashboardStats.total_tasks} color="#6366f1" icon={<LayoutGrid size={18} />} />
+          <Stat title="On Time Completion" value={filteredDashboardStats.on_time_count} color="#22c55e" icon={<CheckCircle size={18} />} />
+          <Stat title="Overdue" value={filteredDashboardStats.overdue_count} color="#ef4444" icon={<AlertCircle size={18} />} />
+          <Stat title="Delayed" value={filteredDashboardStats.delayed_count} color="#facc15" icon={<Clock size={18} />} />
+          <Stat title="In Progress" value={filteredDashboardStats.in_progress_count} color="#3b82f6" icon={<TrendingUp size={18} />} />
+          <Stat title="ATS SCORE" value={filteredDashboardStats.ats_score} color="#a855f7" icon={<TrendingUp size={18} />} />
         </div>
       </div>
 
@@ -1451,7 +1686,7 @@ const EmployeeDashboard = () => {
       {/* ===== TASK OVERVIEW TABLE (Tasks Assigned TO Me - Active) ===== */}
       <Table
         title="My Function Tasks"
-        data={filterTasks(myTasks)}
+        data={filterTasks(filterTasksByDateRange(myTasks))}
         mode="overview"
         onQuickComplete={handleDirectComplete}
         onReportComplete={openCompletionModal}
@@ -1461,9 +1696,9 @@ const EmployeeDashboard = () => {
         onBulkComplete={handleBulkComplete}
       />
       {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
-      <Table title="Completed Tasks" data={filterTasks(completedTasks)} mode="completed" />
+      <Table title="Completed Tasks" data={filterTasks(filterTasksByDateRange(completedTasks))} mode="completed" />
       {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
-      <Table title="Delegated Tasks" data={filterTasks(delegatedTasks)} mode="assigned" />
+      <Table title="Delegated Tasks" data={filterTasks(filterTasksByDateRange(delegatedTasks))} mode="assigned" />
       {/* ========================================================== */}
       {/* TASK COMPLETION MODAL FORM */}
       {/* ========================================================== */}
@@ -2331,21 +2566,86 @@ const Table = ({
   onToggleSelect,
   onToggleSelectAll,
   onBulkComplete
-}) => (
+}) => {
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const getTaskSortValue = (task) => {
+    const dateCandidates = [
+      task?.created_at,
+      task?.createdAt,
+      task?.assigned_date,
+      task?.assigned_on,
+      task?.updated_at,
+      task?.completion_date,
+      task?.target_date,
+    ];
+
+    for (const value of dateCandidates) {
+      if (!value) continue;
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+
+    const numericId = Number(task?.id);
+    if (!Number.isNaN(numericId)) return numericId;
+
+    return 0;
+  };
+
+  const sortedData = useMemo(() => {
+    return [...data].sort((a, b) => getTaskSortValue(b) - getTaskSortValue(a));
+  }, [data]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data, mode, title]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedData = sortedData.slice(startIndex, startIndex + PAGE_SIZE);
+
+  return (
   <div className="max-w-7xl mx-auto mt-10 px-6">
     <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden transition-all hover:shadow-md">
       <div className="px-8 py-5 border-b font-black uppercase text-xs tracking-widest bg-slate-50 text-slate-600 flex justify-between items-center">
-        {title}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
+          {title}
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="ml-16 px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
+          >
+            Previous
+          </button>
+        </div>
+
+        <div className="flex items-center">
           {mode === 'overview' && selectedTasks?.length > 0 && (
             <button
               onClick={onBulkComplete}
-              className="bg-emerald-500 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md hover:bg-emerald-600 transition-all animate-in fade-in"
+              className="bg-emerald-500 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md hover:bg-emerald-600 transition-all animate-in fade-in mr-6"
             >
               Submit Selected ({selectedTasks.length})
             </button>
           )}
-          <span className="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[9px]">{data.length} Records</span>
+
+          <button
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
+          >
+            Next
+          </button>
+
+          <span className="ml-6 bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[9px]">{sortedData.length} Records</span>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -2356,8 +2656,8 @@ const Table = ({
                 <th className="px-8 py-4">
                   <input
                     type="checkbox"
-                    onChange={() => onToggleSelectAll(data)}
-                    checked={data.length > 0 && selectedTasks?.length === data.length}
+                    onChange={() => onToggleSelectAll(paginatedData)}
+                    checked={paginatedData.length > 0 && paginatedData.every((task) => selectedTasks?.includes(task.id))}
                     className="cursor-pointer accent-slate-900"
                   />
                 </th>
@@ -2378,7 +2678,7 @@ const Table = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {data.map((t) => (
+            {paginatedData.map((t) => (
               <tr key={t.id} className={`transition-colors ${selectedTasks?.includes(t.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}`}>
                 {mode === 'overview' && (
                   <td className="px-8 py-5">
@@ -2421,9 +2721,11 @@ const Table = ({
           </tbody>
         </table>
       </div>
+
     </div>
   </div>
-);
+  );
+};
 
 /* ===== HELPER COMPONENTS (ORIGINAL STYLE) ===== */
 const Stat = ({ title, value, icon, color }) => (
