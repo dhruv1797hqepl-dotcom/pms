@@ -75,11 +75,11 @@ MIDDLEWARE = [
 # CORS
 # ========================
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Local Vite frontend
-    "https://projectmanagementbase-1.onrender.com",  # Add after frontend deploy
-]
-
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",  # Local Vite frontend
+#     "https://projectmanagementbase-1.onrender.com",  # Add after frontend deploy
+# ]
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # ========================
