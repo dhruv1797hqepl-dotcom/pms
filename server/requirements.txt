@@ -17,7 +17,7 @@ django-cors-headers==4.9.0
 
 # Database (IMPORTANT for Render PostgreSQL)
 psycopg2-binary==2.9.9
-
+pandas==2.2.2
 # Environment Variables
 python-dotenv==1.2.1
 
