@@ -1,12 +1,16 @@
 import axios from "axios";
-import React from "react";
 
-const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`,
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
 });
 
-api.interceptors.request.use(
+API.interceptors.request.use(
   (config) => {
+    if (config.url && !/^https?:\/\//i.test(config.url)) {
+      const normalized = config.url.startsWith("/") ? config.url : `/${config.url}`;
+      config.url = normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
+    }
+
     const token = localStorage.getItem("access_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -16,4 +20,4 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-export default api;
+export default API;

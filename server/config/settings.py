@@ -66,10 +66,16 @@ MIDDLEWARE = [
 # CORS
 # ========================
 
+# ========================
+# CORS
+# ========================
+
 CORS_ALLOWED_ORIGINS = [
-    "https://your-frontend-name.onrender.com",  # replace after frontend deploy
+    "http://localhost:5173",  # Local Vite frontend
+    "https://your-frontend-name.onrender.com",  # Add after frontend deploy
 ]
 
+CORS_ALLOW_CREDENTIALS = True
 
 # ========================
 # URLS & TEMPLATES

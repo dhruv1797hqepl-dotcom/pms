@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import {
   CalendarDays, ChevronLeft, ChevronRight,
   Filter, FileSpreadsheet, Activity
@@ -20,7 +20,7 @@ const WeeklyScore = () => {
         const headers = { Authorization: `Bearer ${token}` };
 
         // Fetch all tasks
-        const tasksRes = await axios.get('http://127.0.0.1:8000/api/tasks/', { headers });
+        const tasksRes = await api.get('/api/tasks/', { headers });
         const allTasks = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data.results || []);
 
         // Group tasks by assigned_to_name
