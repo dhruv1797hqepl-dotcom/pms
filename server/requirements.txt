@@ -16,6 +16,7 @@ whitenoise==6.11.0
 django-cors-headers==4.9.0
 
 # Database (IMPORTANT for Render PostgreSQL)
+dj-database-url==2.1.0
 psycopg2-binary==2.9.9
 pandas==2.2.2
 # Environment Variables
