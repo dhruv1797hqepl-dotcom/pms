@@ -1,5 +1,10 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / ".env")
 from datetime import timedelta
 import dj_database_url
 
@@ -72,7 +77,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Local Vite frontend
-    "https://your-frontend-name.onrender.com",  # Add after frontend deploy
+    "https://projectmanagementbase-1.onrender.com",  # Add after frontend deploy
 ]
 
 CORS_ALLOW_CREDENTIALS = True
