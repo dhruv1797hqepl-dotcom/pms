@@ -17,6 +17,17 @@ const MCTC = () => {
     const [taskType, setTaskType] = useState("normal");
     const [isSaving, setIsSaving] = useState(false);
 
+    const fetchCurrentUserId = async () => {
+        if (userId) return userId;
+        const response = await api.get("/me/");
+        const currentId = response?.data?.id;
+        if (currentId) {
+            setUserId(currentId);
+            return currentId;
+        }
+        throw new Error("Current user not available");
+    };
+
     // Helper to get days in month
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();
@@ -62,6 +73,9 @@ const MCTC = () => {
                         id: entry.id,
                         label: entry.label,
                         type: entry.entry_type,
+                        linkedTaskId: entry.linked_task,
+                        linkedTaskStatus: entry.linked_task_status,
+                        linkedTaskCompletionDate: entry.linked_task_completion_date,
                     });
                 });
 
@@ -102,10 +116,27 @@ const MCTC = () => {
 
         try {
             setIsSaving(true);
+            let linkedTaskId = null;
+
+            if (taskType === "task") {
+                const currentUserId = await fetchCurrentUserId();
+
+                const taskResponse = await api.post("/tasks/", {
+                    title: label,
+                    assigned_to: currentUserId,
+                    target_date: dayKey,
+                    start_date: dayKey,
+                    source_module: "MCTC",
+                });
+
+                linkedTaskId = taskResponse?.data?.id || null;
+            }
+
             const response = await api.post("/mctc/entries/", {
                 entry_date: dayKey,
                 label,
                 entry_type: taskType,
+                linked_task: linkedTaskId,
             });
 
             setTasks((prev) => {
@@ -114,6 +145,9 @@ const MCTC = () => {
                     id: response.data.id,
                     label: response.data.label,
                     type: response.data.entry_type,
+                    linkedTaskId: response.data.linked_task,
+                    linkedTaskStatus: response.data.linked_task_status,
+                    linkedTaskCompletionDate: response.data.linked_task_completion_date,
                 };
                 return {
                     ...prev,
@@ -121,22 +155,47 @@ const MCTC = () => {
                 };
             });
 
-            if (taskType === "task" && userId) {
-                try {
-                    await api.post("/tasks/", {
-                        title: label,
-                        assigned_to: userId,
-                        target_date: dayKey,
-                    });
-                } catch (error) {
-                    console.error("Failed to create task from MCTC entry:", error);
-                }
-            }
-
             setInputValue("");
             setEditingDay(null);
         } catch (error) {
             console.error("Failed to auto-save MCTC entry:", error);
+            alert("Failed to create MCTC task entry.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const completeTask = async (dayKey, index) => {
+        const dayTasks = tasks[dayKey] || [];
+        const selectedTask = dayTasks[index];
+        if (!selectedTask?.linkedTaskId) return;
+
+        try {
+            setIsSaving(true);
+            const today = new Date().toISOString().split("T")[0];
+            const response = await api.patch(`/tasks/${selectedTask.linkedTaskId}/`, {
+                status: "Completed",
+                completion_date: today,
+            });
+
+            setTasks((prev) => {
+                const currentDayTasks = [...(prev[dayKey] || [])];
+                if (!currentDayTasks[index]) return prev;
+
+                currentDayTasks[index] = {
+                    ...currentDayTasks[index],
+                    linkedTaskStatus: response?.data?.status || "Completed",
+                    linkedTaskCompletionDate: response?.data?.completion_date || today,
+                };
+
+                return {
+                    ...prev,
+                    [dayKey]: currentDayTasks,
+                };
+            });
+        } catch (error) {
+            console.error("Failed to complete linked task:", error);
+            alert("Failed to complete linked task.");
         } finally {
             setIsSaving(false);
         }
@@ -245,6 +304,16 @@ const MCTC = () => {
                                         }`}
                                 >
                                     <span className="font-medium truncate flex-1">{task.label}</span>
+                                    {task.type === "task" && task.linkedTaskId && (
+                                        <button
+                                            onClick={() => completeTask(key, idx)}
+                                            disabled={isSaving || task.linkedTaskCompletionDate || ["On Time", "Delayed", "Completed"].includes(task.linkedTaskStatus)}
+                                            className="text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border mr-1 bg-emerald-50 text-emerald-700 border-emerald-200 disabled:opacity-60"
+                                            title="Mark linked task as completed"
+                                        >
+                                            {task.linkedTaskCompletionDate || ["On Time", "Delayed", "Completed"].includes(task.linkedTaskStatus) ? "Done" : "Complete"}
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => removeTask(key, idx)}
                                         className="opacity-0 group-hover/item:opacity-100 text-slate-400 hover:text-red-500 transition-all p-0.5 ml-1 shrink-0"
