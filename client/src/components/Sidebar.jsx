@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, LayoutGrid, Briefcase, Target, Box, Users, LogOut, CalendarDays, MapPin, UserCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, Briefcase, Target, Box, Users, LogOut, CalendarDays, MapPin, UserCircle, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
@@ -98,6 +98,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       icon: <Target size={20} />,
       path: "/weekly-score",
       color: "hover:text-emerald-600"
+    },
+    {
+      label: "Weekly Score",
+      icon: <TrendingUp size={20} />,
+      path: "/weeklyscore",
+      color: "hover:text-green-600"
     },
     {
       label: "DDTME Approval",
