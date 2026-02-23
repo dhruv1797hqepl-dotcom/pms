@@ -2,11 +2,16 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import api from '../../api';
+import emailjs from '@emailjs/browser';
 import {
   UserPlus, Mail, Lock, User,
-  Shield, ArrowLeft, Send, Loader2, Sparkles,
+  Shield, ArrowLeft, Send, Loader2,
   ShieldCheck, Fingerprint
 } from 'lucide-react';
+
+const EMAILJS_PUBLIC_KEY = 'K5gevPDCKego1LcO5';
+const EMAILJS_TEMPLATE_ID = 'template_e5223pj';
+const EMAILJS_SERVICE_ID = 'service_oczgldo';
 
 const CreateUser = () => {
   const navigate = useNavigate();
@@ -35,7 +40,28 @@ const CreateUser = () => {
         role: formData.role.toUpperCase(),
       });
 
-      alert(`User ${res.data.username || formData.username} created successfully!`);
+      try {
+        await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          {
+            to_email: formData.email,
+            to_name: `${formData.first_name} ${formData.last_name}`.trim(),
+            username: formData.username,
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            role: formData.role,
+            password: formData.password,
+          },
+          EMAILJS_PUBLIC_KEY
+        );
+
+        alert(`User ${res.data.username || formData.username} created successfully and email sent.`);
+      } catch (emailErr) {
+        console.error('EmailJS Error:', emailErr);
+        alert(`User ${res.data.username || formData.username} created successfully, but email could not be sent.`);
+      }
+
       navigate('/admin/');
 
     } catch (err) {
