@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2 } from "lucide-react";
 import api from "../api";
@@ -15,6 +15,7 @@ const MCTC = () => {
     const [editingDay, setEditingDay] = useState(null);
     const [inputValue, setInputValue] = useState("");
     const [taskType, setTaskType] = useState("normal");
+    const taskTypeRef = useRef("normal");
     const [isSaving, setIsSaving] = useState(false);
 
     const fetchCurrentUserId = async () => {
@@ -104,13 +105,18 @@ const MCTC = () => {
 
     // --- Task Management ---
 
+    const setSelectedTaskType = (type) => {
+        taskTypeRef.current = type;
+        setTaskType(type);
+    };
+
     const startEditingDay = (dayKey) => {
         setEditingDay(dayKey);
         setInputValue("");
-        setTaskType("normal");
+        setSelectedTaskType("normal");
     };
 
-    const addTask = async (dayKey) => {
+    const addTask = async (dayKey, selectedType = taskTypeRef.current) => {
         const label = inputValue.trim();
         if (!label) return;
 
@@ -118,7 +124,7 @@ const MCTC = () => {
             setIsSaving(true);
             let linkedTaskId = null;
 
-            if (taskType === "task") {
+            if (selectedType === "task") {
                 const currentUserId = await fetchCurrentUserId();
 
                 const taskResponse = await api.post("/tasks/", {
@@ -135,7 +141,7 @@ const MCTC = () => {
             const response = await api.post("/mctc/entries/", {
                 entry_date: dayKey,
                 label,
-                entry_type: taskType,
+                entry_type: selectedType,
                 linked_task: linkedTaskId,
             });
 
@@ -230,7 +236,7 @@ const MCTC = () => {
     const cancelEditing = () => {
         setEditingDay(null);
         setInputValue("");
-        setTaskType("normal");
+        setSelectedTaskType("normal");
     };
 
     // Month names for display
@@ -308,7 +314,7 @@ const MCTC = () => {
                                         <button
                                             onClick={() => completeTask(key, idx)}
                                             disabled={isSaving || task.linkedTaskCompletionDate || ["On Time", "Delayed", "Completed"].includes(task.linkedTaskStatus)}
-                                            className="text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border mr-1 bg-emerald-50 text-emerald-700 border-emerald-200 disabled:opacity-60"
+                                            className="text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border mr-1 bg-emerald-50 text-emerald-700 border-emerald-200 disabled:opacity-60 shrink-0"
                                             title="Mark linked task as completed"
                                         >
                                             {task.linkedTaskCompletionDate || ["On Time", "Delayed", "Completed"].includes(task.linkedTaskStatus) ? "Done" : "Complete"}
@@ -316,7 +322,7 @@ const MCTC = () => {
                                     )}
                                     <button
                                         onClick={() => removeTask(key, idx)}
-                                        className="opacity-0 group-hover/item:opacity-100 text-slate-400 hover:text-red-500 transition-all p-0.5 ml-1 shrink-0"
+                                        className="opacity-70 group-hover/item:opacity-100 hover:opacity-100 focus-visible:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-0.5 ml-1 shrink-0"
                                     >
                                         <X size={12} strokeWidth={2.5} />
                                     </button>
@@ -329,7 +335,7 @@ const MCTC = () => {
                             <div className="mt-auto rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
                                 <div className="flex items-center gap-2 mb-2">
                                     <button
-                                        onClick={() => setTaskType("normal")}
+                                        onClick={() => setSelectedTaskType("normal")}
                                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-all ${taskType === "normal"
                                             ? "bg-blue-600 text-white border-blue-600"
                                             : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
@@ -338,7 +344,7 @@ const MCTC = () => {
                                         Normal
                                     </button>
                                     <button
-                                        onClick={() => setTaskType("task")}
+                                        onClick={() => setSelectedTaskType("task")}
                                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-all ${taskType === "task"
                                             ? "bg-amber-500 text-white border-amber-500"
                                             : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"
@@ -354,14 +360,17 @@ const MCTC = () => {
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={(e) => {
-                                            if (e.key === "Enter") addTask(key);
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                addTask(key, taskTypeRef.current);
+                                            }
                                             else if (e.key === "Escape") cancelEditing();
                                         }}
                                         placeholder="Add item..."
                                         className="flex-1 text-[10px] py-2 px-2 bg-white border-2 border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 placeholder:text-slate-300"
                                     />
                                     <button
-                                        onClick={() => addTask(key)}
+                                        onClick={() => addTask(key, taskTypeRef.current)}
                                         disabled={isSaving}
                                         className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm hover:shadow-md"
                                     >
