@@ -10,6 +10,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const [clients, setClients] = useState([]);
   const [clientProjects, setClientProjects] = useState({});
   const [expandedClients, setExpandedClients] = useState({});
+  const [allProjects, setAllProjects] = useState([]);
+  const [projectsFetched, setProjectsFetched] = useState(false);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -30,42 +32,78 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       }
     };
 
+    const fetchAllProjects = async () => {
+      if (projectsFetched) return;
+      
+      try {
+        const role = (localStorage.getItem('role') || '').toUpperCase();
+        let endpoint = "projects/";
+        
+        if (role === "EMPLOYEE") {
+          endpoint = "employees/my-projects/";
+        } else if (role === "EXTERNAL") {
+          endpoint = "employees/external-projects/";
+        }
+        
+        const response = await api.get(endpoint);
+        const projects = Array.isArray(response.data) ? response.data : [];
+        console.log('Fetched all projects:', projects);
+        setAllProjects(projects);
+        setProjectsFetched(true);
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+        setAllProjects([]);
+        setProjectsFetched(true);
+      }
+    };
+
     if (clientsExpanded) {
       fetchClients();
+      fetchAllProjects();
     }
-  }, [clientsExpanded]);
+  }, [clientsExpanded, projectsFetched]);
 
-  const fetchClientProjects = async (clientId) => {
+  const fetchClientProjects = (clientId) => {
     if (clientProjects[clientId]) {
       return; // Already loaded
     }
     
-    try {
-      const response = await api.get(`/clients/${clientId}/projects/`);
-      console.log(`Projects for client ${clientId}:`, response.data);
-      setClientProjects(prev => ({
-        ...prev,
-        [clientId]: Array.isArray(response.data) ? response.data : []
-      }));
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
-      setClientProjects(prev => ({
-        ...prev,
-        [clientId]: []
-      }));
-    }
+    // Filter allProjects by clientId
+    const filtered = allProjects.filter(p => String(p.client?.id || p.client) === String(clientId));
+    console.log(`Filtering projects for client ${clientId}:`, filtered);
+    setClientProjects(prev => ({
+      ...prev,
+      [clientId]: filtered
+    }));
   };
 
-  const toggleClient = async (clientId) => {
+  const toggleClient = (clientId) => {
     setExpandedClients(prev => ({
       ...prev,
       [clientId]: !prev[clientId]
     }));
     
-    if (!expandedClients[clientId]) {
-      await fetchClientProjects(clientId);
+    if (!expandedClients[clientId] && allProjects.length > 0) {
+      fetchClientProjects(clientId);
     }
   };
+
+  // Populate projects for expanded clients once allProjects is loaded
+  useEffect(() => {
+    if (allProjects.length > 0 && Object.keys(expandedClients).length > 0) {
+      Object.keys(expandedClients).forEach(clientId => {
+        if (expandedClients[clientId]) {
+          // Force refresh projects for this client
+          const filtered = allProjects.filter(p => String(p.client?.id || p.client) === String(clientId));
+          console.log(`Auto-populating projects for client ${clientId}:`, filtered);
+          setClientProjects(prev => ({
+            ...prev,
+            [clientId]: filtered
+          }));
+        }
+      });
+    }
+  }, [allProjects]);
 
   const menuItems = [
     {
