@@ -25,6 +25,8 @@ import VisitAgendaList from './pages/VisitAgendaList';
 import DDTMEBasePage from './pages/DDTME/DDTMEBasePage';
 import DDTMETable from './pages/DDTME/DDTMETable';
 import DDTMERYG from './pages/DDTME/DDTMERYG';
+import DDFMSBasePage from './pages/DDTME/DDFMSBasePage';
+import DDFMS from './pages/DDTME/DDFMS';
 import Achievement from './pages/Achievement/Achievement';
 const App = () => {
   return (
@@ -54,6 +56,8 @@ const App = () => {
         <Route path="/ddtme" element={<DDTMEBasePage />} />
         <Route path="/ddtme/client/:clientId" element={<DDTMETable />} />
         <Route path="/ddtme/client/:clientId/ryg" element={<DDTMERYG />} />
+        <Route path="/ddfms" element={<DDFMSBasePage />} />
+        <Route path="/ddfms/client/:clientId" element={<DDFMS />} />
     
 
 
