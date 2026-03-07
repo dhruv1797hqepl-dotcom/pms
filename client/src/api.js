@@ -1,7 +1,10 @@
 import axios from "axios";
 
+const DEFAULT_API_BASE_URL = "https://projectmanagementbase.onrender.com";
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;
+
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "",
+  baseURL: configuredBaseUrl.replace(/\/+$/, ""),
 });
 
 API.interceptors.request.use(

@@ -252,13 +252,13 @@ const EmployeeDashboard = () => {
         ]
       });
       try {
-        const memberParam = new URLSearchParams(window.location.search).get('member');
+        const memberParam = new URLSearchParams(location.search).get('member');
         const memberId = Number(memberParam);
         const hasValidMemberId = Number.isFinite(memberId) && memberId > 0;
         console.log("====== MEMBER PARAM DEBUG ======");
         console.log("Member Param from URL:", memberParam);
         console.log("Full URL:", window.location.href);
-        console.log("Search String:", window.location.search);
+        console.log("Search String:", location.search);
         
         let userData;
         let isMemberView = false;
@@ -291,7 +291,7 @@ const EmployeeDashboard = () => {
             const userRes = await api.get("me/");
             userData = userRes.data;
             isMemberView = false;
-            window.history.replaceState({}, "", window.location.pathname);
+            navigate(location.pathname, { replace: true });
           }
         } else {
           // Fetch current user

@@ -4,6 +4,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Plus, Trash2, Download, X, ArrowLeft } from "lucide-react";
 import api from "../api";
 
+const DEFAULT_API_BASE_URL = "https://projectmanagementbase.onrender.com";
+
 const VisitAgenda = () => {
     const { clientId } = useParams();
     const navigate = useNavigate();
@@ -12,7 +14,7 @@ const VisitAgenda = () => {
     const [companyName, setCompanyName] = useState("Jacktech Hydraulic");
     const [hqeplOptions, setHqeplOptions] = useState([]);
     const [clientLogoUrl, setClientLogoUrl] = useState(null);
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+    const API_BASE = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
     const [agendaLoaded, setAgendaLoaded] = useState(false);
     const [modalRowIndex, setModalRowIndex] = useState(null);
     const saveTimerRef = useRef(null);
