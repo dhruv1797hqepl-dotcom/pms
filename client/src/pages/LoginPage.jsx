@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { ChevronRight, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import api from '../api'; // Assuming you have an api instance set up for making requests
+import React, { useState } from "react";
+import { ChevronRight, ArrowLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../api";
 
 const LoginPage = () => {
   const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,19 +15,24 @@ const LoginPage = () => {
     setError("");
 
     try {
-      const { data } = await api.post("/login/", { email, password });
+      // ✅ Login API call
+      const { data } = await api.post("/accounts/login/", {
+        email,
+        password,
+      });
 
-      // ✅ FIX 1: Use names that match your AdminProfile.jsx expectations
-      localStorage.setItem("token", data.access); // Dashboard uses 'token'
+      // Store tokens
+      localStorage.setItem("token", data.access);
       localStorage.setItem("access_token", data.access);
       localStorage.setItem("role", data.role);
 
-      // ✅ FIX 2: Store user details so the Profile UI isn't empty
+      // Store user info
       localStorage.setItem("username", data.username || "Admin User");
       localStorage.setItem("email", data.email || email);
 
       // Role-based navigation
-      const role = data.role.toUpperCase(); // Ensure case consistency
+      const role = data.role?.toUpperCase();
+
       if (role === "ADMIN") navigate("/admin");
       else if (role === "HQEPL") navigate("/hqepl");
       else if (role === "EMPLOYEE") navigate("/employee");
@@ -37,35 +43,49 @@ const LoginPage = () => {
 
     } catch (err) {
       console.error("Login Error:", err);
-      // Check if the error response has a detail or message (common DRF / simplejwt pattern)
-      const errorMessage = err.response?.data?.detail || err.response?.data?.message || "Invalid email or password";
+
+      const errorMessage =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Invalid email or password";
+
       setError(errorMessage);
     }
   };
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
-      <Link to="/" className="mb-8 flex items-center gap-2 text-slate-500 hover:text-[#F58A4B] transition-colors font-bold uppercase text-[10px] tracking-[0.2em]">
+      <Link
+        to="/"
+        className="mb-8 flex items-center gap-2 text-slate-500 hover:text-[#F58A4B] transition-colors font-bold uppercase text-[10px] tracking-[0.2em]"
+      >
         <ArrowLeft size={16} /> Back to Homepage
       </Link>
 
       <div className="w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex min-h-[600px] border-2 border-slate-300">
+        {/* Left Panel */}
         <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-16 flex-col justify-between relative text-white">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#F58A4B] opacity-10 blur-3xl rounded-full"></div>
+
           <div>
             <span className="text-[10px] font-bold tracking-[0.4em] text-[#F58A4B] uppercase border-b border-white/20 pb-2">
               System Excellence
             </span>
+
             <h2 className="mt-10 text-5xl font-black leading-[1.1] tracking-tighter">
               Empowering your <br />
-              <span className="text-[#F58A4B] italic font-light">Transformation.</span>
+              <span className="text-[#F58A4B] italic font-light">
+                Transformation.
+              </span>
             </h2>
           </div>
+
           <div className="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40 italic">
             © 2026 HQEPL Solutions
           </div>
         </div>
 
+        {/* Right Panel */}
         <div className="w-full lg:w-1/2 p-12 md:p-20 flex flex-col justify-center bg-white">
           <div className="mb-10">
             <h1 className="text-4xl font-black text-slate-900 tracking-tighter">
