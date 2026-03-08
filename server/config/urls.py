@@ -16,6 +16,8 @@ urlpatterns = [
     path('api/ddfms/', include('ddfms.urls')),
     path('api/mctc/', include('mctc.urls')),
     path('api/visit-agenda/', include('visit_agenda.urls')),
+    path('api/achievement/', include('achievement.urls')),
+
 
     # 1. This serves the React "index.html" for the root URL
     path("", TemplateView.as_view(template_name="index.html")),

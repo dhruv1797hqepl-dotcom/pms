@@ -59,7 +59,35 @@ class ClientSerializer(serializers.ModelSerializer):
             }
 
         ret['assigned_sgms_details'] = [format_user(u) for u in instance.assigned_sgms.all()]
-        ret['internal_team_details'] = [format_user(u) for u in instance.internal_team.all()]
+        
+        # Aggregate internal team members:
+        # 1. Members directly in instance.internal_team
+        # 2. Members assigned to any of the client's projects
+        internal_users = set(instance.internal_team.all())
+        
+        # Import here to avoid circular dependency if any
+        from projects.models import Project
+        from sgm.models import ProjectTeam
+        
+        projects = Project.objects.filter(client=instance)
+        for proj in projects:
+            # Add members from Project.assigned_employees
+            for emp in proj.assigned_employees.all():
+                internal_users.add(emp.user)
+            
+            # Add members from ProjectTeam (legacy if still used)
+            pt = ProjectTeam.objects.filter(project=proj).first()
+            if pt:
+                for member in pt.internal_members.all():
+                    internal_users.add(member)
+
+        # Sort members by full_name/username for consistency
+        sorted_members = sorted(
+            list(internal_users),
+            key=lambda u: (u.first_name or "", u.last_name or "", u.username or "")
+        )
+        
+        ret['internal_team_details'] = [format_user(u) for u in sorted_members]
         return ret
 
     def _extract_relation_ids(self, request, field_name, treat_missing_as_empty=False):

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'mctc',
     'visit_agenda',
     'ddfms',
+    'achievement',
     
 ]
 
