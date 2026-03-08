@@ -6,12 +6,16 @@ import {
 import Sidebar from '../../components/Sidebar';
 import api from '../../api';
 
+const DDTME_BASE_ENDPOINTS = {
+  clientsList: '/clients/list/',
+  employeeClients: '/employees/clients/',
+};
+
 export default function DDTMEBasePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const fetchClients = async () => {
     try {
@@ -20,9 +24,9 @@ export default function DDTMEBasePage() {
       const role = (localStorage.getItem('role') || '').toUpperCase();
       if (!token) return;
 
-      let endpoint = 'clients/list/';
+      let endpoint = DDTME_BASE_ENDPOINTS.clientsList;
       if (role === 'EMPLOYEE') {
-        endpoint = 'employees/clients/';
+        endpoint = DDTME_BASE_ENDPOINTS.employeeClients;
       }
 
       const response = await api.get(endpoint, {
@@ -50,77 +54,77 @@ export default function DDTMEBasePage() {
 
   return (
     <div className="h-screen w-screen bg-[#FBFBFB] antialiased font-sans flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all duration-300 pb-20">
 
-      <div className="max-w-[1400px] mx-auto px-6 pt-4 space-y-4">
+        <div className="max-w-[1400px] mx-auto px-6 pt-4 space-y-4">
 
-        {/* Modern Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-indigo-600 font-bold tracking-widest text-[10px] uppercase">
-              <Zap size={14} fill="currentColor" />
-              <span>Digital Transformation Metrics</span>
+          {/* Modern Header Section */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-10">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-indigo-600 font-bold tracking-widest text-[10px] uppercase">
+                <Zap size={14} fill="currentColor" />
+                <span>Digital Transformation Metrics</span>
+              </div>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+                DDTME <span className="text-slate-400 font-light">Workspaces</span>
+              </h1>
             </div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-              DDTME <span className="text-slate-400 font-light">Workspaces</span>
-            </h1>
+
+            {/* Styled Search Bar */}
+            <div className="relative group w-full md:w-96">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
+              <input
+                type="text"
+                placeholder="Search companies..."
+                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 transition-all outline-none shadow-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
-          {/* Styled Search Bar */}
-          <div className="relative group w-full md:w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
-            <input
-              type="text"
-              placeholder="Search companies..."
-              className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 transition-all outline-none shadow-sm"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          {/* Filters and Client Count */}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              {['All', 'Active', 'Inactive'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-5 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all ${activeFilter === filter
+                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-200'
+                    : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-400'
+                    }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              Showing {filteredClients.length} Organizations
+            </p>
           </div>
+
+          {/* Client Grid */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-40">
+              <Loader2 className="animate-spin text-indigo-600 mb-4" size={40} />
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Synchronizing Data</p>
+            </div>
+          ) : filteredClients.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredClients.map((client) => (
+                <DDTMEClientCard key={client.id} data={client} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-40 text-center border-2 border-dashed border-slate-200 rounded-[2rem]">
+              <Building2 size={48} className="mx-auto text-slate-200 mb-4" />
+              <p className="text-slate-500 font-bold">No workspaces found matching your criteria.</p>
+            </div>
+          )}
         </div>
-
-        {/* Filters and Client Count */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
-            {['All', 'Active', 'Inactive'].map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-5 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all ${activeFilter === filter
-                  ? 'bg-slate-900 text-white shadow-lg shadow-slate-200'
-                  : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-400'
-                  }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-            Showing {filteredClients.length} Organizations
-          </p>
-        </div>
-
-        {/* Client Grid */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-40">
-            <Loader2 className="animate-spin text-indigo-600 mb-4" size={40} />
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Synchronizing Data</p>
-          </div>
-        ) : filteredClients.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredClients.map((client) => (
-              <DDTMEClientCard key={client.id} data={client} />
-            ))}
-          </div>
-        ) : (
-          <div className="py-40 text-center border-2 border-dashed border-slate-200 rounded-[2rem]">
-            <Building2 size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-slate-500 font-bold">No workspaces found matching your criteria.</p>
-          </div>
-        )}
-      </div>
       </main>
     </div>
   );

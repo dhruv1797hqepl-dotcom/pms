@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, LayoutGrid, Briefcase, Target, Box, Users, LogOut, CalendarDays, MapPin, UserCircle, ChevronDown, ChevronUp, Award } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, Briefcase, Target, Box, Users, LogOut, CalendarDays, MapPin, UserCircle, ChevronDown, ChevronUp, Award, Activity, ClipboardList } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useSidebarOptional } from '../context/SidebarContext';
 import api from '../api';
 
-const Sidebar = ({ isOpen, setIsOpen }) => {
+const noop = () => {};
+
+const Sidebar = ({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }) => {
+  const sidebarContext = useSidebarOptional();
+  const isOpen = typeof propIsOpen === 'boolean' ? propIsOpen : sidebarContext?.isOpen ?? true;
+  const setIsOpen = typeof propSetIsOpen === 'function' ? propSetIsOpen : sidebarContext?.setIsOpen ?? noop;
   const navigate = useNavigate();
   const location = useLocation();
   const [hoveredItem, setHoveredItem] = useState(null);
@@ -146,7 +152,13 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       color: "hover:text-emerald-600"
     },
     {
-      label: "DDTME Approval",
+      label: "Weekly Score",
+      icon: <Activity size={20} />,
+      path: "/weeklyscore",
+      color: "hover:text-indigo-600"
+    },
+    {
+      label: "DDTME",
       icon: <Box size={20} />,
       path: "/ddtme",
       color: "hover:text-orange-600"
@@ -168,6 +180,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       icon: <CalendarDays size={20} />,
       path: "/mctc",
       color: "hover:text-rose-400"
+    },
+    {
+      label: "Mandays Planning",
+      icon: <ClipboardList size={20} />,
+      path: "/mandays-planning",
+      color: "hover:text-fuchsia-300"
     },
     {
       label: "Visit Agenda",

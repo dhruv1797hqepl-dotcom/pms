@@ -11,12 +11,60 @@ import os
 from .models import Task
 from .serializers import TaskSerializer
 from .excel_utils import ExcelTaskImporter
+from projects.models import Project
+from sgm.models import ProjectTeam
+from employees.models import Employee
 
 User = get_user_model()
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _get_display_name(self, user):
+        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+        return full_name or user.username or user.email
+
+    def _get_sgm_scoped_team_member_ids(self, user):
+        handled_projects = Project.objects.filter(
+            Q(assigned_sgm=user) | Q(client__assigned_sgms=user)
+        ).distinct()
+
+        handled_project_ids = list(handled_projects.values_list('id', flat=True))
+        handled_client_ids = list(
+            handled_projects.values_list('client_id', flat=True).distinct()
+        )
+
+        project_team_employee_ids = set(
+            ProjectTeam.objects.filter(project__in=handled_projects)
+            .values_list("internal_members__id", flat=True)
+        )
+        assigned_employee_ids = set(
+            Employee.objects.filter(projects__in=handled_projects)
+            .values_list("user_id", flat=True)
+        )
+        client_internal_ids = set(
+            handled_projects.values_list("client__internal_team__id", flat=True)
+        )
+        project_sgm_ids = set(
+            handled_projects.values_list("assigned_sgm_id", flat=True)
+        )
+        client_sgm_ids = set(
+            handled_projects.values_list("client__assigned_sgms__id", flat=True)
+        )
+
+        scoped_member_ids = sorted(
+            member_id
+            for member_id in project_team_employee_ids
+            .union(assigned_employee_ids)
+            .union(client_internal_ids)
+            .union(project_sgm_ids)
+            .union(client_sgm_ids)
+            .union({user.id})
+            if member_id is not None
+        )
+
+        return scoped_member_ids, handled_project_ids, handled_client_ids
 
     def get_queryset(self):
         """
@@ -41,6 +89,89 @@ class TaskViewSet(viewsets.ModelViewSet):
         Automatically sets the assigner (Employee, SGM, or Admin).
         """
         serializer.save(assigned_by=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='weekly-score-data')
+    def weekly_score_data(self, request):
+        """
+        Weekly score dataset with explicit member list + tasks.
+        For SGM: includes internal members + SGM names across handled projects/clients, excludes EXTERNAL members.
+        """
+        user = request.user
+
+        month_param = request.query_params.get('month')
+        year_param = request.query_params.get('year')
+
+        try:
+            month = int(month_param) if month_param is not None else None
+            year = int(year_param) if year_param is not None else None
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "month and year must be valid integers."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if month is not None and (month < 1 or month > 12):
+            return Response(
+                {"detail": "month must be between 1 and 12."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if year is not None and (year < 1900 or year > 2100):
+            return Response(
+                {"detail": "year must be between 1900 and 2100."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.role == User.SGM:
+            member_ids, handled_project_ids, handled_client_ids = self._get_sgm_scoped_team_member_ids(user)
+
+            members_queryset = User.objects.filter(
+                id__in=member_ids,
+                role__in=[User.EMPLOYEE, User.SGM]
+            ).order_by('first_name', 'last_name', 'username', 'email')
+
+            tasks_queryset = Task.objects.filter(
+                assigned_to_id__in=member_ids,
+                assigned_to__role__in=[User.EMPLOYEE, User.SGM],
+            ).filter(
+                Q(project_id__in=handled_project_ids) |
+                Q(client_org_id__in=handled_client_ids) |
+                Q(project_id__isnull=True, client_org_id__isnull=True)
+            )
+        else:
+            tasks_queryset = self.get_queryset()
+            member_ids = tasks_queryset.values_list('assigned_to_id', flat=True).distinct()
+            members_queryset = User.objects.filter(id__in=member_ids).order_by(
+                'first_name', 'last_name', 'username', 'email'
+            )
+
+        if year is not None:
+            tasks_queryset = tasks_queryset.filter(target_date__year=year)
+        if month is not None:
+            tasks_queryset = tasks_queryset.filter(target_date__month=month)
+
+        tasks_queryset = tasks_queryset.select_related(
+            'assigned_to',
+            'assigned_by',
+            'project',
+            'client_org',
+        ).order_by('-id')
+
+        members_data = [
+            {
+                "id": member.id,
+                "name": self._get_display_name(member),
+                "email": member.email,
+            }
+            for member in members_queryset
+        ]
+
+        serialized_tasks = self.get_serializer(tasks_queryset, many=True).data
+
+        return Response({
+            "members": members_data,
+            "tasks": serialized_tasks,
+        })
 
     @action(detail=False, methods=['get'])
     def dashboard_stats(self, request):

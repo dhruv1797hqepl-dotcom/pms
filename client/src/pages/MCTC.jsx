@@ -3,9 +3,17 @@ import Sidebar from "../components/Sidebar";
 import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2 } from "lucide-react";
 import api from "../api";
 
+const MCTC_ENDPOINTS = {
+    currentUser: "/me/",
+    entries: "/mctc/entries/",
+    entryById: (entryId) => `/mctc/entries/${encodeURIComponent(entryId)}/`,
+    tasks: "/tasks/",
+    taskById: (taskId) => `/tasks/${encodeURIComponent(taskId)}/`,
+};
+
 const MCTC = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [loading, setLoading] = useState(true);
     const [userId, setUserId] = useState(null);
 
     // State to store tasks: { "YYYY-MM-DD": [{ id, label, type }] }
@@ -19,7 +27,7 @@ const MCTC = () => {
 
     const fetchCurrentUserId = async () => {
         if (userId) return userId;
-        const response = await api.get("/me/");
+        const response = await api.get(MCTC_ENDPOINTS.currentUser);
         const currentId = response?.data?.id;
         if (currentId) {
             setUserId(currentId);
@@ -61,7 +69,7 @@ const MCTC = () => {
             try {
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth() + 1;
-                const response = await api.get("/mctc/entries/", {
+                const response = await api.get(MCTC_ENDPOINTS.entries, {
                     params: { year, month },
                 });
 
@@ -92,7 +100,7 @@ const MCTC = () => {
     useEffect(() => {
         const loadCurrentUser = async () => {
             try {
-                const response = await api.get("/me/");
+                const response = await api.get(MCTC_ENDPOINTS.currentUser);
                 setUserId(response.data.id);
             } catch (error) {
                 console.error("Failed to load current user:", error);
@@ -121,7 +129,7 @@ const MCTC = () => {
             if (taskType === "task") {
                 const currentUserId = await fetchCurrentUserId();
 
-                const taskResponse = await api.post("/tasks/", {
+                const taskResponse = await api.post(MCTC_ENDPOINTS.tasks, {
                     title: label,
                     assigned_to: currentUserId,
                     target_date: dayKey,
@@ -132,7 +140,7 @@ const MCTC = () => {
                 linkedTaskId = taskResponse?.data?.id || null;
             }
 
-            const response = await api.post("/mctc/entries/", {
+            const response = await api.post(MCTC_ENDPOINTS.entries, {
                 entry_date: dayKey,
                 label,
                 entry_type: taskType,
@@ -173,7 +181,7 @@ const MCTC = () => {
         try {
             setIsSaving(true);
             const today = new Date().toISOString().split("T")[0];
-            const response = await api.patch(`/tasks/${selectedTask.linkedTaskId}/`, {
+            const response = await api.patch(MCTC_ENDPOINTS.taskById(selectedTask.linkedTaskId), {
                 status: "Completed",
                 completion_date: today,
             });
@@ -208,7 +216,7 @@ const MCTC = () => {
 
         try {
             setIsSaving(true);
-            await api.delete(`/mctc/entries/${selectedTask.id}/`);
+            await api.delete(MCTC_ENDPOINTS.entryById(selectedTask.id));
 
             setTasks((prev) => {
                 const currentDayTasks = prev[dayKey] || [];
@@ -382,7 +390,7 @@ const MCTC = () => {
 
     return (
         <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans flex overflow-hidden">
-            <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+            <Sidebar />
 
             <main className="flex-1 overflow-y-auto px-12 py-12 space-y-12">
                 {/* HEADER */}

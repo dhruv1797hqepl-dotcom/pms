@@ -12,7 +12,6 @@ import {
 const EmployeeDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   // DATE RANGE STATE
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -59,17 +58,17 @@ const EmployeeDashboard = () => {
     // Internal team members (Employee users with team_members_details field)
     const internalMembers = project?.team_members_details || [];
     const sgmMember = project?.assigned_sgm_details ? [project.assigned_sgm_details] : [];
-    
+
     // External team members (EXTERNAL users with external_team_details field)
     const externalMembers = project?.external_team_details || [];
-    
+
     // Combine both and format with role label
     const combined = [
       ...sgmMember.map(m => ({ ...m, role: "SGM" })),
       ...internalMembers.map(m => ({ ...m, role: m.role || "EMPLOYEE" })),
       ...externalMembers.map(m => ({ ...m, role: "(EXTERNAL)" }))
     ];
-    
+
     return combined;
   };
 
@@ -150,10 +149,10 @@ const EmployeeDashboard = () => {
       // Try multiple field name variations
       const taskAssignedToName = t.assigned_to_name || t.assigned_to_username;
       const taskAssignedToId = t.assigned_to || t.assigned_to_id || t.assigned_to_employee;
-      
+
       const matchByName = taskAssignedToName && (taskAssignedToName === user.username || taskAssignedToName === user.full_name);
       const matchById = taskAssignedToId && taskAssignedToId === user.id;
-      
+
       const result = matchByName || matchById;
       if (result) {
         console.log(`✓ Task "${t.title}" is mine - assigned_to: ${taskAssignedToName} (${taskAssignedToId}), match by: ${matchByName ? 'name' : 'id'}`);
@@ -164,10 +163,10 @@ const EmployeeDashboard = () => {
     const isSelfAssigned = (t) => {
       const taskAssignedByName = t.assigned_by_name || t.assigned_by_username;
       const taskAssignedById = t.assigned_by || t.assigned_by_id;
-      
+
       const matchByName = taskAssignedByName && (taskAssignedByName === user.username || taskAssignedByName === user.full_name);
       const matchById = taskAssignedById && taskAssignedById === user.id;
-      
+
       return (matchByName || matchById) && isMine(t);
     };
 
@@ -177,11 +176,11 @@ const EmployeeDashboard = () => {
       const taskAssignedByName = t.assigned_by_name || t.assigned_by_username;
       const taskAssignedById = t.assigned_by || t.assigned_by_id;
       const taskAssignedToId = t.assigned_to || t.assigned_to_id || t.assigned_to_employee;
-      
-      const isAssignedBy = (taskAssignedByName && (taskAssignedByName === user.username || taskAssignedByName === user.full_name)) || 
-                          (taskAssignedById && taskAssignedById === user.id);
+
+      const isAssignedBy = (taskAssignedByName && (taskAssignedByName === user.username || taskAssignedByName === user.full_name)) ||
+        (taskAssignedById && taskAssignedById === user.id);
       const isAssignedToOther = taskAssignedToId && taskAssignedToId !== user.id;
-      
+
       return isAssignedBy && isAssignedToOther;
     });
 
@@ -252,31 +251,31 @@ const EmployeeDashboard = () => {
         ]
       });
       try {
-        const memberParam = new URLSearchParams(location.search).get('member');
+        const memberParam = new URLSearchParams(window.location.search).get('member');
         const memberId = Number(memberParam);
         const hasValidMemberId = Number.isFinite(memberId) && memberId > 0;
         console.log("====== MEMBER PARAM DEBUG ======");
         console.log("Member Param from URL:", memberParam);
         console.log("Full URL:", window.location.href);
-        console.log("Search String:", location.search);
-        
+        console.log("Search String:", window.location.search);
+
         let userData;
         let isMemberView = false;
-        
+
         // If viewing another employee (from internal team view)
         if (hasValidMemberId) {
           console.log("Attempting to fetch member ID:", memberId);
           try {
             const url = `admin/users/${memberId}/`;
             console.log("Fetching from URL:", url);
-            
+
             const memberRes = await api.get(url);
             userData = memberRes.data;
             isMemberView = true;
             console.log("✓ Member Data Fetched Successfully");
             console.log("Member ID:", userData?.id);
             console.log("Member Name:", userData?.full_name);
-            
+
             if (userData?.id != memberId) {
               console.error("⚠ WARNING: Fetched user ID does not match requested member ID!");
               console.error("Requested:", memberId, "Got:", userData?.id);
@@ -291,7 +290,7 @@ const EmployeeDashboard = () => {
             const userRes = await api.get("me/");
             userData = userRes.data;
             isMemberView = false;
-            navigate(location.pathname, { replace: true });
+            window.history.replaceState({}, "", window.location.pathname);
           }
         } else {
           // Fetch current user
@@ -300,12 +299,12 @@ const EmployeeDashboard = () => {
           userData = userRes.data;
           isMemberView = false;
         }
-        
+
         console.log("====== USER DATA ======");
         console.log("Is Member View:", isMemberView);
         console.log("UserData ID:", userData?.id);
         console.log("UserData Full Name:", userData?.full_name);
-        
+
         const displayName = userData?.full_name || userData?.username || "Employee";
         setUserName(displayName);
         setCurrentUser(userData || null);
@@ -333,7 +332,7 @@ const EmployeeDashboard = () => {
 
         // 3. Fetch Dashboard Stats
         let statsData;
-        
+
         // 4. Fetch All Tasks (Assigned To & By)
         const tasksUrl = isMemberView && hasValidMemberId
           ? `tasks/?assigned_to=${memberId}`
@@ -372,7 +371,7 @@ const EmployeeDashboard = () => {
             const completedDate = new Date(t.completion_date);
             return completedDate <= targetDate;
           }).length;
-          
+
           const atsScore = totalTasks > 0 ? Math.round((my_completed.length / totalTasks) * 100) : 0;
           const otcScore = my_completed.length > 0 ? Math.round((onTimeCount / my_completed.length) * 100) : 0;
 
@@ -387,14 +386,16 @@ const EmployeeDashboard = () => {
               { name: "On Time", value: onTimeCount, color: "#22c55e" },
               { name: "Late", value: my_completed.length - onTimeCount, color: "#ef4444" },
               { name: "In Progress", value: my_active.length, color: "#3b82f6" },
-              { name: "Overdue", value: my_active.filter(t => {
-                if (!t.target_date) return false;
-                const targetDate = new Date(t.target_date);
-                const today = new Date();
-                today.setHours(0,0,0,0);
-                targetDate.setHours(0,0,0,0);
-                return targetDate < today;
-              }).length, color: "#f59e0b" }
+              {
+                name: "Overdue", value: my_active.filter(t => {
+                  if (!t.target_date) return false;
+                  const targetDate = new Date(t.target_date);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  targetDate.setHours(0, 0, 0, 0);
+                  return targetDate < today;
+                }).length, color: "#f59e0b"
+              }
             ]
           });
         } else {
@@ -998,7 +999,7 @@ const EmployeeDashboard = () => {
   // Find best client match with fuzzy matching (max 1 char difference)
   const findBestClientMatch = (input) => {
     const clients = Object.keys(clientProjectMap);
-    
+
     // First try exact case-insensitive match
     const exactMatch = clients.find(c => c.toLowerCase() === input.toLowerCase());
     if (exactMatch) return exactMatch;
@@ -1021,7 +1022,7 @@ const EmployeeDashboard = () => {
   // Find best project match within a client (max 1 char difference)
   const findBestProjectMatch = (input, clientName) => {
     const projects = clientProjectMap[clientName] || [];
-    
+
     // First try exact case-insensitive match
     const exactMatch = projects.find(p => p.name.toLowerCase() === input.toLowerCase());
     if (exactMatch) return exactMatch;
@@ -1072,7 +1073,7 @@ const EmployeeDashboard = () => {
   // Update draft tasks with new column data
   const updateDraftTasksFromPaste = (values, columnType) => {
     const skippedRows = [];
-    
+
     const updated = draftTasks.map((task, idx) => {
       if (idx < values.length) {
         const value = values[idx];
@@ -1096,7 +1097,7 @@ const EmployeeDashboard = () => {
         } else if (columnType === 'project') {
           // Use fuzzy matching for project names
           let bestMatch = null;
-          
+
           // If task already has a client, search within that client only
           if (updatedTask.client && !updatedTask.client.startsWith('[INVALID]')) {
             bestMatch = findBestProjectMatch(value, updatedTask.client);
@@ -1112,7 +1113,7 @@ const EmployeeDashboard = () => {
               }
             }
           }
-          
+
           if (bestMatch) {
             updatedTask.project = bestMatch.name;
             // If project belongs to a different client, update client too
@@ -1181,13 +1182,13 @@ const EmployeeDashboard = () => {
 
       const { updated, skippedRows } = updateDraftTasksFromPaste(values, selectedType);
       setDraftTasks(updated);
-      
+
       let message = `✓ Updated ${updated.length} draft tasks with ${selectedType} data`;
       if (skippedRows.length > 0) {
         message += `\n\n⚠ ${skippedRows.length} rows couldn't be matched:\n${skippedRows.slice(0, 3).join('\n')}${skippedRows.length > 3 ? '\n...' : ''}`;
       }
       message += `\n\nSelect another column to paste or click "Submit All" to create tasks.`;
-      
+
       alert(message);
     }
 
@@ -1205,12 +1206,12 @@ const EmployeeDashboard = () => {
       const headers = { Authorization: `Bearer ${token}` };
 
       // Validate all draft tasks - exclude those with invalid clients or projects
-      const validTasks = draftTasks.filter(t => 
-        t.title && t.assignedTo && t.targetDate && 
-        !t.client.startsWith('[INVALID]') && 
+      const validTasks = draftTasks.filter(t =>
+        t.title && t.assignedTo && t.targetDate &&
+        !t.client.startsWith('[INVALID]') &&
         !t.project.startsWith('[INVALID]')
       );
-      
+
       if (validTasks.length === 0) {
         alert("No valid tasks to submit. Each task needs: Title, Assigned To, Due Date, Valid Client, and Valid Project.");
         return;
@@ -1224,10 +1225,10 @@ const EmployeeDashboard = () => {
         const invalidProjects = draftTasks
           .filter(t => t.project.startsWith('[INVALID]'))
           .map((t, i) => `- "${t.title}": Invalid project ${t.project}`);
-        
+
         const skipReasons = [...invalidClients, ...invalidProjects];
         let message = `${skipped} tasks will be skipped:\n${skipReasons.slice(0, 3).join('\n')}${skipReasons.length > 3 ? '\n...' : ''}\n\nContinue with ${validTasks.length} valid tasks?`;
-        
+
         if (!confirm(message)) {
           return;
         }
@@ -1314,7 +1315,7 @@ const EmployeeDashboard = () => {
 
     } catch (err) {
       console.error("Smart Paste Submission Failed:", err);
-      
+
       // Log detailed error info
       let errorDetails = "";
       if (err.response?.data) {
@@ -1332,7 +1333,7 @@ const EmployeeDashboard = () => {
       } else if (err.message) {
         errorDetails = err.message;
       }
-      
+
       const msg = errorDetails || "Unknown error - check browser console";
       alert(`Failed to create tasks:\n\n${msg}`);
     }
@@ -1417,7 +1418,7 @@ const EmployeeDashboard = () => {
     try {
       const formData = new FormData();
       formData.append('file', excelPreview.file);
-      
+
       // Convert back to backend expected format: { 0: 'task', 1: 'assigned_to', ... }
       const backendMapping = {};
       Object.entries(columnMapping).forEach(([fieldName, colIdx]) => {
@@ -1429,7 +1430,7 @@ const EmployeeDashboard = () => {
 
       const token = localStorage.getItem('access_token');
       const response = await api.post(
-        `tasks/import_tasks_from_excel/`,
+        "tasks/import_tasks_from_excel/",
         formData,
         {
           headers: {
@@ -1447,7 +1448,7 @@ const EmployeeDashboard = () => {
         });
         setMappingStep(false);
         setExcelPreview(null);
-        
+
         setTimeout(() => {
           window.location.reload();
         }, 2000);
@@ -1480,826 +1481,795 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="h-screen w-screen bg-slate-50 relative flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
       <main className="flex-1 overflow-y-auto pb-20">
 
-      {/* ===== HEADER ===== */}
-      <div className="max-w-7xl mx-auto mt-5 bg-slate-900 rounded-2xl px-6 py-4 grid grid-cols-3 items-center text-white shadow-xl">
-        {/* Back Button (Left) */}
-        <button
-          onClick={() => navigate("/sgm")}
-          className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors w-fit"
-          title="Back to Dashboard"
-        >
-          <ArrowLeft size={18} />
-          <span className="hidden sm:inline text-xs font-semibold">Back</span>
-        </button>
-
-        {/* Username in the exact center (Middle) */}
-        <h1 className="text-xl font-extrabold text-[#F58A4B] text-center">
-          {userName}'s Dashboard
-        </h1>
-
-        {/* Date filter dropdown on the right (Right) */}
-        <div className="flex items-center justify-end gap-3 relative" ref={dateFilterRef}>
+        {/* ===== HEADER ===== */}
+        <div className="max-w-7xl mx-auto mt-5 bg-slate-900 rounded-2xl px-6 py-4 grid grid-cols-3 items-center text-white shadow-xl">
+          {/* Back Button (Left) */}
           <button
-            type="button"
-            onClick={() => {
-              const nextOpen = !showDateFilterDropdown;
-              setShowDateFilterDropdown(nextOpen);
-              if (nextOpen) {
-                setDraftStartDate(startDate);
-                setDraftEndDate(endDate);
-              }
-            }}
-            className="px-4 py-2 rounded-lg bg-white text-slate-900 text-xs font-bold border border-slate-300 hover:bg-slate-50 transition-all flex items-center gap-2"
+            onClick={() => navigate("/sgm")}
+            className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors w-fit"
+            title="Back to Dashboard"
           >
-            <Calendar size={14} /> Date Filter
+            <ArrowLeft size={18} />
+            <span className="hidden sm:inline text-xs font-semibold">Back</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handleResetFilters}
-            className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 hover:bg-slate-200 transition-all"
-          >
-            Reset
-          </button>
+          {/* Username in the exact center (Middle) */}
+          <h1 className="text-xl font-extrabold text-[#F58A4B] text-center">
+            {userName}'s Dashboard
+          </h1>
 
-          {showDateFilterDropdown && (
-            <div className="absolute right-0 mt-2 top-full w-[460px] bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-30">
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Start Date</label>
-                  <input
-                    type="date"
-                    value={draftStartDate}
-                    onChange={(e) => setDraftStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    title="Start date"
-                  />
-                  <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftStartDate)}</p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">End Date</label>
-                  <input
-                    type="date"
-                    value={draftEndDate}
-                    onChange={(e) => setDraftEndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    title="End date"
-                  />
-                  <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftEndDate)}</p>
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-4 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={handleApplyDateFilter}
-                  className="px-5 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-900 text-white hover:bg-black transition-all"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ===== KPI & CHARTS GRID (FULL CARDS KEPT) ===== */}
-      <div className="max-w-7xl mx-auto grid grid-cols-12 gap-6 mt-6 px-6">
-        <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm text-center">
-          <h3 className="font-black text-slate-900 uppercase text-xs mb-3 tracking-widest text-left">Client Filter</h3>
-          {loading ? <p className="text-xs text-slate-400">Loading...</p> : (
-            <>
-              <label className="flex items-center gap-2 text-[12px] text-slate-700 mb-2 cursor-pointer font-semibold">
-                <input
-                  type="checkbox"
-                  checked={includeAllTasks}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setIncludeAllTasks(checked);
-                    if (checked) {
-                      setSelectedClients(Object.keys(clientProjectMap));
-                    }
-                  }}
-                  className="accent-slate-900"
-                /> All Tasks
-              </label>
-              {Object.keys(clientProjectMap).map((client, i) => (
-                <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeAllTasks || selectedClients.includes(client)}
-                onChange={() => toggleClientSelection(client)}
-                className="accent-slate-900"
-              /> {client}
-            </label>
-              ))}
-            </>
-          )}
-        </div>
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="font-black text-slate-900 uppercase text-xs">
-              Task Distribution
-            </h2>
-            <div className="p-2 bg-slate-50 rounded-lg text-[#F58A4B]">
-              <BarChart3 size={16} />
-            </div>
-          </div>
-
-          <div className="h-[220px] relative">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={filteredDashboardStats.chart_data}
-                  dataKey="value"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={4}
-                  stroke="none"
-                >
-                  {filteredDashboardStats.chart_data.map((d, i) => (
-                    <Cell key={i} fill={d.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 60 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            {/* OTC CENTER OVERLAY */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">OTC</span>
-              <span className="text-3xl font-black text-slate-900">{filteredDashboardStats.otc_score}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4">
-          <Stat title="Total Task" value={filteredDashboardStats.total_tasks} color="#6366f1" icon={<LayoutGrid size={18} />} />
-          <Stat title="On Time Completion" value={filteredDashboardStats.on_time_count} color="#22c55e" icon={<CheckCircle size={18} />} />
-          <Stat title="Overdue" value={filteredDashboardStats.overdue_count} color="#ef4444" icon={<AlertCircle size={18} />} />
-          <Stat title="In Progress" value={filteredDashboardStats.in_progress_count} color="#3b82f6" icon={<TrendingUp size={18} />} />
-          <Stat title="Delayed" value={filteredDashboardStats.delayed_count} color="#facc15" icon={<Clock size={18} />} />
-          <Stat title="ATS SCORE" value={filteredDashboardStats.ats_score} color="#a855f7" icon={<TrendingUp size={18} />} />
-        </div>
-      </div>
-
-      {/* ===== ACTION BAR (FMS instead of Complete) ===== */}
-      <div className="flex justify-center mt-8 gap-12 items-center flex-wrap px-4">
-        <MidBtn label="FILTER" icon={<Filter size={14} />} />
-        <button
-          onClick={() => setShowSmartPasteModal(true)}
-          className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-emerald-100 border border-emerald-300 text-emerald-700 shadow-sm hover:bg-emerald-200 transition-all active:scale-95"
-        >
-          <Upload size={14} /> SMART PASTE
-        </button>
-        <button
-          onClick={() => setShowBulkModal(true)}
-          className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-white border border-slate-200 text-slate-900 shadow-sm hover:bg-slate-50 transition-all active:scale-95"
-        >
-          <ClipboardList size={14} /> BULK ASSIGN
-        </button>
-        <button
-          onClick={() => setShowAssignModal(true)}
-          className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-slate-900 text-white shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
-        >
-          <Plus size={14} /> ASSIGN
-        </button>
-        <button
-          onClick={() => setShowExcelImportModal(true)}
-          className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-blue-100 border border-blue-300 text-blue-700 shadow-sm hover:bg-blue-200 transition-all active:scale-95"
-        >
-          <FileText size={14} /> IMPORT EXCEL
-        </button>
-        {/* SEARCH BAR */}
-        <div className="relative group">
-          <input
-            type="text"
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-20 pr-10 py-3 rounded-full text-xs font-bold bg-white border border-slate-200 outline-none focus:ring-2 ring-emerald-400 w-64 transition-all shadow-sm group-hover:shadow-md"
-          />
-          <SearchCode size={24} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-        </div>
-      </div>
-
-      {/* ===== TASK OVERVIEW TABLE (Tasks Assigned TO Me - Active) ===== */}
-      <Table
-        title="My Function Tasks"
-        data={filterTasks(filterTasksByDateRange(myTasks))}
-        mode="overview"
-        onQuickComplete={handleDirectComplete}
-        onReportComplete={openCompletionModal}
-        selectedTasks={selectedTasks}
-        onToggleSelect={toggleTaskSelection}
-        onToggleSelectAll={toggleSelectAll}
-        onBulkComplete={handleBulkComplete}
-      />
-      {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
-      <Table title="Completed Tasks" data={filterTasks(filterTasksByDateRange(completedTasks))} mode="completed" />
-      {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
-      <Table title="Delegated Tasks" data={filterTasks(filterTasksByDateRange(delegatedTasks))} mode="assigned" />
-      {/* ========================================================== */}
-      {/* TASK COMPLETION MODAL FORM */}
-      {/* ========================================================== */}
-      {showCompleteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-emerald-500 p-6 flex justify-between items-center text-white">
-              <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
-                <FileCheck size={24} /> Submit Completion Report
-              </h2>
-              <button onClick={() => setShowCompleteModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-all"><X size={20} /></button>
-            </div>
-
-            <form onSubmit={handleCompleteSubmit} className="p-10 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="col-span-2 bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
-                  <div className="grid grid-cols-4 gap-4 items-center text-center">
-                    <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Task ID</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.taskIdDisplay || "—"}</p></div>
-                    <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Task</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.task || "—"}</p></div>
-                    <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Project</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.project || "—"}</p></div>
-                    <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Client</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.client || "—"}</p></div>
-                  </div>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Step 2: Remarks / Work Description</label>
-                  <textarea required value={completionData.remarks} onChange={(e) => setCompletionData({ ...completionData, remarks: e.target.value })} rows="3" className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-3xl px-6 py-4 text-sm outline-none focus:border-emerald-500 transition-all" placeholder="Describe exactly what was delivered..." />
-                </div>
-
-                <div className="col-span-1">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Step 3: Upload Proof (PDF)</label>
-                  <label className="mt-1 w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl py-4 px-4 flex items-center justify-center gap-3 cursor-pointer hover:bg-slate-100 transition-all">
-                    <Upload size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold text-slate-500 uppercase">Attach Completion File</span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf"
-                      onChange={(e) => setCompletionData({ ...completionData, file: e.target.files?.[0] || null })}
-                    />
-                  </label>
-                </div>
-
-                <div className="col-span-1 flex items-end">
-                  <button type="submit" className="w-full bg-emerald-500 text-white font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all active:scale-95">
-                    <SendHorizontal size={18} /> Submit Final Report
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ===== BULK ASSIGN MODAL ===== */}
-      {showBulkModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
-              <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><ClipboardList size={18} className="text-[#F58A4B]" /> Bulk Assign Tasks</h2>
-              <button onClick={() => setShowBulkModal(false)}><X size={20} /></button>
-            </div>
-
-            <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
-
-              {/* EDITABLE TABLE FOR BULK TASKS */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
-                <table className="w-full text-left bg-white">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3 w-10 text-center">#</th>
-                      <th className="px-4 py-3 min-w-[120px]">Type</th>
-                      <th className="px-4 py-3 min-w-[140px]">Client</th>
-                      <th className="px-4 py-3 min-w-[140px]">Project</th>
-                      <th className="px-4 py-3 min-w-[200px]">Task Title</th>
-                      <th className="px-4 py-3 min-w-[160px]">Assigned To</th>
-                      <th className="px-4 py-3 min-w-[120px]">Due Date</th>
-                      <th className="px-4 py-3 w-10 text-center">Ads</th>
-                      <th className="px-4 py-3 w-10 text-center">Act</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bulkTasks.map((task, index) => (
-                      <tr key={index} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-4 py-3 text-center text-xs font-bold text-slate-400">{index + 1}</td>
-
-                        {/* TYPE: INTERNAL / NORMAL */}
-                        <td className="px-4 py-3 align-top">
-                          <label className="flex items-center gap-2 cursor-pointer mt-2">
-                            <input
-                              type="checkbox"
-                              checked={task.isInternal}
-                              onChange={(e) => handleRowChange(index, "isInternal", e.target.checked)}
-                              className="accent-emerald-500 scale-110"
-                            />
-                            <span className={`text-[10px] font-bold uppercase ${task.isInternal ? "text-emerald-500" : "text-slate-400"}`}>
-                              {task.isInternal ? "Internal" : "Client"}
-                            </span>
-                          </label>
-                        </td>
-
-                        {/* CLIENT SELECTION (AUTOCOMPLETE) */}
-                        <td className="px-4 py-3 align-top">
-                          {!task.isInternal ? (
-                            <AutocompleteInput
-                              value={task.client}
-                              onChange={(val) => handleRowChange(index, "client", val)}
-                              options={Object.keys(clientProjectMap)}
-                              placeholder="Type Client..."
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 placeholder:text-slate-300"
-                            />
-                          ) : (
-                            <div className="text-[10px] text-slate-400 font-bold italic mt-2">Internal Task</div>
-                          )}
-                        </td>
-
-                        {/* PROJECT SELECTION (AUTOCOMPLETE) */}
-                        <td className="px-4 py-3 align-top">
-                          {!task.isInternal ? (
-                            <AutocompleteInput
-                              value={task.project}
-                              onChange={(val) => handleRowChange(index, "project", val)}
-                              options={task.client && clientProjectMap[task.client] ? clientProjectMap[task.client].map(p => p.name) : []}
-                              placeholder="Type Project..."
-                              disabled={!task.client}
-                              className={`w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 placeholder:text-slate-300 ${!task.client ? "opacity-50 cursor-not-allowed" : ""}`}
-                            />
-                          ) : (
-                            <div className="text-[10px] text-slate-400 font-bold italic mt-2">—</div>
-                          )}
-                        </td>
-
-                        {/* TASK TITLE */}
-                        <td className="px-4 py-3 align-top">
-                          <textarea
-                            value={task.title}
-                            onChange={(e) => handleRowChange(index, "title", e.target.value)}
-                            placeholder="Enter task description..."
-                            rows={2}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-1 ring-emerald-400 resize-none placeholder:text-slate-300"
-                          />
-                        </td>
-
-                        {/* ASSIGNED TO */}
-                        <td className="px-4 py-3 align-top">
-                          <select
-                            value={task.assignedTo}
-                            onChange={(e) => handleRowChange(index, "assignedTo", e.target.value)}
-                            className={`w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 ${(!task.isInternal && !task.project) ? "opacity-50 cursor-not-allowed" : ""}`}
-                            disabled={!task.isInternal && !task.project}
-                          >
-                            <option value="">Select Member...</option>
-                            {(() => {
-                              let members = [];
-                              if (task.isInternal) {
-                                members = getAllUniqueUsers();
-                              } else {
-                                const selectedProject = clientProjectMap[task.client]?.find(p => p.name === task.project);
-                                members = withCurrentUser(getProjectMembers(selectedProject));
-                              }
-                              return members.map((m, i) => (
-                                <option key={i} value={m.email}>{m.email} ({m.role})</option>
-                              ));
-                            })()}
-                          </select>
-                        </td>
-
-                        {/* DUE DATE */}
-                        <td className="px-4 py-3 align-top">
-                          <input
-                            type="date"
-                            value={task.targetDate}
-                            onChange={(e) => handleRowChange(index, "targetDate", e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
-                          />
-                        </td>
-
-                        {/* FILE ATTACHMENT */}
-                        <td className="px-4 py-3 align-top text-center">
-                          <label className={`cursor-pointer w-8 h-8 flex items-center justify-center rounded-full transition-colors ${task.file ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
-                            <input type="file" className="hidden" onChange={(e) => handleRowChange(index, "file", e.target.files[0])} />
-                            {task.file ? <CheckCircle size={14} /> : <Upload size={14} />}
-                          </label>
-                        </td>
-
-                        {/* REMOVE ROW */}
-                        <td className="px-4 py-3 align-top text-center">
-                          <button
-                            onClick={() => removeBulkTaskRow(index)}
-                            className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full"
-                            title="Remove Row"
-                          >
-                            <X size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* FOOTER ACTIONS */}
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                <button
-                  onClick={addBulkTaskRow}
-                  className="flex items-center gap-2 px-5 py-3 rounded-xl text-[10px] font-bold uppercase bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200"
-                >
-                  <Plus size={14} /> Add Another Row
-                </button>
-
-                <button
-                  onClick={handleBulkAssignSubmit}
-                  disabled={bulkTasks.length === 0}
-                  className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${bulkTasks.length > 0 ? 'bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
-                >
-                  <ClipboardList size={16} /> Assign All {bulkTasks.length} Tasks
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== DEDICATED SMART PASTE MODAL ===== */}
-      {showSmartPasteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="bg-blue-900 p-6 flex justify-between items-center text-white">
-              <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
-                <Upload size={24} /> Smart Paste Task Builder
-              </h2>
-              <button onClick={() => setShowSmartPasteModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-all"><X size={20} /></button>
-            </div>
-
-            <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-              {/* PASTE INPUT TEXTAREA */}
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { key: 'title', label: 'Title' },
-                    { key: 'client', label: 'Client' },
-                    { key: 'project', label: 'Project' },
-                    { key: 'assignee', label: 'Assigned To' },
-                    { key: 'date', label: 'Date' }
-                  ].map((col) => (
-                    <button
-                      key={col.key}
-                      type="button"
-                      onClick={() => setPasteColumnType(col.key)}
-                      className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${pasteColumnType === col.key ? "bg-emerald-500 text-white border-emerald-500 shadow" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
-                    >
-                      {col.label}
-                    </button>
-                  ))}
-                </div>
-                <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">
-                  {pasteColumnType ? `📋 Paste ${pasteColumnType} column` : "📋 Select a column, then paste"}
-                </h3>
-                <textarea
-                  value={pasteContent}
-                  onChange={(e) => setPasteContent(e.target.value)}
-                  placeholder={pasteColumnType
-                    ? `Paste ${pasteColumnType} values (one per line)`
-                    : "Select a column button above, then paste"}
-                  className="w-full h-32 p-4 text-sm font-mono bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 ring-emerald-400 resize-none"
-                />
-              </div>
-
-              {/* DRAFT TASKS TABLE WITH DROPDOWNS */}
-              {draftTasks.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">{draftTasks.length} Draft Tasks</h3>
-                  <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto max-h-60 overflow-y-auto">
-                    <table className="w-full text-[10px] font-mono">
-                      <thead className="sticky top-0 bg-slate-50">
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left px-3 py-2 text-slate-400">#</th>
-                          <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Title</th>
-                          <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Client</th>
-                          <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Project</th>
-                          <th className="text-left px-3 py-2 text-slate-400 min-w-[120px]">Assigned To</th>
-                          <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {draftTasks.map((task, idx) => {
-                          const isInvalidClient = task.client.startsWith('[INVALID]');
-                          const isInvalidProject = task.project.startsWith('[INVALID]');
-                          const isInvalid = isInvalidClient || isInvalidProject;
-                          
-                          return (
-                            <tr 
-                              key={idx} 
-                              className={`border-b border-slate-100 ${isInvalid ? 'bg-red-50' : 'hover:bg-slate-50'}`}
-                            >
-                              <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                              <td className="px-3 py-2 text-slate-700 truncate max-w-[100px]" title={task.title}>{task.title || "—"}</td>
-                              <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidClient ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.client}>
-                                {isInvalidClient ? '❌ ' : ''}{task.client || "—"}
-                              </td>
-                              <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidProject ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.project}>
-                                {isInvalidProject ? '❌ ' : ''}{task.project || "—"}
-                              </td>
-                              <td className="px-3 py-2 min-w-[120px]">
-                                <select
-                                  value={task.assignedTo}
-                                  onChange={(e) => {
-                                    const updated = [...draftTasks];
-                                    updated[idx] = { ...updated[idx], assignedTo: e.target.value };
-                                    setDraftTasks(updated);
-                                  }}
-                                  className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
-                                >
-                                  <option value="">Select...</option>
-                                  {(() => {
-                                    let members = [];
-                                    if (task.isInternal) {
-                                      members = getAllUniqueUsers();
-                                    } else {
-                                      if (task.client && !task.client.startsWith('[INVALID]') && task.project && !task.project.startsWith('[INVALID]')) {
-                                        const project = clientProjectMap[task.client]?.find(p => p.name === task.project);
-                                        members = withCurrentUser(getProjectMembers(project) || []);
-                                      }
-                                    }
-                                    return members.map((m, i) => (
-                                      <option key={i} value={m.email}>{m.email.split('@')[0]}</option>
-                                    ));
-                                  })()}
-                                </select>
-                              </td>
-                              <td className="px-3 py-2 min-w-[120px]">
-                                <input
-                                  type="date"
-                                  value={task.targetDate}
-                                  onChange={(e) => {
-                                    const updated = [...draftTasks];
-                                    updated[idx] = { ...updated[idx], targetDate: e.target.value };
-                                    setDraftTasks(updated);
-                                  }}
-                                  className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  {(draftTasks.some(t => t.client.startsWith('[INVALID]')) || draftTasks.some(t => t.project.startsWith('[INVALID]'))) && (
-                    <p className="text-[10px] text-red-600 font-semibold">
-                      ⚠ {draftTasks.filter(t => t.client.startsWith('[INVALID]') || t.project.startsWith('[INVALID]')).length} tasks with invalid clients/projects won't be created
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* ACTION BUTTONS */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                {draftTasks.length > 0 && (
-                  <button
-                    onClick={clearSmartPasteDrafts}
-                    className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold uppercase hover:bg-red-200 transition-all"
-                  >
-                    Clear All
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowSmartPasteModal(false)}
-                  className="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleSmartPaste}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
-                >
-                  {draftTasks.length === 0 ? "Create Drafts" : "Update Column"}
-                </button>
-                {draftTasks.length > 0 && (
-                  <button
-                    onClick={handleSubmitSmartPaste}
-                    className="px-6 py-2 bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 animate-pulse"
-                  >
-                    ✓ Create {draftTasks.filter(t => !t.client.startsWith('[INVALID]') && !t.project.startsWith('[INVALID]')).length} Tasks
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAssignModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[85vh] flex flex-col">
-            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
-              <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><Plus size={18} className="text-[#F58A4B]" /> Assign New Task</h2>
-              <button onClick={() => setShowAssignModal(false)}><X size={20} /></button>
-            </div>
-            <form onSubmit={handleAssignSubmit} className="p-10 space-y-6 overflow-y-auto custom-scrollbar">
-
-              {/* TOGGLE TASK TYPE */}
-              {(() => {
-                // Determine if selected user is external
-                let selectedUserRole = null;
-                if (!assignData.isInternal && assignData.project && assignData.assignedTo) {
-                  const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                  const members = withCurrentUser(getProjectMembers(selectedProject));
-                  const selectedMember = members.find(m => m.email === assignData.assignedTo);
-                  selectedUserRole = selectedMember?.role;
+          {/* Date filter dropdown on the right (Right) */}
+          <div className="flex items-center justify-end gap-3 relative" ref={dateFilterRef}>
+            <button
+              type="button"
+              onClick={() => {
+                const nextOpen = !showDateFilterDropdown;
+                setShowDateFilterDropdown(nextOpen);
+                if (nextOpen) {
+                  setDraftStartDate(startDate);
+                  setDraftEndDate(endDate);
                 }
-                const isExternalSelected = selectedUserRole === "(EXTERNAL)";
-                
-                return (
-                  <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
-                    <button
-                      type="button"
-                      onClick={() => setAssignData({ ...assignData, isRepeatable: false, isInternal: false })}
-                      className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${!assignData.isRepeatable && !assignData.isInternal ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
-                    >
-                      Normal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAssignData({ ...assignData, isRepeatable: true, isInternal: false })}
-                      className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${assignData.isRepeatable ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:text-slate-600"}`}
-                    >
-                      Repeatable
-                    </button>
-                    {!isExternalSelected && (
-                      <button
-                        type="button"
-                        onClick={() => setAssignData({ ...assignData, isRepeatable: false, isInternal: true })}
-                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${assignData.isInternal ? "bg-emerald-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-600"}`}
-                      >
-                        Internal
-                      </button>
-                    )}
-                  </div>
-                );
-              })()}
+              }}
+              className="px-4 py-2 rounded-lg bg-white text-slate-900 text-xs font-bold border border-slate-300 hover:bg-slate-50 transition-all flex items-center gap-2"
+            >
+              <Calendar size={14} /> Date Filter
+            </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
-                  <input required value={assignData.task} onChange={e => setAssignData({ ...assignData, task: e.target.value })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" placeholder="Enter task name..." />
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 hover:bg-slate-200 transition-all"
+            >
+              Reset
+            </button>
+
+            {showDateFilterDropdown && (
+              <div className="absolute right-0 mt-2 top-full w-[460px] bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-30">
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Start Date</label>
+                    <input
+                      type="date"
+                      value={draftStartDate}
+                      onChange={(e) => setDraftStartDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      title="Start date"
+                    />
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftStartDate)}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">End Date</label>
+                    <input
+                      type="date"
+                      value={draftEndDate}
+                      onChange={(e) => setDraftEndDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      title="End date"
+                    />
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftEndDate)}</p>
+                  </div>
                 </div>
 
-                {!assignData.isInternal && (
-                  <>
-                    <div className="col-span-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Client</label>
-                      <select
-                        required={!assignData.isInternal}
-                        value={assignData.client}
-                        onChange={e => setAssignData({ ...assignData, client: e.target.value, project: "", assignedTo: "" })}
-                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                      >
-                        <option value="">Select Client</option>
-                        {Object.keys(clientProjectMap).map((c, i) => <option key={i} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+                <div className="flex justify-end mt-4 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleApplyDateFilter}
+                    className="px-5 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-900 text-white hover:bg-black transition-all"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-                    <div className="col-span-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
-                      <select
-                        required={!assignData.isInternal}
-                        value={assignData.project}
-                        onChange={e => setAssignData({ ...assignData, project: e.target.value, assignedTo: "" })}
-                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                        disabled={!assignData.client}
-                      >
-                        <option value="">Select Project</option>
-                        {assignData.client && clientProjectMap[assignData.client]?.map((p, i) => (
-                          <option key={i} value={p.name}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                <div className={assignData.isInternal ? "col-span-2" : "col-span-1"}>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assigned To</label>
-                  <select
-                    required
-                    value={assignData.assignedTo}
-                    onChange={e => {
-                      // Check if selected user is external
-                      let members = [];
-                      if (assignData.isInternal) {
-                        members = getAllUniqueUsers();
-                      } else {
-                        const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                        members = withCurrentUser(getProjectMembers(selectedProject));
-                      }
-                      const selectedMember = members.find(m => m.email === e.target.value);
-                      const isExternalUser = selectedMember?.role === "(EXTERNAL)";
-                      
-                      // If external user selected, reset to Normal task
-                      if (isExternalUser) {
-                        setAssignData({ ...assignData, assignedTo: e.target.value, isRepeatable: false, isInternal: false });
-                      } else {
-                        setAssignData({ ...assignData, assignedTo: e.target.value });
+        {/* ===== KPI & CHARTS GRID (FULL CARDS KEPT) ===== */}
+        <div className="max-w-7xl mx-auto grid grid-cols-12 gap-6 mt-6 px-6">
+          <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm text-center">
+            <h3 className="font-black text-slate-900 uppercase text-xs mb-3 tracking-widest text-left">Client Filter</h3>
+            {loading ? <p className="text-xs text-slate-400">Loading...</p> : (
+              <>
+                <label className="flex items-center gap-2 text-[12px] text-slate-700 mb-2 cursor-pointer font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={includeAllTasks}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIncludeAllTasks(checked);
+                      if (checked) {
+                        setSelectedClients(Object.keys(clientProjectMap));
                       }
                     }}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={!assignData.isInternal && !assignData.project}
+                    className="accent-slate-900"
+                  /> All Tasks
+                </label>
+                {Object.keys(clientProjectMap).map((client, i) => (
+                  <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeAllTasks || selectedClients.includes(client)}
+                      onChange={() => toggleClientSelection(client)}
+                      className="accent-slate-900"
+                    /> {client}
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="font-black text-slate-900 uppercase text-xs">
+                Task Distribution
+              </h2>
+              <div className="p-2 bg-slate-50 rounded-lg text-[#F58A4B]">
+                <BarChart3 size={16} />
+              </div>
+            </div>
+
+            <div className="h-[220px] relative">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={filteredDashboardStats.chart_data}
+                    dataKey="value"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={4}
+                    stroke="none"
                   >
-                    <option value="">Select Team Member</option>
-                    {(() => {
-                      let members = [];
-                      if (assignData.isInternal) {
-                        members = getAllUniqueUsers();
-                      } else {
-                        const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
-                        members = withCurrentUser(getProjectMembers(selectedProject));
-                      }
-                      return members.map((m, i) => (
-                        <option key={i} value={m.email}>{m.email} ({m.role})</option>
-                      ));
-                    })()}
-                  </select>
+                    {filteredDashboardStats.chart_data.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    allowEscapeViewBox={{ x: true, y: true }}
+                    wrapperStyle={{ zIndex: 60 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* OTC CENTER OVERLAY */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">OTC</span>
+                <span className="text-3xl font-black text-slate-900">{filteredDashboardStats.otc_score}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4">
+            <Stat title="Total Task" value={filteredDashboardStats.total_tasks} color="#6366f1" icon={<LayoutGrid size={18} />} />
+            <Stat title="On Time Completion" value={filteredDashboardStats.on_time_count} color="#22c55e" icon={<CheckCircle size={18} />} />
+            <Stat title="Overdue" value={filteredDashboardStats.overdue_count} color="#ef4444" icon={<AlertCircle size={18} />} />
+            <Stat title="In Progress" value={filteredDashboardStats.in_progress_count} color="#3b82f6" icon={<TrendingUp size={18} />} />
+            <Stat title="Delayed" value={filteredDashboardStats.delayed_count} color="#facc15" icon={<Clock size={18} />} />
+            <Stat title="ATS SCORE" value={filteredDashboardStats.ats_score} color="#a855f7" icon={<TrendingUp size={18} />} />
+          </div>
+        </div>
+
+        {/* ===== ACTION BAR (FMS instead of Complete) ===== */}
+        <div className="flex justify-center mt-8 gap-12 items-center flex-wrap px-4">
+          <MidBtn label="FILTER" icon={<Filter size={14} />} />
+          <button
+            onClick={() => setShowSmartPasteModal(true)}
+            className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-emerald-100 border border-emerald-300 text-emerald-700 shadow-sm hover:bg-emerald-200 transition-all active:scale-95"
+          >
+            <Upload size={14} /> SMART PASTE
+          </button>
+          <button
+            onClick={() => setShowBulkModal(true)}
+            className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-white border border-slate-200 text-slate-900 shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+          >
+            <ClipboardList size={14} /> BULK ASSIGN
+          </button>
+          <button
+            onClick={() => setShowAssignModal(true)}
+            className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-slate-900 text-white shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
+          >
+            <Plus size={14} /> ASSIGN
+          </button>
+          <button
+            onClick={() => setShowExcelImportModal(true)}
+            className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-blue-100 border border-blue-300 text-blue-700 shadow-sm hover:bg-blue-200 transition-all active:scale-95"
+          >
+            <FileText size={14} /> IMPORT EXCEL
+          </button>
+          {/* SEARCH BAR */}
+          <div className="relative group">
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-20 pr-10 py-3 rounded-full text-xs font-bold bg-white border border-slate-200 outline-none focus:ring-2 ring-emerald-400 w-64 transition-all shadow-sm group-hover:shadow-md"
+            />
+            <SearchCode size={24} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+          </div>
+        </div>
+
+        {/* ===== TASK OVERVIEW TABLE (Tasks Assigned TO Me - Active) ===== */}
+        <Table
+          title="My Function Tasks"
+          data={filterTasks(filterTasksByDateRange(myTasks))}
+          mode="overview"
+          onQuickComplete={handleDirectComplete}
+          onReportComplete={openCompletionModal}
+          selectedTasks={selectedTasks}
+          onToggleSelect={toggleTaskSelection}
+          onToggleSelectAll={toggleSelectAll}
+          onBulkComplete={handleBulkComplete}
+        />
+        {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
+        <Table title="Completed Tasks" data={filterTasks(filterTasksByDateRange(completedTasks))} mode="completed" />
+        {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
+        <Table title="Delegated Tasks" data={filterTasks(filterTasksByDateRange(delegatedTasks))} mode="assigned" />
+        {/* ========================================================== */}
+        {/* TASK COMPLETION MODAL FORM */}
+        {/* ========================================================== */}
+        {showCompleteModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className="bg-white w-full max-w-3xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="bg-emerald-500 p-6 flex justify-between items-center text-white">
+                <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
+                  <FileCheck size={24} /> Submit Completion Report
+                </h2>
+                <button onClick={() => setShowCompleteModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-all"><X size={20} /></button>
+              </div>
+
+              <form onSubmit={handleCompleteSubmit} className="p-10 space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-2 bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                    <div className="grid grid-cols-4 gap-4 items-center text-center">
+                      <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Task ID</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.taskIdDisplay || "—"}</p></div>
+                      <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Task</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.task || "—"}</p></div>
+                      <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Project</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.project || "—"}</p></div>
+                      <div><p className="text-[8px] font-bold text-emerald-400 uppercase">Client</p><p className="text-xs font-black text-emerald-900 truncate">{completionData.client || "—"}</p></div>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Step 2: Remarks / Work Description</label>
+                    <textarea required value={completionData.remarks} onChange={(e) => setCompletionData({ ...completionData, remarks: e.target.value })} rows="3" className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-3xl px-6 py-4 text-sm outline-none focus:border-emerald-500 transition-all" placeholder="Describe exactly what was delivered..." />
+                  </div>
+
+                  <div className="col-span-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Step 3: Upload Proof (PDF)</label>
+                    <label className="mt-1 w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl py-4 px-4 flex items-center justify-center gap-3 cursor-pointer hover:bg-slate-100 transition-all">
+                      <Upload size={18} className="text-slate-400" />
+                      <span className="text-xs font-bold text-slate-500 uppercase">Attach Completion File</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf"
+                        onChange={(e) => setCompletionData({ ...completionData, file: e.target.files?.[0] || null })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="col-span-1 flex items-end">
+                    <button type="submit" className="w-full bg-emerald-500 text-white font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all active:scale-95">
+                      <SendHorizontal size={18} /> Submit Final Report
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ===== BULK ASSIGN MODAL ===== */}
+        {showBulkModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+              <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
+                <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><ClipboardList size={18} className="text-[#F58A4B]" /> Bulk Assign Tasks</h2>
+                <button onClick={() => setShowBulkModal(false)}><X size={20} /></button>
+              </div>
+
+              <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
+
+                {/* EDITABLE TABLE FOR BULK TASKS */}
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
+                  <table className="w-full text-left bg-white">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 w-10 text-center">#</th>
+                        <th className="px-4 py-3 min-w-[120px]">Type</th>
+                        <th className="px-4 py-3 min-w-[140px]">Client</th>
+                        <th className="px-4 py-3 min-w-[140px]">Project</th>
+                        <th className="px-4 py-3 min-w-[200px]">Task Title</th>
+                        <th className="px-4 py-3 min-w-[160px]">Assigned To</th>
+                        <th className="px-4 py-3 min-w-[120px]">Due Date</th>
+                        <th className="px-4 py-3 w-10 text-center">Ads</th>
+                        <th className="px-4 py-3 w-10 text-center">Act</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {bulkTasks.map((task, index) => (
+                        <tr key={index} className="hover:bg-slate-50 transition-colors group">
+                          <td className="px-4 py-3 text-center text-xs font-bold text-slate-400">{index + 1}</td>
+
+                          {/* TYPE: INTERNAL / NORMAL */}
+                          <td className="px-4 py-3 align-top">
+                            <label className="flex items-center gap-2 cursor-pointer mt-2">
+                              <input
+                                type="checkbox"
+                                checked={task.isInternal}
+                                onChange={(e) => handleRowChange(index, "isInternal", e.target.checked)}
+                                className="accent-emerald-500 scale-110"
+                              />
+                              <span className={`text-[10px] font-bold uppercase ${task.isInternal ? "text-emerald-500" : "text-slate-400"}`}>
+                                {task.isInternal ? "Internal" : "Client"}
+                              </span>
+                            </label>
+                          </td>
+
+                          {/* CLIENT SELECTION (AUTOCOMPLETE) */}
+                          <td className="px-4 py-3 align-top">
+                            {!task.isInternal ? (
+                              <AutocompleteInput
+                                value={task.client}
+                                onChange={(val) => handleRowChange(index, "client", val)}
+                                options={Object.keys(clientProjectMap)}
+                                placeholder="Type Client..."
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 placeholder:text-slate-300"
+                              />
+                            ) : (
+                              <div className="text-[10px] text-slate-400 font-bold italic mt-2">Internal Task</div>
+                            )}
+                          </td>
+
+                          {/* PROJECT SELECTION (AUTOCOMPLETE) */}
+                          <td className="px-4 py-3 align-top">
+                            {!task.isInternal ? (
+                              <AutocompleteInput
+                                value={task.project}
+                                onChange={(val) => handleRowChange(index, "project", val)}
+                                options={task.client && clientProjectMap[task.client] ? clientProjectMap[task.client].map(p => p.name) : []}
+                                placeholder="Type Project..."
+                                disabled={!task.client}
+                                className={`w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 placeholder:text-slate-300 ${!task.client ? "opacity-50 cursor-not-allowed" : ""}`}
+                              />
+                            ) : (
+                              <div className="text-[10px] text-slate-400 font-bold italic mt-2">—</div>
+                            )}
+                          </td>
+
+                          {/* TASK TITLE */}
+                          <td className="px-4 py-3 align-top">
+                            <textarea
+                              value={task.title}
+                              onChange={(e) => handleRowChange(index, "title", e.target.value)}
+                              placeholder="Enter task description..."
+                              rows={2}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-1 ring-emerald-400 resize-none placeholder:text-slate-300"
+                            />
+                          </td>
+
+                          {/* ASSIGNED TO */}
+                          <td className="px-4 py-3 align-top">
+                            <select
+                              value={task.assignedTo}
+                              onChange={(e) => handleRowChange(index, "assignedTo", e.target.value)}
+                              className={`w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400 ${(!task.isInternal && !task.project) ? "opacity-50 cursor-not-allowed" : ""}`}
+                              disabled={!task.isInternal && !task.project}
+                            >
+                              <option value="">Select Member...</option>
+                              {(() => {
+                                let members = [];
+                                if (task.isInternal) {
+                                  members = getAllUniqueUsers();
+                                } else {
+                                  const selectedProject = clientProjectMap[task.client]?.find(p => p.name === task.project);
+                                  members = withCurrentUser(getProjectMembers(selectedProject));
+                                }
+                                return members.map((m, i) => (
+                                  <option key={i} value={m.email}>{m.email} ({m.role})</option>
+                                ));
+                              })()}
+                            </select>
+                          </td>
+
+                          {/* DUE DATE */}
+                          <td className="px-4 py-3 align-top">
+                            <input
+                              type="date"
+                              value={task.targetDate}
+                              onChange={(e) => handleRowChange(index, "targetDate", e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
+                            />
+                          </td>
+
+                          {/* FILE ATTACHMENT */}
+                          <td className="px-4 py-3 align-top text-center">
+                            <label className={`cursor-pointer w-8 h-8 flex items-center justify-center rounded-full transition-colors ${task.file ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
+                              <input type="file" className="hidden" onChange={(e) => handleRowChange(index, "file", e.target.files[0])} />
+                              {task.file ? <CheckCircle size={14} /> : <Upload size={14} />}
+                            </label>
+                          </td>
+
+                          {/* REMOVE ROW */}
+                          <td className="px-4 py-3 align-top text-center">
+                            <button
+                              onClick={() => removeBulkTaskRow(index)}
+                              className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full"
+                              title="Remove Row"
+                            >
+                              <X size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
-                {!assignData.isRepeatable && (
-                  <div className={assignData.isInternal ? "col-span-2" : "col-span-1"}>
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Date</label>
-                    <input required={!assignData.isRepeatable} type="date" value={assignData.targetDate} onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" />
+                {/* FOOTER ACTIONS */}
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                  <button
+                    onClick={addBulkTaskRow}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl text-[10px] font-bold uppercase bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200"
+                  >
+                    <Plus size={14} /> Add Another Row
+                  </button>
+
+                  <button
+                    onClick={handleBulkAssignSubmit}
+                    disabled={bulkTasks.length === 0}
+                    className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${bulkTasks.length > 0 ? 'bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                  >
+                    <ClipboardList size={16} /> Assign All {bulkTasks.length} Tasks
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== DEDICATED SMART PASTE MODAL ===== */}
+        {showSmartPasteModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className="bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+              <div className="bg-blue-900 p-6 flex justify-between items-center text-white">
+                <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
+                  <Upload size={24} /> Smart Paste Task Builder
+                </h2>
+                <button onClick={() => setShowSmartPasteModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-all"><X size={20} /></button>
+              </div>
+
+              <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+                {/* PASTE INPUT TEXTAREA */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'title', label: 'Title' },
+                      { key: 'client', label: 'Client' },
+                      { key: 'project', label: 'Project' },
+                      { key: 'assignee', label: 'Assigned To' },
+                      { key: 'date', label: 'Date' }
+                    ].map((col) => (
+                      <button
+                        key={col.key}
+                        type="button"
+                        onClick={() => setPasteColumnType(col.key)}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${pasteColumnType === col.key ? "bg-emerald-500 text-white border-emerald-500 shadow" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                      >
+                        {col.label}
+                      </button>
+                    ))}
+                  </div>
+                  <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">
+                    {pasteColumnType ? `📋 Paste ${pasteColumnType} column` : "📋 Select a column, then paste"}
+                  </h3>
+                  <textarea
+                    value={pasteContent}
+                    onChange={(e) => setPasteContent(e.target.value)}
+                    placeholder={pasteColumnType
+                      ? `Paste ${pasteColumnType} values (one per line)`
+                      : "Select a column button above, then paste"}
+                    className="w-full h-32 p-4 text-sm font-mono bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 ring-emerald-400 resize-none"
+                  />
+                </div>
+
+                {/* DRAFT TASKS TABLE WITH DROPDOWNS */}
+                {draftTasks.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">{draftTasks.length} Draft Tasks</h3>
+                    <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto max-h-60 overflow-y-auto">
+                      <table className="w-full text-[10px] font-mono">
+                        <thead className="sticky top-0 bg-slate-50">
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left px-3 py-2 text-slate-400">#</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Title</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Client</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Project</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[120px]">Assigned To</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {draftTasks.map((task, idx) => {
+                            const isInvalidClient = task.client.startsWith('[INVALID]');
+                            const isInvalidProject = task.project.startsWith('[INVALID]');
+                            const isInvalid = isInvalidClient || isInvalidProject;
+
+                            return (
+                              <tr
+                                key={idx}
+                                className={`border-b border-slate-100 ${isInvalid ? 'bg-red-50' : 'hover:bg-slate-50'}`}
+                              >
+                                <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                                <td className="px-3 py-2 text-slate-700 truncate max-w-[100px]" title={task.title}>{task.title || "—"}</td>
+                                <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidClient ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.client}>
+                                  {isInvalidClient ? '❌ ' : ''}{task.client || "—"}
+                                </td>
+                                <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidProject ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.project}>
+                                  {isInvalidProject ? '❌ ' : ''}{task.project || "—"}
+                                </td>
+                                <td className="px-3 py-2 min-w-[120px]">
+                                  <select
+                                    value={task.assignedTo}
+                                    onChange={(e) => {
+                                      const updated = [...draftTasks];
+                                      updated[idx] = { ...updated[idx], assignedTo: e.target.value };
+                                      setDraftTasks(updated);
+                                    }}
+                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
+                                  >
+                                    <option value="">Select...</option>
+                                    {(() => {
+                                      let members = [];
+                                      if (task.isInternal) {
+                                        members = getAllUniqueUsers();
+                                      } else {
+                                        if (task.client && !task.client.startsWith('[INVALID]') && task.project && !task.project.startsWith('[INVALID]')) {
+                                          const project = clientProjectMap[task.client]?.find(p => p.name === task.project);
+                                          members = withCurrentUser(getProjectMembers(project) || []);
+                                        }
+                                      }
+                                      return members.map((m, i) => (
+                                        <option key={i} value={m.email}>{m.email.split('@')[0]}</option>
+                                      ));
+                                    })()}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 min-w-[120px]">
+                                  <input
+                                    type="date"
+                                    value={task.targetDate}
+                                    onChange={(e) => {
+                                      const updated = [...draftTasks];
+                                      updated[idx] = { ...updated[idx], targetDate: e.target.value };
+                                      setDraftTasks(updated);
+                                    }}
+                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {(draftTasks.some(t => t.client.startsWith('[INVALID]')) || draftTasks.some(t => t.project.startsWith('[INVALID]'))) && (
+                      <p className="text-[10px] text-red-600 font-semibold">
+                        ⚠ {draftTasks.filter(t => t.client.startsWith('[INVALID]') || t.project.startsWith('[INVALID]')).length} tasks with invalid clients/projects won't be created
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {/* REPEATABLE SETTINGS (CONDITIONAL) */}
-                {assignData.isRepeatable && (
-                  <div className="col-span-2 bg-slate-50 p-5 rounded-2xl border border-dashed border-slate-300 grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                    <div className="col-span-2 text-[10px] font-black uppercase text-slate-400 -mb-2">Repeat Settings</div>
+                {/* ACTION BUTTONS */}
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                  {draftTasks.length > 0 && (
+                    <button
+                      onClick={clearSmartPasteDrafts}
+                      className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold uppercase hover:bg-red-200 transition-all"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowSmartPasteModal(false)}
+                    className="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleSmartPaste}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
+                  >
+                    {draftTasks.length === 0 ? "Create Drafts" : "Update Column"}
+                  </button>
+                  {draftTasks.length > 0 && (
+                    <button
+                      onClick={handleSubmitSmartPaste}
+                      className="px-6 py-2 bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 animate-pulse"
+                    >
+                      ✓ Create {draftTasks.filter(t => !t.client.startsWith('[INVALID]') && !t.project.startsWith('[INVALID]')).length} Tasks
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                    <div className="col-span-1">
-                      <select
-                        required={assignData.isRepeatable}
-                        value={assignData.repeatFrequency}
-                        onChange={(e) => setAssignData({ ...assignData, repeatFrequency: e.target.value })}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
+        {showAssignModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className="bg-white w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[85vh] flex flex-col">
+              <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
+                <h2 className="font-black uppercase tracking-widest flex items-center gap-2"><Plus size={18} className="text-[#F58A4B]" /> Assign New Task</h2>
+                <button onClick={() => setShowAssignModal(false)}><X size={20} /></button>
+              </div>
+              <form onSubmit={handleAssignSubmit} className="p-10 space-y-6 overflow-y-auto custom-scrollbar">
+
+                {/* TOGGLE TASK TYPE */}
+                {(() => {
+                  // Determine if selected user is external
+                  let selectedUserRole = null;
+                  if (!assignData.isInternal && assignData.project && assignData.assignedTo) {
+                    const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
+                    const members = withCurrentUser(getProjectMembers(selectedProject));
+                    const selectedMember = members.find(m => m.email === assignData.assignedTo);
+                    selectedUserRole = selectedMember?.role;
+                  }
+                  const isExternalSelected = selectedUserRole === "(EXTERNAL)";
+
+                  return (
+                    <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
+                      <button
+                        type="button"
+                        onClick={() => setAssignData({ ...assignData, isRepeatable: false, isInternal: false })}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${!assignData.isRepeatable && !assignData.isInternal ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
                       >
-                        <option value="">Frequency</option>
-                        <option value="Weekly">Weekly</option>
-                        <option value="Monthly">Monthly</option>
-                      </select>
-                    </div>
-
-                    <div className="col-span-1">
-                      <input
-                        required={assignData.isRepeatable}
-                        type="date"
-                        placeholder="End Date"
-                        value={assignData.repeatEndDate}
-                        onChange={(e) => setAssignData({ ...assignData, repeatEndDate: e.target.value })}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer text-slate-600"
-                      />
-                    </div>
-
-                    {/* WEEKLY: SHOW DAY */}
-                    {assignData.repeatFrequency === 'Weekly' && (
-                      <div className="col-span-2">
-                        <select
-                          required
-                          value={assignData.repeatDay}
-                          onChange={(e) => setAssignData({ ...assignData, repeatDay: e.target.value })}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
+                        Normal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssignData({ ...assignData, isRepeatable: true, isInternal: false })}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${assignData.isRepeatable ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:text-slate-600"}`}
+                      >
+                        Repeatable
+                      </button>
+                      {!isExternalSelected && (
+                        <button
+                          type="button"
+                          onClick={() => setAssignData({ ...assignData, isRepeatable: false, isInternal: true })}
+                          className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${assignData.isInternal ? "bg-emerald-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-600"}`}
                         >
-                          <option value="">Select Day</option>
-                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
-                            <option key={d} value={d}>{d}</option>
+                          Internal
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
+                    <input required value={assignData.task} onChange={e => setAssignData({ ...assignData, task: e.target.value })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" placeholder="Enter task name..." />
+                  </div>
+
+                  {!assignData.isInternal && (
+                    <>
+                      <div className="col-span-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Client</label>
+                        <select
+                          required={!assignData.isInternal}
+                          value={assignData.client}
+                          onChange={e => setAssignData({ ...assignData, client: e.target.value, project: "", assignedTo: "" })}
+                          className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                        >
+                          <option value="">Select Client</option>
+                          {Object.keys(clientProjectMap).map((c, i) => <option key={i} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="col-span-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
+                        <select
+                          required={!assignData.isInternal}
+                          value={assignData.project}
+                          onChange={e => setAssignData({ ...assignData, project: e.target.value, assignedTo: "" })}
+                          className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                          disabled={!assignData.client}
+                        >
+                          <option value="">Select Project</option>
+                          {assignData.client && clientProjectMap[assignData.client]?.map((p, i) => (
+                            <option key={i} value={p.name}>{p.name}</option>
                           ))}
                         </select>
                       </div>
-                    )}
+                    </>
+                  )}
 
-                    {/* MONTHLY: SHOW WEEK + DAY */}
-                    {assignData.repeatFrequency === 'Monthly' && (
-                      <>
-                        <div className="col-span-1">
-                          <select
-                            required
-                            value={assignData.repeatWeek}
-                            onChange={(e) => setAssignData({ ...assignData, repeatWeek: e.target.value })}
-                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
-                          >
-                            <option value="">Select Week</option>
-                            {['First', 'Second', 'Third', 'Fourth', 'Last'].map(w => (
-                              <option key={w} value={w}>{w}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-span-1">
+                  <div className={assignData.isInternal ? "col-span-2" : "col-span-1"}>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assigned To</label>
+                    <select
+                      required
+                      value={assignData.assignedTo}
+                      onChange={e => {
+                        // Check if selected user is external
+                        let members = [];
+                        if (assignData.isInternal) {
+                          members = getAllUniqueUsers();
+                        } else {
+                          const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
+                          members = withCurrentUser(getProjectMembers(selectedProject));
+                        }
+                        const selectedMember = members.find(m => m.email === e.target.value);
+                        const isExternalUser = selectedMember?.role === "(EXTERNAL)";
+
+                        // If external user selected, reset to Normal task
+                        if (isExternalUser) {
+                          setAssignData({ ...assignData, assignedTo: e.target.value, isRepeatable: false, isInternal: false });
+                        } else {
+                          setAssignData({ ...assignData, assignedTo: e.target.value });
+                        }
+                      }}
+                      className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                      disabled={!assignData.isInternal && !assignData.project}
+                    >
+                      <option value="">Select Team Member</option>
+                      {(() => {
+                        let members = [];
+                        if (assignData.isInternal) {
+                          members = getAllUniqueUsers();
+                        } else {
+                          const selectedProject = clientProjectMap[assignData.client]?.find(p => p.name === assignData.project);
+                          members = withCurrentUser(getProjectMembers(selectedProject));
+                        }
+                        return members.map((m, i) => (
+                          <option key={i} value={m.email}>{m.email} ({m.role})</option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
+
+                  {!assignData.isRepeatable && (
+                    <div className={assignData.isInternal ? "col-span-2" : "col-span-1"}>
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Date</label>
+                      <input required={!assignData.isRepeatable} type="date" value={assignData.targetDate} onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" />
+                    </div>
+                  )}
+
+                  {/* REPEATABLE SETTINGS (CONDITIONAL) */}
+                  {assignData.isRepeatable && (
+                    <div className="col-span-2 bg-slate-50 p-5 rounded-2xl border border-dashed border-slate-300 grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                      <div className="col-span-2 text-[10px] font-black uppercase text-slate-400 -mb-2">Repeat Settings</div>
+
+                      <div className="col-span-1">
+                        <select
+                          required={assignData.isRepeatable}
+                          value={assignData.repeatFrequency}
+                          onChange={(e) => setAssignData({ ...assignData, repeatFrequency: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
+                        >
+                          <option value="">Frequency</option>
+                          <option value="Weekly">Weekly</option>
+                          <option value="Monthly">Monthly</option>
+                        </select>
+                      </div>
+
+                      <div className="col-span-1">
+                        <input
+                          required={assignData.isRepeatable}
+                          type="date"
+                          placeholder="End Date"
+                          value={assignData.repeatEndDate}
+                          onChange={(e) => setAssignData({ ...assignData, repeatEndDate: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer text-slate-600"
+                        />
+                      </div>
+
+                      {/* WEEKLY: SHOW DAY */}
+                      {assignData.repeatFrequency === 'Weekly' && (
+                        <div className="col-span-2">
                           <select
                             required
                             value={assignData.repeatDay}
@@ -2312,251 +2282,282 @@ const EmployeeDashboard = () => {
                             ))}
                           </select>
                         </div>
-                      </>
-                    )}
+                      )}
+
+                      {/* MONTHLY: SHOW WEEK + DAY */}
+                      {assignData.repeatFrequency === 'Monthly' && (
+                        <>
+                          <div className="col-span-1">
+                            <select
+                              required
+                              value={assignData.repeatWeek}
+                              onChange={(e) => setAssignData({ ...assignData, repeatWeek: e.target.value })}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
+                            >
+                              <option value="">Select Week</option>
+                              {['First', 'Second', 'Third', 'Fourth', 'Last'].map(w => (
+                                <option key={w} value={w}>{w}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-1">
+                            <select
+                              required
+                              value={assignData.repeatDay}
+                              onChange={(e) => setAssignData({ ...assignData, repeatDay: e.target.value })}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
+                            >
+                              <option value="">Select Day</option>
+                              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
+                                <option key={d} value={d}>{d}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Attachment (Optional)</label>
+                    <input type="file" onChange={e => setAssignData({ ...assignData, file: e.target.files[0] })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" />
+                  </div>
+                </div>
+
+                <div className="pt-4">
+                  <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black transition-all active:scale-95 flex justify-center gap-2 items-center">
+                    <Plus size={18} /> Confirm Assignment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+        }
+
+        {showExcelImportModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className={`bg-white w-full ${mappingStep ? 'max-w-4xl' : 'max-w-md'} rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col`}>
+              <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
+                <h2 className="font-black uppercase tracking-widest flex items-center gap-2">
+                  <FileText size={18} className="text-blue-400" />
+                  {mappingStep ? 'Map Excel Columns' : 'Import Tasks from Excel'}
+                </h2>
+                <button onClick={() => { setShowExcelImportModal(false); setExcelUploadStatus(null); setMappingStep(false); setExcelPreview(null); }}><X size={20} /></button>
+              </div>
+              <div className={`p-10 space-y-6 ${mappingStep ? 'overflow-y-auto flex-1' : ''}`}>
+                {/* UPLOAD STEP */}
+                {!mappingStep && !excelUploadStatus && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-600">Upload an Excel file (.xlsx) with your tasks. Supported columns:</p>
+                    <ul className="text-xs text-slate-500 space-y-1 ml-4">
+                      <li>• <strong>Task</strong> (required): Task title</li>
+                      <li>• <strong>Client</strong>: Client name</li>
+                      <li>• <strong>Project</strong>: Project name</li>
+                      <li>• <strong>Assigned To</strong>: Email or assignee name</li>
+                      <li>• <strong>Target Date</strong>: Due date (YYYY-MM-DD)</li>
+                    </ul>
+                    <label className="flex items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
+                      <input
+                        type="file"
+                        accept=".xlsx"
+                        onChange={handleExcelImport}
+                        className="hidden"
+                      />
+                      <div className="text-center">
+                        <FileText size={32} className="mx-auto text-blue-400 mb-2" />
+                        <p className="text-xs font-bold text-slate-700">Click to upload or drag and drop</p>
+                        <p className="text-[10px] text-slate-500">Only .xlsx files accepted</p>
+                      </div>
+                    </label>
                   </div>
                 )}
 
-                <div className="col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Attachment (Optional)</label>
-                  <input type="file" onChange={e => setAssignData({ ...assignData, file: e.target.files[0] })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" />
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black transition-all active:scale-95 flex justify-center gap-2 items-center">
-                  <Plus size={18} /> Confirm Assignment
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )
-      }
-
-      {showExcelImportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className={`bg-white w-full ${mappingStep ? 'max-w-4xl' : 'max-w-md'} rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col`}>
-            <div className="bg-slate-900 p-6 flex justify-between text-white border-b border-slate-800 shrink-0">
-              <h2 className="font-black uppercase tracking-widest flex items-center gap-2">
-                <FileText size={18} className="text-blue-400" /> 
-                {mappingStep ? 'Map Excel Columns' : 'Import Tasks from Excel'}
-              </h2>
-              <button onClick={() => { setShowExcelImportModal(false); setExcelUploadStatus(null); setMappingStep(false); setExcelPreview(null); }}><X size={20} /></button>
-            </div>
-            <div className={`p-10 space-y-6 ${mappingStep ? 'overflow-y-auto flex-1' : ''}`}>
-              {/* UPLOAD STEP */}
-              {!mappingStep && !excelUploadStatus && (
-                <div className="space-y-4">
-                  <p className="text-sm text-slate-600">Upload an Excel file (.xlsx) with your tasks. Supported columns:</p>
-                  <ul className="text-xs text-slate-500 space-y-1 ml-4">
-                    <li>• <strong>Task</strong> (required): Task title</li>
-                    <li>• <strong>Client</strong>: Client name</li>
-                    <li>• <strong>Project</strong>: Project name</li>
-                    <li>• <strong>Assigned To</strong>: Email or assignee name</li>
-                    <li>• <strong>Target Date</strong>: Due date (YYYY-MM-DD)</li>
-                  </ul>
-                  <label className="flex items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
-                    <input
-                      type="file"
-                      accept=".xlsx"
-                      onChange={handleExcelImport}
-                      className="hidden"
-                    />
-                    <div className="text-center">
-                      <FileText size={32} className="mx-auto text-blue-400 mb-2" />
-                      <p className="text-xs font-bold text-slate-700">Click to upload or drag and drop</p>
-                      <p className="text-[10px] text-slate-500">Only .xlsx files accepted</p>
+                {/* MAPPING STEP */}
+                {mappingStep && excelPreview && !excelUploadStatus && (
+                  <div className="space-y-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm font-bold text-blue-700">Map your Excel columns to Task fields</p>
+                      <p className="text-xs text-blue-600 mt-1">Select which Excel column contains each field. Leave as "Skip" if not in your file.</p>
                     </div>
-                  </label>
-                </div>
-              )}
 
-              {/* MAPPING STEP */}
-              {mappingStep && excelPreview && !excelUploadStatus && (
-                <div className="space-y-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm font-bold text-blue-700">Map your Excel columns to Task fields</p>
-                    <p className="text-xs text-blue-600 mt-1">Select which Excel column contains each field. Leave as "Skip" if not in your file.</p>
-                  </div>
-
-                  {/* FIELD MAPPINGS - One row per Task field */}
-                  <div className="space-y-3">
-                    {[
-                      { field: 'task', label: 'Task (Required)', required: true },
-                      { field: 'client', label: 'Client', required: false },
-                      { field: 'project', label: 'Project', required: false },
-                      { field: 'assigned_to', label: 'Assigned To', required: false },
-                      { field: 'target_date', label: 'Target Date', required: false },
-                      { field: 'description', label: 'Description', required: false }
-                    ].map(({ field, label, required }) => (
-                      <div key={field} className="flex items-end gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <div className="flex-1">
-                          <label className="text-[10px] font-black uppercase text-slate-500">
-                            {label} {required && <span className="text-red-500">*</span>}
-                          </label>
-                          <select
-                            value={columnMapping[field] ?? ''}
-                            onChange={(e) => {
-                              const newMapping = { ...columnMapping };
-                              if (e.target.value !== '') {
-                                newMapping[field] = parseInt(e.target.value);
-                              } else {
-                                delete newMapping[field];
-                              }
-                              setColumnMapping(newMapping);
-                            }}
-                            className="w-full mt-2 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:ring-2 ring-blue-400 cursor-pointer"
-                          >
-                            <option value="">Skip</option>
-                            {excelPreview.columns.map((colName, colIdx) => (
-                              <option key={colIdx} value={colIdx}>
-                                Column {colIdx + 1}: {colName || '(No Header)'}
-                              </option>
-                            ))}
-                          </select>
+                    {/* FIELD MAPPINGS - One row per Task field */}
+                    <div className="space-y-3">
+                      {[
+                        { field: 'task', label: 'Task (Required)', required: true },
+                        { field: 'client', label: 'Client', required: false },
+                        { field: 'project', label: 'Project', required: false },
+                        { field: 'assigned_to', label: 'Assigned To', required: false },
+                        { field: 'target_date', label: 'Target Date', required: false },
+                        { field: 'description', label: 'Description', required: false }
+                      ].map(({ field, label, required }) => (
+                        <div key={field} className="flex items-end gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <div className="flex-1">
+                            <label className="text-[10px] font-black uppercase text-slate-500">
+                              {label} {required && <span className="text-red-500">*</span>}
+                            </label>
+                            <select
+                              value={columnMapping[field] ?? ''}
+                              onChange={(e) => {
+                                const newMapping = { ...columnMapping };
+                                if (e.target.value !== '') {
+                                  newMapping[field] = parseInt(e.target.value);
+                                } else {
+                                  delete newMapping[field];
+                                }
+                                setColumnMapping(newMapping);
+                              }}
+                              className="w-full mt-2 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:ring-2 ring-blue-400 cursor-pointer"
+                            >
+                              <option value="">Skip</option>
+                              {excelPreview.columns.map((colName, colIdx) => (
+                                <option key={colIdx} value={colIdx}>
+                                  Column {colIdx + 1}: {colName || '(No Header)'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* ACTION BUTTONS */}
-                  <div className="flex justify-between gap-3 pt-4 border-t border-slate-200">
-                    <button
-                      onClick={handleBackToUpload}
-                      className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
-                    >
-                      ← Back
-                    </button>
-                    <button
-                      onClick={handleConfirmMapping}
-                      disabled={columnMapping['task'] === undefined || columnMapping['task'] === ''}
-                      className="px-8 py-3 bg-blue-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      Import Now
-                    </button>
+                    {/* ACTION BUTTONS */}
+                    <div className="flex justify-between gap-3 pt-4 border-t border-slate-200">
+                      <button
+                        onClick={handleBackToUpload}
+                        className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        onClick={handleConfirmMapping}
+                        disabled={columnMapping['task'] === undefined || columnMapping['task'] === ''}
+                        className="px-8 py-3 bg-blue-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        Import Now
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* LOADING STATE */}
-              {excelUploadStatus?.loading && (
-                <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                  <div className="animate-spin">
-                    <Upload size={32} className="text-blue-400" />
+                {/* LOADING STATE */}
+                {excelUploadStatus?.loading && (
+                  <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                    <div className="animate-spin">
+                      <Upload size={32} className="text-blue-400" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-600">Uploading and processing your file...</p>
                   </div>
-                  <p className="text-sm font-bold text-slate-600">Uploading and processing your file...</p>
-                </div>
-              )}
-              {excelUploadStatus?.success && (
-                <div className="space-y-4">
-                  <div className={`rounded-lg p-4 border ${excelUploadStatus.backendErrors?.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                    {excelUploadStatus.backendErrors?.length > 0 ? (
-                      <>
-                        <p className="text-sm font-bold text-amber-700">⚠️ Partial Import Success</p>
-                        <p className="text-xs text-amber-600 mt-2">
-                          {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully, but {excelUploadStatus.backendErrors.length} row{excelUploadStatus.backendErrors.length !== 1 ? 's' : ''} had errors and were skipped.
+                )}
+                {excelUploadStatus?.success && (
+                  <div className="space-y-4">
+                    <div className={`rounded-lg p-4 border ${excelUploadStatus.backendErrors?.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                      {excelUploadStatus.backendErrors?.length > 0 ? (
+                        <>
+                          <p className="text-sm font-bold text-amber-700">⚠️ Partial Import Success</p>
+                          <p className="text-xs text-amber-600 mt-2">
+                            {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully, but {excelUploadStatus.backendErrors.length} row{excelUploadStatus.backendErrors.length !== 1 ? 's' : ''} had errors and were skipped.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-bold text-emerald-700">✓ Import Successful!</p>
+                          <p className="text-xs text-emerald-600 mt-2">
+                            {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully.
+                          </p>
+                        </>
+                      )}
+
+                      {/* Show detailed errors if any */}
+                      {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
+                        <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
+                          <p className="font-bold text-red-700 mb-1">Errors (rows skipped):</p>
+                          {excelUploadStatus.backendErrors.map((err, i) => (
+                            <p key={i} className="text-red-600 mb-1">
+                              {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Show warnings if any */}
+                      {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
+                        <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-32 overflow-y-auto">
+                          <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
+                          {excelUploadStatus.warnings.map((w, i) => (
+                            <p key={i} className="text-yellow-600 mb-1">
+                              {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowExcelImportModal(false);
+                        setExcelUploadStatus(null);
+                        // Only refresh if we had some successful tasks
+                        if (excelUploadStatus.tasksCreated > 0) {
+                          setTimeout(() => {
+                            window.location.reload();
+                          }, 500);
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
+                    >
+                      {excelUploadStatus.tasksCreated > 0 ? 'Reload & Close' : 'Close'}
+                    </button>
+                  </div>
+                )}
+                {excelUploadStatus?.error && (
+                  <div className="space-y-4">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-sm font-bold text-red-700">✕ Import Failed</p>
+                      <p className="text-xs text-red-600 mt-2">{excelUploadStatus.error}</p>
+
+                      {/* Show number of tasks created if any */}
+                      {excelUploadStatus.tasksCreated > 0 && (
+                        <p className="text-xs text-orange-600 mt-2">
+                          ⚠️ {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} were created before errors occurred
                         </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-bold text-emerald-700">✓ Import Successful!</p>
-                        <p className="text-xs text-emerald-600 mt-2">
-                          {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} created successfully.
-                        </p>
-                      </>
-                    )}
-                    
-                    {/* Show detailed errors if any */}
-                    {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
-                      <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
-                        <p className="font-bold text-red-700 mb-1">Errors (rows skipped):</p>
-                        {excelUploadStatus.backendErrors.map((err, i) => (
-                          <p key={i} className="text-red-600 mb-1">
-                            {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Show warnings if any */}
-                    {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
-                      <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-32 overflow-y-auto">
-                        <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
-                        {excelUploadStatus.warnings.map((w, i) => (
-                          <p key={i} className="text-yellow-600 mb-1">
-                            {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
+                      )}
+
+                      {/* Show detailed backend errors if available */}
+                      {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
+                        <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
+                          <p className="font-bold text-red-700 mb-1">Errors:</p>
+                          {excelUploadStatus.backendErrors.map((err, i) => (
+                            <p key={i} className="text-red-600 mb-1">
+                              {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Show warnings if any */}
+                      {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
+                        <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-40 overflow-y-auto">
+                          <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
+                          {excelUploadStatus.warnings.map((w, i) => (
+                            <p key={i} className="text-yellow-600 mb-1">
+                              {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setExcelUploadStatus(null)}
+                      className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
+                    >
+                      Try Again
+                    </button>
                   </div>
-                  <button
-                    onClick={() => { 
-                      setShowExcelImportModal(false); 
-                      setExcelUploadStatus(null);
-                      // Only refresh if we had some successful tasks
-                      if (excelUploadStatus.tasksCreated > 0) {
-                        setTimeout(() => {
-                          window.location.reload();
-                        }, 500);
-                      }
-                    }}
-                    className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
-                  >
-                    {excelUploadStatus.tasksCreated > 0 ? 'Reload & Close' : 'Close'}
-                  </button>
-                </div>
-              )}
-              {excelUploadStatus?.error && (
-                <div className="space-y-4">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-sm font-bold text-red-700">✕ Import Failed</p>
-                    <p className="text-xs text-red-600 mt-2">{excelUploadStatus.error}</p>
-                    
-                    {/* Show number of tasks created if any */}
-                    {excelUploadStatus.tasksCreated > 0 && (
-                      <p className="text-xs text-orange-600 mt-2">
-                        ⚠️ {excelUploadStatus.tasksCreated} task{excelUploadStatus.tasksCreated !== 1 ? 's' : ''} were created before errors occurred
-                      </p>
-                    )}
-                    
-                    {/* Show detailed backend errors if available */}
-                    {excelUploadStatus.backendErrors && excelUploadStatus.backendErrors.length > 0 && (
-                      <div className="mt-3 text-[10px] bg-red-100 border border-red-300 rounded p-2 max-h-40 overflow-y-auto">
-                        <p className="font-bold text-red-700 mb-1">Errors:</p>
-                        {excelUploadStatus.backendErrors.map((err, i) => (
-                          <p key={i} className="text-red-600 mb-1">
-                            {typeof err === 'string' ? err : err.message || JSON.stringify(err)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Show warnings if any */}
-                    {excelUploadStatus.warnings && excelUploadStatus.warnings.length > 0 && (
-                      <div className="mt-3 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 max-h-40 overflow-y-auto">
-                        <p className="font-bold text-yellow-700 mb-1">Warnings:</p>
-                        {excelUploadStatus.warnings.map((w, i) => (
-                          <p key={i} className="text-yellow-600 mb-1">
-                            {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setExcelUploadStatus(null)}
-                    className="w-full px-4 py-3 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </main>
     </div>
   );
@@ -2620,109 +2621,109 @@ const Table = ({
   const paginatedData = sortedData.slice(startIndex, startIndex + PAGE_SIZE);
 
   return (
-  <div className="max-w-7xl mx-auto mt-10 px-6">
-    <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden transition-all hover:shadow-md">
-      <div className="px-8 py-5 border-b font-black uppercase text-xs tracking-widest bg-slate-50 text-slate-600 flex justify-between items-center">
-        <div className="flex items-center">
-          {title}
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className="ml-16 px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
-          >
-            Previous
-          </button>
-        </div>
-
-        <div className="flex items-center">
-          {mode === 'overview' && selectedTasks?.length > 0 && (
+    <div className="max-w-7xl mx-auto mt-10 px-6">
+      <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden transition-all hover:shadow-md">
+        <div className="px-8 py-5 border-b font-black uppercase text-xs tracking-widest bg-slate-50 text-slate-600 flex justify-between items-center">
+          <div className="flex items-center">
+            {title}
             <button
-              onClick={onBulkComplete}
-              className="bg-emerald-500 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md hover:bg-emerald-600 transition-all animate-in fade-in mr-6"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="ml-16 px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
             >
-              Submit Selected ({selectedTasks.length})
+              Previous
             </button>
-          )}
+          </div>
 
-          <button
-            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-            className="px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
-          >
-            Next
-          </button>
+          <div className="flex items-center">
+            {mode === 'overview' && selectedTasks?.length > 0 && (
+              <button
+                onClick={onBulkComplete}
+                className="bg-emerald-500 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md hover:bg-emerald-600 transition-all animate-in fade-in mr-6"
+              >
+                Submit Selected ({selectedTasks.length})
+              </button>
+            )}
 
-          <span className="ml-6 bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[9px]">{sortedData.length} Records</span>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-all"
+            >
+              Next
+            </button>
+
+            <span className="ml-6 bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[9px]">{sortedData.length} Records</span>
+          </div>
         </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-white border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            <tr>
-              <th className="px-8 py-4">Task ID</th>
-              <th className="px-8 py-4">Task</th>
-              {mode !== "assigned" && <th className="px-8 py-4">Project / Client</th>}
-              {mode === "assigned" && <th className="px-8 py-4">Assigned To</th>}
-              <th className="px-8 py-4">Assigned By</th>
-              {mode === "overview" && <th className="px-8 py-4">Target Date</th>}
-              {mode === "completed" && <th className="px-8 py-4">Complete Date</th>}
-              <th className="px-8 py-4 text-center">Status</th>
-              {(mode === "overview" || mode === "assigned") && <th className="px-8 py-4 text-center">Assigned PDF</th>}
-              {mode === "completed" && <th className="px-8 py-4 text-center">Remarks</th>}
-              {(mode === "completed" || mode === "assigned") && <th className="px-8 py-4 text-center">Complete PDF</th>}
-              {mode === "overview" && (
-                <th className="px-8 py-4 text-center">
-                  Select
-                  <input
-                    type="checkbox"
-                    onChange={() => onToggleSelectAll(paginatedData)}
-                    checked={paginatedData.length > 0 && paginatedData.every((task) => selectedTasks?.includes(task.id))}
-                    className="ml-2 cursor-pointer accent-slate-900 align-middle"
-                  />
-                </th>
-              )}
-              {mode === "overview" && <th className="px-8 py-4 text-center">Complete</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {paginatedData.map((t) => (
-              <tr key={t.id} className={`transition-colors ${selectedTasks?.includes(t.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}`}>
-                <td className="px-8 py-5 font-bold text-slate-500 text-xs">{t.task_id}</td>
-                <td className="px-8 py-5 font-semibold text-sm text-slate-800">{t.title}</td>
-
-                {mode !== "assigned" && <td className="px-8 py-5 text-xs font-medium text-slate-500 italic">{t.project_name} / {t.client_name}</td>}
-                {mode === "assigned" && <td className="px-8 py-5 text-sm font-medium">{t.assigned_to_name}</td>}
-                <td className="px-8 py-5 text-xs font-medium">DDFMS</td>
-                {mode === "overview" && <td className="px-8 py-5 text-xs font-bold text-orange-400">{t.target_date}</td>}
-                {mode === "completed" && <td className="px-8 py-5 text-xs font-bold text-emerald-500">{t.completion_date}</td>}
-                <td className="px-8 py-5 text-center"><StatusBadge status={t.status} /></td>
-                {(mode === "overview" || mode === "assigned") && <td className="px-8 py-5 text-center">{t.assigned_file ? <Download size={18} className="mx-auto text-blue-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
-                {mode === "completed" && <td className="px-8 py-5 text-xs font-medium text-slate-600 max-w-[200px] truncate" title={t.remarks}>{t.remarks || "—"}</td>}
-                {(mode === "completed" || mode === "assigned") && <td className="px-8 py-5 text-center">{t.completion_file ? <Download size={18} className="mx-auto text-emerald-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-white border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <tr>
+                <th className="px-8 py-4">Task ID</th>
+                <th className="px-8 py-4">Task</th>
+                {mode !== "assigned" && <th className="px-8 py-4">Project / Client</th>}
+                {mode === "assigned" && <th className="px-8 py-4">Assigned To</th>}
+                <th className="px-8 py-4">Assigned By</th>
+                {mode === "overview" && <th className="px-8 py-4">Target Date</th>}
+                {mode === "completed" && <th className="px-8 py-4">Complete Date</th>}
+                <th className="px-8 py-4 text-center">Status</th>
+                {(mode === "overview" || mode === "assigned") && <th className="px-8 py-4 text-center">Assigned PDF</th>}
+                {mode === "completed" && <th className="px-8 py-4 text-center">Remarks</th>}
+                {(mode === "completed" || mode === "assigned") && <th className="px-8 py-4 text-center">Complete PDF</th>}
                 {mode === "overview" && (
-                  <>
-                    <td className="px-8 py-5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedTasks?.includes(t.id) || false}
-                        onChange={() => onToggleSelect(t.id)}
-                        className="cursor-pointer accent-emerald-500 scale-125"
-                      />
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                      <button onClick={() => onReportComplete(t)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white shadow-md hover:bg-black transition-all">
-                        Complete
-                      </button>
-                    </td>
-                  </>
+                  <th className="px-8 py-4 text-center">
+                    Select
+                    <input
+                      type="checkbox"
+                      onChange={() => onToggleSelectAll(paginatedData)}
+                      checked={paginatedData.length > 0 && paginatedData.every((task) => selectedTasks?.includes(task.id))}
+                      className="ml-2 cursor-pointer accent-slate-900 align-middle"
+                    />
+                  </th>
                 )}
+                {mode === "overview" && <th className="px-8 py-4 text-center">Complete</th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {paginatedData.map((t) => (
+                <tr key={t.id} className={`transition-colors ${selectedTasks?.includes(t.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}`}>
+                  <td className="px-8 py-5 font-bold text-slate-500 text-xs">{t.task_id}</td>
+                  <td className="px-8 py-5 font-semibold text-sm text-slate-800">{t.title}</td>
 
-    </div>
+                  {mode !== "assigned" && <td className="px-8 py-5 text-xs font-medium text-slate-500 italic">{t.project_name} / {t.client_name}</td>}
+                  {mode === "assigned" && <td className="px-8 py-5 text-sm font-medium">{t.assigned_to_name}</td>}
+                  <td className="px-8 py-5 text-xs font-medium">DDFMS</td>
+                  {mode === "overview" && <td className="px-8 py-5 text-xs font-bold text-orange-400">{t.target_date}</td>}
+                  {mode === "completed" && <td className="px-8 py-5 text-xs font-bold text-emerald-500">{t.completion_date}</td>}
+                  <td className="px-8 py-5 text-center"><StatusBadge status={t.status} /></td>
+                  {(mode === "overview" || mode === "assigned") && <td className="px-8 py-5 text-center">{t.assigned_file ? <Download size={18} className="mx-auto text-blue-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
+                  {mode === "completed" && <td className="px-8 py-5 text-xs font-medium text-slate-600 max-w-[200px] truncate" title={t.remarks}>{t.remarks || "—"}</td>}
+                  {(mode === "completed" || mode === "assigned") && <td className="px-8 py-5 text-center">{t.completion_file ? <Download size={18} className="mx-auto text-emerald-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
+                  {mode === "overview" && (
+                    <>
+                      <td className="px-8 py-5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTasks?.includes(t.id) || false}
+                          onChange={() => onToggleSelect(t.id)}
+                          className="cursor-pointer accent-emerald-500 scale-125"
+                        />
+                      </td>
+                      <td className="px-8 py-5 text-center">
+                        <button onClick={() => onReportComplete(t)} className="px-4 py-2 rounded-lg text-xs font-bold uppercase bg-slate-900 text-white shadow-md hover:bg-black transition-all">
+                          Complete
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
     </div>
   );
 };

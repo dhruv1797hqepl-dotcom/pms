@@ -4,17 +4,34 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Plus, Trash2, Download, X, ArrowLeft } from "lucide-react";
 import api from "../api";
 
-const DEFAULT_API_BASE_URL = "https://projectmanagementbase.onrender.com";
+const VISIT_AGENDA_ENDPOINTS = {
+    clientById: (clientId) => `/clients/${encodeURIComponent(clientId)}/`,
+    clientTeam: (clientId) => `/visit-agenda/clients/${encodeURIComponent(clientId)}/team/`,
+    clientAgenda: (clientId) => `/visit-agenda/clients/${encodeURIComponent(clientId)}/`,
+};
+
+const resolveAssetUrl = (assetUrl) => {
+    if (!assetUrl) {
+        return null;
+    }
+
+    if (/^https?:\/\//i.test(assetUrl)) {
+        return assetUrl;
+    }
+
+    const apiBaseUrl = api?.defaults?.baseURL || window.location.origin;
+    const normalizedAssetUrl = assetUrl.startsWith("/") ? assetUrl : `/${assetUrl}`;
+    return new URL(normalizedAssetUrl, apiBaseUrl).toString();
+};
 
 const VisitAgenda = () => {
     const { clientId } = useParams();
     const navigate = useNavigate();
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [loading, setLoading] = useState(true);
     const [visitDate, setVisitDate] = useState(new Date().toISOString().split("T")[0]);
     const [companyName, setCompanyName] = useState("Jacktech Hydraulic");
     const [hqeplOptions, setHqeplOptions] = useState([]);
     const [clientLogoUrl, setClientLogoUrl] = useState(null);
-    const API_BASE = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
     const [agendaLoaded, setAgendaLoaded] = useState(false);
     const [modalRowIndex, setModalRowIndex] = useState(null);
     const saveTimerRef = useRef(null);
@@ -36,7 +53,7 @@ const VisitAgenda = () => {
         const loadClient = async () => {
             if (!clientId) return;
             try {
-                const response = await api.get(`/clients/${clientId}/`);
+                const response = await api.get(VISIT_AGENDA_ENDPOINTS.clientById(clientId));
                 setCompanyName(response.data.company_name || "");
                 if (response.data.logo) {
                     setClientLogoUrl(response.data.logo);
@@ -53,7 +70,7 @@ const VisitAgenda = () => {
         const loadHQEPL = async () => {
             if (!clientId) return;
             try {
-                const response = await api.get(`/visit-agenda/clients/${clientId}/team/`);
+                const response = await api.get(VISIT_AGENDA_ENDPOINTS.clientTeam(clientId));
                 setHqeplOptions(Array.isArray(response.data) ? response.data : []);
             } catch (error) {
                 console.error("Failed to load team members:", error);
@@ -67,7 +84,7 @@ const VisitAgenda = () => {
         const loadAgenda = async () => {
             if (!clientId) return;
             try {
-                const response = await api.get(`/visit-agenda/clients/${clientId}/`);
+                const response = await api.get(VISIT_AGENDA_ENDPOINTS.clientAgenda(clientId));
                 const agenda = response.data;
 
                 if (agenda?.visit_date) {
@@ -108,7 +125,7 @@ const VisitAgenda = () => {
 
         saveTimerRef.current = setTimeout(async () => {
             try {
-                await api.put(`/visit-agenda/clients/${clientId}/`, {
+                await api.put(VISIT_AGENDA_ENDPOINTS.clientAgenda(clientId), {
                     visit_date: visitDate,
                     items: rows.map((row, index) => ({
                         activity: row.activity,
@@ -235,7 +252,7 @@ const VisitAgenda = () => {
 
     return (
         <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans flex overflow-hidden">
-            <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+            <Sidebar />
 
             <main className="flex-1 overflow-y-auto px-4 md:px-8 py-8 space-y-8">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative">
@@ -283,7 +300,7 @@ const VisitAgenda = () => {
                         <div className="w-full md:w-64 flex flex-col items-center md:items-end gap-5">
                             {clientLogoUrl ? (
                                 <img
-                                    src={clientLogoUrl.startsWith("http") ? clientLogoUrl : `${API_BASE}${clientLogoUrl}`}
+                                    src={resolveAssetUrl(clientLogoUrl)}
                                     alt="Client Logo"
                                     className="h-14 md:h-16 object-contain"
                                     onError={(e) => { e.target.style.display = 'none'; }}

@@ -8,6 +8,13 @@ import Sidebar from '../components/Sidebar';
 import api from '../api';
 import CreateWorkspaceModal from './createuser/CreateWorkspaceModal';
 
+const CLIENT_MANAGEMENT_ENDPOINTS = {
+  clientsList: '/clients/list/',
+  employeeClients: '/employees/clients/',
+  externalClients: '/employees/external-clients/',
+  clientById: (clientId) => `/clients/${encodeURIComponent(clientId)}/`,
+};
+
 export default function ClientManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -15,7 +22,6 @@ export default function ClientManagement() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const role = (localStorage.getItem('role') || '').toUpperCase();
 
   const fetchClients = async () => {
@@ -24,11 +30,11 @@ export default function ClientManagement() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
 
-      let endpoint = 'clients/list/';
+      let endpoint = CLIENT_MANAGEMENT_ENDPOINTS.clientsList;
       // SGM now uses the main list endpoint which filters by assigned_sgm
       // if (role === 'SGM') endpoint = 'sgm/clients/'; 
-      if (role === 'EMPLOYEE') endpoint = 'employees/clients/';
-      if (role === 'EXTERNAL') endpoint = 'employees/external-clients/';
+      if (role === 'EMPLOYEE') endpoint = CLIENT_MANAGEMENT_ENDPOINTS.employeeClients;
+      if (role === 'EXTERNAL') endpoint = CLIENT_MANAGEMENT_ENDPOINTS.externalClients;
 
       const response = await api.get(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
@@ -59,7 +65,7 @@ export default function ClientManagement() {
     if (!clientToDelete) return;
     try {
       // Headers handled by api.js interceptor
-      await api.delete(`clients/${clientToDelete}/`);
+      await api.delete(CLIENT_MANAGEMENT_ENDPOINTS.clientById(clientToDelete));
       fetchClients();
     } catch (error) {
       console.error("Delete Error:", error);
@@ -86,7 +92,7 @@ export default function ClientManagement() {
   const handleStatusToggle = async (client) => {
     try {
       const nextStatus = client.status === 'active' ? 'hold' : 'active';
-      await api.patch(`clients/${client.id}/`, { status: nextStatus });
+      await api.patch(CLIENT_MANAGEMENT_ENDPOINTS.clientById(client.id), { status: nextStatus });
       fetchClients();
     } catch (error) {
       console.error("Status Update Error:", error.response?.data || error.message);
@@ -96,132 +102,129 @@ export default function ClientManagement() {
 
   return (
     <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden selection:bg-[#F58A4B] selection:text-white">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all duration-300 pb-20">
 
-      {/* DELETE CONFIRMATION MODAL */}
-      {clientToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl border border-slate-100">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
-                <Trash2 size={32} className="text-red-500" />
-              </div>
-              <h3 className="text-2xl font-black text-slate-900">Delete Workspace?</h3>
-              <p className="text-sm font-medium text-slate-500">
-                Are you sure you want to delete this workspace? This action cannot be undone and will remove all associated data.
-              </p>
+        {/* DELETE CONFIRMATION MODAL */}
+        {clientToDelete && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl border border-slate-100">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
+                  <Trash2 size={32} className="text-red-500" />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">Delete Workspace?</h3>
+                <p className="text-sm font-medium text-slate-500">
+                  Are you sure you want to delete this workspace? This action cannot be undone and will remove all associated data.
+                </p>
 
-              <div className="grid grid-cols-2 gap-4 w-full pt-4">
-                <button
-                  onClick={() => setClientToDelete(null)}
-                  className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={executeDelete}
-                  className="w-full py-4 bg-red-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all"
-                >
-                  Yes, Delete
-                </button>
+                <div className="grid grid-cols-2 gap-4 w-full pt-4">
+                  <button
+                    onClick={() => setClientToDelete(null)}
+                    className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeDelete}
+                    className="w-full py-4 bg-red-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all"
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      <CreateWorkspaceModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onClientCreated={fetchClients}
-        initialData={selectedClient}
-      />
-
-      <div className="max-w-[1600px] mx-auto px-6 md:px-12 pt-16 space-y-12">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 pb-6 border-b border-slate-200/60">
-          <div className="space-y-4 max-w-2xl">
-            <h1 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-slate-900 leading-[0.9]">
-              Client <span className="text-[#F58A4B]">Management</span>
-            </h1>
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-[0.25em] flex items-center gap-3">
-              <span className="w-8 h-[2px] bg-[#F58A4B]"></span>
-              Enterprise Workspace Directory
-            </p>
-          </div>
-
-          {((localStorage.getItem('role') || '').toUpperCase() === 'ADMIN') && (
-            <button
-              onClick={() => { setSelectedClient(null); setIsModalOpen(true); }}
-              className="group relative overflow-hidden px-8 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-3 shadow-2xl shadow-slate-900/20 hover:bg-[#F58A4B] hover:shadow-[#F58A4B]/30 transition-all duration-300 active:scale-95"
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" />
-                Create Workspace
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* Controls Section */}
-        <div className="sticky top-24 z-30 bg-white/80 backdrop-blur-xl p-4 rounded-[2rem] border border-white/50 shadow-xl shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500">
-          <div className="relative w-full md:w-[480px] group">
-            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-              <Search className="text-slate-300 group-focus-within:text-[#F58A4B] transition-colors duration-300" size={20} />
-            </div>
-            <input
-              type="text"
-              placeholder="Search by company, email, or ID..."
-              className="block w-full pl-14 pr-6 py-4 bg-slate-50/50 border-0 rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#F58A4B]/20 focus:bg-white transition-all duration-300"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-slate-100/50 p-1.5 rounded-2xl">
-            {['All', 'Active', 'Hold', 'Inactive'].map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeFilter === filter
-                  ? 'bg-white text-[#F58A4B] shadow-lg shadow-black/5 ring-1 ring-black/5 scale-100'
-                  : 'text-slate-400 hover:text-slate-600 hover:bg-white/50 scale-95 hover:scale-100'
-                  }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Client Grid */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 space-y-4">
-            <Loader2 className="animate-spin text-[#F58A4B]" size={48} />
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Syncing Directory...</p>
-          </div>
-        ) : filteredClients.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-20">
-            {filteredClients.map((client) => (
-              <ClientCard
-                key={client.id}
-                data={client}
-                onEdit={() => handleEdit(client)}
-                onDelete={() => confirmDelete(client.id)}
-                onToggleStatus={() => handleStatusToggle(client)}
-                canToggleStatus={role === 'SGM' || role === 'ADMIN'}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-32 text-center space-y-4 opacity-50">
-            <Building2 size={64} className="text-slate-300" />
-            <p className="text-sm font-bold text-slate-400">No workspaces found matching your criteria.</p>
           </div>
         )}
-      </div>
+
+        <CreateWorkspaceModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onClientCreated={fetchClients}
+          initialData={selectedClient}
+        />
+
+        {/* HEADER */}
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-[1600px] mx-auto px-6 md:px-10 py-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1">
+                <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Client <span className="text-[#F58A4B]">Management</span></h1>
+                <p className="text-slate-500 font-medium text-sm flex items-center gap-2"><Briefcase size={16} /> Enterprise Workspace Directory</p>
+              </div>
+
+              {((localStorage.getItem('role') || '').toUpperCase() === 'ADMIN') && (
+                <button
+                  onClick={() => { setSelectedClient(null); setIsModalOpen(true); }}
+                  className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-[#F58A4B] transition-all shadow-lg flex items-center gap-2"
+                >
+                  <Plus size={16} /> Create Workspace
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-[1600px] mx-auto px-6 md:px-10 pt-10 space-y-12">
+
+          {/* Controls Section */}
+          <div className="sticky top-24 z-30 bg-white/80 backdrop-blur-xl p-4 rounded-[2rem] border border-white/50 shadow-xl shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500">
+            <div className="relative w-full md:w-[480px] group">
+              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                <Search className="text-slate-300 group-focus-within:text-[#F58A4B] transition-colors duration-300" size={20} />
+              </div>
+              <input
+                type="text"
+                placeholder="Search by company, email, or ID..."
+                className="block w-full pl-14 pr-6 py-4 bg-slate-50/50 border-0 rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#F58A4B]/20 focus:bg-white transition-all duration-300"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-100/50 p-1.5 rounded-2xl">
+              {['All', 'Active', 'Hold', 'Inactive'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeFilter === filter
+                    ? 'bg-white text-[#F58A4B] shadow-lg shadow-black/5 ring-1 ring-black/5 scale-100'
+                    : 'text-slate-400 hover:text-slate-600 hover:bg-white/50 scale-95 hover:scale-100'
+                    }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Client Grid */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-32 space-y-4">
+              <Loader2 className="animate-spin text-[#F58A4B]" size={48} />
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Syncing Directory...</p>
+            </div>
+          ) : filteredClients.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-20">
+              {filteredClients.map((client) => (
+                <ClientCard
+                  key={client.id}
+                  data={client}
+                  onEdit={() => handleEdit(client)}
+                  onDelete={() => confirmDelete(client.id)}
+                  onToggleStatus={() => handleStatusToggle(client)}
+                  canToggleStatus={role === 'SGM' || role === 'ADMIN'}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-32 text-center space-y-4 opacity-50">
+              <Building2 size={64} className="text-slate-300" />
+              <p className="text-sm font-bold text-slate-400">No workspaces found matching your criteria.</p>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

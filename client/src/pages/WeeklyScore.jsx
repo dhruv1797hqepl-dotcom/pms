@@ -1,44 +1,59 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import api from '../api';
 import {
   CalendarDays, ChevronLeft, ChevronRight,
-  Filter, FileSpreadsheet, Activity
+  Activity
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import api from '../api';
+
+const WEEKLY_SCORE_ENDPOINTS = {
+  weeklyScoreData: '/tasks/weekly-score-data/',
+};
 
 const WeeklyScore = () => {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1)); // Jan 2026
+  const [currentDate, setCurrentDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [teamData, setTeamData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [error, setError] = useState(null);
 
   // Fetch tasks on mount and when currentDate changes
   useEffect(() => {
     const fetchTasks = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-        const headers = { Authorization: `Bearer ${token}` };
+        const month = currentDate.getMonth() + 1;
+        const year = currentDate.getFullYear();
 
-        // Fetch all tasks
-        const tasksRes = await api.get('/tasks/', { headers });
-        const allTasks = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data.results || []);
+        const response = await api.get(WEEKLY_SCORE_ENDPOINTS.weeklyScoreData, {
+          params: { month, year },
+        });
 
-        // Group tasks by assigned_to_name
+        const members = Array.isArray(response.data?.members) ? response.data.members : [];
+        const allTasks = Array.isArray(response.data?.tasks) ? response.data.tasks : [];
+
+        // Group tasks by assigned_to user id
         const grouped = {};
         allTasks.forEach(task => {
-          const name = task.assigned_to_name || 'Unknown';
-          if (!grouped[name]) {
-            grouped[name] = [];
+          const assignedToId = task.assigned_to;
+          if (!assignedToId) {
+            return;
           }
-          grouped[name].push(task);
+          if (!grouped[assignedToId]) {
+            grouped[assignedToId] = [];
+          }
+          grouped[assignedToId].push(task);
         });
 
         // Convert to array format with calculated weekly scores
-        const processedData = Object.entries(grouped).map(([name, tasks]) => {
+        const processedData = members.map((member) => {
+          const tasks = grouped[member.id] || [];
           const weeklyScores = calculateWeeklyScores(tasks);
           return {
-            name,
+            id: member.id,
+            name: member.name || member.email || 'Unknown',
             tasks,
             scores: weeklyScores
           };
@@ -56,6 +71,53 @@ const WeeklyScore = () => {
   }, [currentDate]);
 
   // Helper to calculate weekly performance scores
+  const getTaskAtsForWeeklyScore = (task) => {
+    const rawAts = Number.parseFloat(task.ats_score);
+
+    if (Number.isFinite(rawAts)) {
+      if (rawAts > 0) {
+        return rawAts;
+      }
+      if (task.status === 'Overdue' || task.status === 'In Progress') {
+        return rawAts;
+      }
+    }
+
+    if (!task.target_date) {
+      return 0;
+    }
+
+    const targetDate = new Date(task.target_date);
+    if (Number.isNaN(targetDate.getTime())) {
+      return 0;
+    }
+
+    const completionDate = task.completion_date ? new Date(task.completion_date) : null;
+    if (!completionDate || Number.isNaN(completionDate.getTime())) {
+      return 0;
+    }
+
+    if (completionDate <= targetDate) {
+      return 100;
+    }
+
+    const startDate = task.start_date ? new Date(task.start_date) : new Date(targetDate);
+    const effectiveStartDate = startDate > targetDate ? new Date(targetDate) : startDate;
+    const msInDay = 1000 * 60 * 60 * 24;
+
+    const denominator = (completionDate - effectiveStartDate) / msInDay;
+    if (denominator <= 0) {
+      return 0;
+    }
+
+    const numerator = (targetDate - effectiveStartDate) / msInDay;
+    if (numerator <= 0) {
+      return Number((100 / denominator).toFixed(2));
+    }
+
+    return Number(Math.max(0, (numerator / denominator) * 100).toFixed(2));
+  };
+
   const calculateWeeklyScores = (tasks) => {
     const weeks = getWeeksInMonth(currentDate.getFullYear(), currentDate.getMonth());
     const scores = weeks.map(week => {
@@ -74,25 +136,20 @@ const WeeklyScore = () => {
         return dayOfTask >= week.start && dayOfTask <= week.end;
       });
 
-      // Filter out "In Progress" tasks (null/excluded from calculation)
-      const validTasks = weekTasks.filter(task => task.status !== 'In Progress');
-
-      // If no valid tasks in this week, show 0
-      if (validTasks.length === 0) {
-        return '0.00%';
+      // If no tasks assigned in this week, show '-'
+      if (weekTasks.length === 0) {
+        return '-';
       }
 
-      // Calculate average ATS score: treat Overdue as 0, exclude In Progress
-      const avgAts = validTasks.reduce((sum, task) => {
-        let atsScore = parseFloat(task.ats_score) || 0;
-        if (task.status === 'Overdue') {
-          atsScore = 0;
-        }
-        return sum + atsScore;
-      }, 0) / validTasks.length;
+      // Calculate average ATS score for tasks in the week, then (avg - 100)
+      const totalAtsInCents = weekTasks.reduce((sum, task) => {
+        const ats = getTaskAtsForWeeklyScore(task);
+        return sum + Math.round(ats * 100);
+      }, 0);
+      const avgAts = Math.round(totalAtsInCents / weekTasks.length) / 100;
 
       const performanceScore = avgAts - 100;
-      return `${performanceScore.toFixed(2)}`;
+      return performanceScore.toFixed(2);
     });
 
     return scores;
@@ -156,7 +213,9 @@ const WeeklyScore = () => {
 
   // Helper for score color
   const getScoreColor = (scoreStr) => {
-    const val = parseFloat(scoreStr.replace('%', ''));
+    if (scoreStr === '-') return 'text-slate-500 bg-slate-100';
+    const val = Number.parseFloat(String(scoreStr).replace('%', ''));
+    if (Number.isNaN(val)) return 'text-slate-500 bg-slate-100';
     if (val < 0) return 'text-red-600 bg-red-50';
     if (val > 0) return 'text-green-600 bg-green-50';
     return 'text-slate-500 bg-slate-100';
@@ -164,111 +223,121 @@ const WeeklyScore = () => {
 
   return (
     <div className="h-screen w-screen bg-gray-50 font-sans text-slate-800 flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all duration-300">
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-600 rounded-lg text-white shadow-md shadow-blue-200">
-              <CalendarDays size={24} />
+          {/* HEADER */}
+          <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-600 rounded-lg text-white shadow-md shadow-blue-200">
+                <CalendarDays size={24} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Planning Period</p>
+                <h1 className="text-2xl font-bold text-slate-900">{monthName}</h1>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Planning Period</p>
-              <h1 className="text-2xl font-bold text-slate-900">{monthName}</h1>
+
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+              <button
+                onClick={() =>
+                  setCurrentDate((prevDate) =>
+                    new Date(prevDate.getFullYear(), prevDate.getMonth() - 1, 1)
+                  )
+                }
+                className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-3 text-sm font-medium text-slate-600 min-w-[100px] text-center">Navigate</span>
+              <button
+                onClick={() =>
+                  setCurrentDate((prevDate) =>
+                    new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1)
+                  )
+                }
+                className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
+                <ChevronRight size={18} />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
-            <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
-              <ChevronLeft size={18} />
-            </button>
-            <span className="px-3 text-sm font-medium text-slate-600 min-w-[100px] text-center">Navigate</span>
-            <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* TABLE */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Activity className="text-blue-600" size={20} />
-              Performance Overview
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs">
-                <tr>
-                  <th className="px-6 py-4 font-semibold w-1/4">Team Member</th>
-                  {weeks.map((wk, i) => (
-                    <th key={i} className="px-4 py-4 text-center">
-                      <div className="flex flex-col items-center">
-                        <span className={wk.isShort ? 'text-amber-600' : ''}>{wk.label}</span>
-                        <span className="text-[10px] font-normal normal-case text-slate-400 mt-0.5">
-                          {wk.start}-{wk.end} {currentDate.toLocaleString('default', { month: 'short' })}
-                        </span>
-                        {wk.isShort && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mt-1">SHORT</span>}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
+          {/* TABLE */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Activity className="text-blue-600" size={20} />
+                Performance Overview
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs">
                   <tr>
-                    <td colSpan={weeks.length + 2} className="px-6 py-8 text-center text-slate-500">
-                      <div className="flex justify-center items-center gap-2">
-                        <div className="animate-spin h-4 w-4 border-2 border-slate-300 border-t-slate-900 rounded-full"></div>
-                        Loading team performance...
-                      </div>
-                    </td>
+                    <th className="px-6 py-4 font-semibold w-1/4">Team Member</th>
+                    {weeks.map((wk, i) => (
+                      <th key={i} className="px-4 py-4 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className={wk.isShort ? 'text-amber-600' : ''}>{wk.label}</span>
+                          <span className="text-[10px] font-normal normal-case text-slate-400 mt-0.5">
+                            {wk.start}-{wk.end} {currentDate.toLocaleString('default', { month: 'short' })}
+                          </span>
+                          {wk.isShort && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mt-1">SHORT</span>}
+                        </div>
+                      </th>
+                    ))}
                   </tr>
-                ) : teamData.length === 0 ? (
-                  <tr>
-                    <td colSpan={weeks.length + 2} className="px-6 py-8 text-center text-slate-500">
-                      No team data available for this period.
-                    </td>
-                  </tr>
-                ) : (
-                  teamData.map((user, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">
-                            {user.name.charAt(0)}{user.name.split(' ')[1]?.[0]}
-                          </div>
-                          <span className="font-semibold text-slate-700">{user.name}</span>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={weeks.length + 1} className="px-6 py-8 text-center text-slate-500">
+                        <div className="flex justify-center items-center gap-2">
+                          <div className="animate-spin h-4 w-4 border-2 border-slate-300 border-t-slate-900 rounded-full"></div>
+                          Loading team performance...
                         </div>
                       </td>
-                      {weeks.map((_, i) => (
-                        <td key={i} className="px-4 py-4 text-center">
-                          <span className={`inline-block px-3 py-1.5 rounded-md font-medium text-xs ${getScoreColor(user.scores[i] || '0%')}`}>
-                            {user.scores[i] || "0.00%"}
-                          </span>
-                        </td>
-                      ))}
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-blue-600 hover:text-blue-700 font-medium text-xs hover:underline">
-                          View Details
-                        </button>
+                    </tr>
+                  ) : teamData.length === 0 ? (
+                    <tr>
+                      <td colSpan={weeks.length + 1} className="px-6 py-8 text-center text-slate-500">
+                        No team data available for this period.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    teamData.map((user, idx) => (
+                      <tr key={user.id || idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">
+                              {(user.name || 'U')
+                                .trim()
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((part) => part.charAt(0))
+                                .join('')
+                                .toUpperCase()}
+                            </div>
+                            <span className="font-semibold text-slate-700">{user.name}</span>
+                          </div>
+                        </td>
+                        {weeks.map((_, i) => (
+                          <td key={i} className="px-4 py-4 text-center">
+                            <span className={`inline-block px-3 py-1.5 rounded-md font-medium text-xs ${getScoreColor(user.scores[i] ?? '-')}`}>
+                              {user.scores[i] ?? '-'}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
+import EditProfileModal from '../../components/EditProfileModal';
 import {
   Mail,
   LayoutGrid,
@@ -11,6 +12,10 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Phone,
+  MapPin,
+  Eye,
+  X
 } from 'lucide-react';
 import api from '../../api';
 
@@ -21,9 +26,11 @@ const ClientProfile = () => {
   const [client, setClient] = useState(null);
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statsStartIndex, setStatsStartIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [fullUserData, setFullUserData] = useState(null);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -46,8 +53,15 @@ const ClientProfile = () => {
 
         setClient(clientRes.data);
         setProjects(projectsRes.data);
-
         setEmployees(clientRes.data.employees || []);
+
+        // Also fetch 'me' for the edit modal
+        try {
+          const meRes = await api.get('me/');
+          setFullUserData(meRes.data);
+        } catch (e) {
+          console.error("Failed to fetch self info", e);
+        }
 
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -70,7 +84,7 @@ const ClientProfile = () => {
   if (!client) return <div className="p-20 text-center font-bold text-slate-400">Client Profile Not Found</div>;
 
   const profileCards = [
-    { label: 'Task Manage', value: 'Dashboard', icon: <LayoutGrid size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', path: '/employeedashboard' },
+    { label: 'Task Management', value: 'Dashboard', icon: <LayoutGrid size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', path: '/employeedashboard' },
     { label: 'Clients / Project', value: 'Portfolio', icon: <Briefcase size={20} />, color: 'text-purple-600', bg: 'bg-purple-50', path: client?.id ? `/clients/${client.id}/` : '/clients' },
     { label: 'KPI Performance', value: 'Metrics', icon: <Target size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/weekly-score' },
     { label: 'DDTME', value: 'Review', icon: <Box size={20} />, color: 'text-orange-600', bg: 'bg-orange-50', path: '/ddtme' },
@@ -91,7 +105,7 @@ const ClientProfile = () => {
 
   return (
     <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all py-8 space-y-16 animate-in fade-in duration-700">
         <div className="max-w-400 mx-auto px-6 md:px-10">
@@ -109,16 +123,16 @@ const ClientProfile = () => {
 
             <div className="flex-1 overflow-hidden">
               <div
-                className="flex -mx-3 md:-mx-4 transition-transform duration-500 ease-out"
+                className="flex transition-transform duration-500 ease-out"
                 style={{ transform: `translateX(-${statsStartIndex * 25}%)` }}
               >
                 {profileCards.map((stat, index) => (
                   <button
                     key={index}
                     onClick={() => navigate(stat.path)}
-                    className="min-w-0 shrink-0 basis-1/4 px-3 md:px-4 text-left bg-white border border-slate-200 rounded-3xl shadow-sm hover:shadow-xl hover:border-[#F58A4B]/30 hover:-translate-y-1 transition-all duration-300 group"
+                    className="min-w-0 shrink-0 basis-1/4 px-2 md:px-3 text-left transition-all duration-300 group outline-none"
                   >
-                    <div className="p-6">
+                    <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-[#F58A4B]/30 group-hover:-translate-y-1 transition-all duration-300 p-6 h-full">
                       <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                         {stat.icon}
                       </div>
@@ -147,24 +161,59 @@ const ClientProfile = () => {
 
               <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
                 <div className="relative shrink-0">
-                  <div className="w-40 h-40 rounded-full border-4 border-white/10 bg-slate-800 flex items-center justify-center text-5xl font-black shadow-2xl uppercase">
-                    {(client.company_name || 'C').charAt(0)}
-                  </div>
+                  {fullUserData?.photo ? (
+                    <img
+                      src={fullUserData.photo}
+                      alt="Client"
+                      className="w-40 h-40 rounded-full border-4 border-white/10 object-cover shadow-2xl"
+                    />
+                  ) : (
+                    <div className="w-40 h-40 rounded-full border-4 border-white/10 bg-slate-800 flex items-center justify-center text-5xl font-black shadow-2xl uppercase">
+                      {client.company_name.charAt(0)}
+                    </div>
+                  )}
                   <div className="absolute bottom-4 right-4 bg-emerald-500 w-5 h-5 rounded-full border-4 border-slate-900 shadow-lg animate-pulse"></div>
                 </div>
 
                 <div className="flex-1 text-center md:text-left">
-                  <span className="bg-[#F58A4B] text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-lg">
-                    Client Organization
-                  </span>
-                  <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase italic mt-4">
-                    {client.company_name || 'Client Profile'}
-                  </h1>
-                  <div className="mt-4 flex items-center justify-center md:justify-start gap-4 text-slate-400">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <span className="bg-[#F58A4B] text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-lg">
+                        Strategic Partner
+                      </span>
+                      <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase italic mt-4">
+                        {client.company_name}
+                      </h1>
+                    </div>
+                  </div>
+                  <div className="mt-8 flex flex-wrap items-center justify-center md:justify-start gap-8 text-slate-400 border-b border-white/5 pb-4 mb-4">
                     <div className="flex items-center gap-2">
                       <Mail size={16} className="text-[#F58A4B]" />
-                      <span className="text-sm font-bold">{client.contact_email || 'N/A'}</span>
+                      <span className="text-sm font-bold tracking-tight">{client.email}</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Phone size={16} className="text-[#F58A4B]" />
+                      <span className="text-sm font-bold tracking-tight">{client.phone}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin size={16} className="text-[#F58A4B]" />
+                      <span className="text-sm font-bold tracking-tight">{client.address}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+                    <button
+                      onClick={() => setIsInfoModalOpen(true)}
+                      className="px-8 py-3.5 bg-white text-slate-900 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-xl border border-slate-100"
+                    >
+                      <span className="inline-flex items-center gap-2"><Eye size={16} /> View Information</span>
+                    </button>
+                    <button
+                      onClick={() => setIsEditModalOpen(true)}
+                      className="px-8 py-3.5 bg-[#F58A4B] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white hover:text-[#F58A4B] transition-all shadow-xl shadow-[#F58A4B]/20"
+                    >
+                      Edit Profile
+                    </button>
                   </div>
                   <p className="text-xs font-bold text-slate-300 mt-4">
                     Projects: {projects.length} • Team Members: {employees.length}
@@ -173,6 +222,71 @@ const ClientProfile = () => {
               </div>
             </div>
           </div>
+
+          <EditProfileModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            initialData={fullUserData}
+            onUpdate={(updatedData) => {
+              setFullUserData(updatedData);
+              // Also update the client display photo if it changed
+              if (updatedData.photo) {
+                setClient(prev => ({ ...prev, photo: updatedData.photo }));
+              }
+            }}
+          />
+
+          {isInfoModalOpen && (
+            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+              <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-4xl shadow-2xl relative border border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsInfoModalOpen(false)}
+                  className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                >
+                  <X size={22} />
+                </button>
+
+                <div className="p-8 md:p-10 space-y-6">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Client Information</h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Company</p>
+                      <p className="font-bold text-slate-800">{client.company_name || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Contact Email</p>
+                      <p className="font-bold text-slate-800">{client.contact_email || fullUserData?.email || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phone</p>
+                      <p className="font-bold text-slate-800">{client.phone || fullUserData?.phone_number || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Website</p>
+                      <p className="font-bold text-slate-800 break-all">{client.website || 'N/A'}</p>
+                    </div>
+                    <div className="md:col-span-2 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Address</p>
+                      <p className="font-bold text-slate-800">{client.address || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Projects</p>
+                      <p className="text-xl font-black text-slate-900">{projects.length}</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Team Members</p>
+                      <p className="text-xl font-black text-slate-900">{employees.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>

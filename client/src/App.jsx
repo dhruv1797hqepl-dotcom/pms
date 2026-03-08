@@ -20,6 +20,7 @@ import ActionPlanDashboard from './pages/ActionPlanDashboard';
 import WeeklyScore from './pages/WeeklyScore';
 import ExternalManagement from './pages/ExternalManagement';
 import MCTC from './pages/MCTC';
+import MandaysPlanning from './pages/MandaysPlanning';
 import VisitAgenda from './pages/VisitAgenda';
 import VisitAgendaList from './pages/VisitAgendaList';
 import DDTMEBasePage from './pages/DDTME/DDTMEBasePage';
@@ -62,7 +63,9 @@ const App = () => {
 
 
         <Route path='/projects/:projectId/actionplan' element={<ActionPlanDashboard />} />
+        <Route path='/weekly-score' element={<WeeklyScore />} />
         <Route path='/weeklyscore' element={<WeeklyScore />} />
+        <Route path='/mandays-planning' element={<MandaysPlanning />} />
         <Route path = '/mctc' element = {<MCTC />} />
         <Route path = '/visitagenda' element = {<VisitAgendaList />} />
         <Route path = '/visitagenda/:clientId' element = {<VisitAgenda />} />

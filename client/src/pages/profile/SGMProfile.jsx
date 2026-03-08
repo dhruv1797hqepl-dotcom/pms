@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
+import EditProfileModal from '../../components/EditProfileModal';
 import api from '../../api'; // Assuming you use the api instance we set up
 import {
   Users, Briefcase, Box, Eye, LayoutGrid,
-  Target, ChevronRight, Mail, ShieldCheck, UserPlus, TrendingUp, ChevronLeft, CalendarDays
+  Target, ChevronRight, Mail, ShieldCheck, UserPlus, TrendingUp, ChevronLeft, CalendarDays,
+  Phone, X
 } from 'lucide-react';
 
 const SGMProfile = () => {
@@ -13,8 +15,10 @@ const SGMProfile = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statsStartIndex, setStatsStartIndex] = useState(0);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [fullUserData, setFullUserData] = useState(null);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 
   const [userProfile, setUserProfile] = useState({
     name: "SGM User",
@@ -48,6 +52,7 @@ const SGMProfile = () => {
         ]);
 
         const meData = meRes.data;
+        setFullUserData(meData);
         let displayName = meData.username;
         if (meData.first_name || meData.last_name) {
           displayName = `${meData.first_name} ${meData.last_name}`.trim();
@@ -83,10 +88,10 @@ const SGMProfile = () => {
   };
 
   const sgmStats = [
-    { label: "Task Manage", value: "Dashboard", icon: <LayoutGrid size={20} />, color: "text-blue-600", bg: "bg-blue-50", path: "/employeedashboard" },
+    { label: "Task Management", value: "Dashboard", icon: <LayoutGrid size={20} />, color: "text-blue-600", bg: "bg-blue-50", path: "/employeedashboard" },
     { label: "Clients / Project", value: "Portfolio", icon: <Briefcase size={20} />, color: "text-purple-600", bg: "bg-purple-50", path: "/clients" },
     { label: "KPI Performance", value: "Metrics", icon: <Target size={20} />, color: "text-emerald-600", bg: "bg-emerald-50", path: "/weekly-score" },
-    { label: "DDTME Approval", value: "Review", icon: <Box size={20} />, color: "text-orange-600", bg: "bg-orange-50", path: "/ddtme" },
+    { label: "DDTME", value: "Review", icon: <Box size={20} />, color: "text-orange-600", bg: "bg-orange-50", path: "/ddtme" },
     { label: "MCTC", value: "Overview", icon: <Users size={20} />, color: "text-rose-600", bg: "bg-rose-50", path: "/mctc" },
     { label: "Visit Agenda", value: "Schedule", icon: <CalendarDays size={20} />, color: "text-cyan-600", bg: "bg-cyan-50", path: "/visitagenda" },
   ];
@@ -104,90 +109,190 @@ const SGMProfile = () => {
 
   return (
     <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className={`flex-1 overflow-y-auto transition-all duration-300 py-8 space-y-16 animate-in fade-in duration-700`}>
         <div className="max-w-[1600px] mx-auto px-6 md:px-10">
 
 
-        {/* 1. EXECUTIVE OVERVIEW */}
-        <div className="mt-14 flex items-center gap-6 md:gap-8">
-          <button
-            type="button"
-            onClick={handleStatsLeft}
-            disabled={statsStartIndex === 0}
-            className="h-12 w-12 rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm flex items-center justify-center transition-all duration-300 hover:border-[#F58A4B]/40 hover:text-[#F58A4B] disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Scroll cards left"
-          >
-            <ChevronLeft size={20} />
-          </button>
-
-          <div className="flex-1 overflow-hidden">
-            <div
-              className="flex -mx-3 md:-mx-4 transition-transform duration-500 ease-out"
-              style={{ transform: `translateX(-${statsStartIndex * 25}%)` }}
+          {/* 1. EXECUTIVE OVERVIEW */}
+          <div className="mt-14 flex items-center gap-6 md:gap-8">
+            <button
+              type="button"
+              onClick={handleStatsLeft}
+              disabled={statsStartIndex === 0}
+              className="h-12 w-12 rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm flex items-center justify-center transition-all duration-300 hover:border-[#F58A4B]/40 hover:text-[#F58A4B] disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Scroll cards left"
             >
-              {sgmStats.map((stat, index) => (
-                <button
-                  key={index}
-                  onClick={() => navigate(stat.path)}
-                  className="min-w-0 shrink-0 basis-1/4 px-3 md:px-4 text-left bg-white border border-slate-200 rounded-3xl shadow-sm hover:shadow-xl hover:border-[#F58A4B]/30 hover:-translate-y-1 transition-all duration-300 group"
-                >
-                  <div className="p-6">
-                    <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                      {stat.icon}
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="flex-1 overflow-hidden">
+              <div
+                className="flex transition-transform duration-500 ease-out"
+                style={{ transform: `translateX(-${statsStartIndex * 25}%)` }}
+              >
+                {sgmStats.map((stat, index) => (
+                  <button
+                    key={index}
+                    onClick={() => navigate(stat.path)}
+                    className="min-w-0 shrink-0 basis-1/4 px-2 md:px-3 text-left transition-all duration-300 group outline-none"
+                  >
+                    <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-[#F58A4B]/30 group-hover:-translate-y-1 transition-all duration-300 p-6 h-full">
+                      <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                        {stat.icon}
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-xl font-black text-slate-900 tracking-tight mt-1">{stat.value}</p>
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
-                    <p className="text-xl font-black text-slate-900 tracking-tight mt-1">{stat.value}</p>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleStatsRight}
+              disabled={statsStartIndex === maxStatsIndex}
+              className="h-12 w-12 rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm flex items-center justify-center transition-all duration-300 hover:border-[#F58A4B]/40 hover:text-[#F58A4B] disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Scroll cards right"
+            >
+              <ChevronRight size={20} />
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleStatsRight}
-            disabled={statsStartIndex === maxStatsIndex}
-            className="h-12 w-12 rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm flex items-center justify-center transition-all duration-300 hover:border-[#F58A4B]/40 hover:text-[#F58A4B] disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Scroll cards right"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
+          {/* 2. SGM IDENTITY CARD */}
+          <div className="mt-12 pt-12 border-t border-slate-200">
+            <div className="bg-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden text-white">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-[#F58A4B] rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
 
-        {/* 2. SGM IDENTITY CARD */}
-        <div className="mt-12 pt-12 border-t border-slate-200">
-        <div className="bg-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden text-white">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-[#F58A4B] rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+              <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
+                <div className="relative shrink-0">
+                  <img
+                    src={fullUserData?.photo || "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=256"}
+                    alt="SGM"
+                    className="w-40 h-40 rounded-full border-4 border-white/10 object-cover shadow-2xl"
+                  />
+                  <div className="absolute bottom-4 right-4 bg-emerald-500 w-5 h-5 rounded-full border-4 border-slate-900 shadow-lg animate-pulse"></div>
+                </div>
 
-          <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
-            <div className="relative shrink-0">
-              <img
-                src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=256"
-                alt="SGM"
-                className="w-40 h-40 rounded-full border-4 border-white/10 object-cover shadow-2xl"
-              />
-              <div className="absolute bottom-4 right-4 bg-emerald-500 w-5 h-5 rounded-full border-4 border-slate-900 shadow-lg animate-pulse"></div>
-            </div>
+                <div className="flex-1 text-center md:text-left">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <span className="bg-[#F58A4B] text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-lg">
+                        {userProfile.role}
+                      </span>
+                      <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase italic mt-4">
+                        {userProfile.name}
+                      </h1>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex items-center justify-center md:justify-start gap-6 text-slate-400 border-b border-white/5 pb-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Mail size={16} className="text-[#F58A4B]" />
+                      <span className="text-sm font-bold tracking-tight">{userProfile.email}</span>
+                    </div>
+                    {fullUserData?.phone_number && (
+                      <div className="flex items-center gap-2">
+                        <Phone size={16} className="text-[#F58A4B]" />
+                        <span className="text-sm font-bold tracking-tight">{fullUserData.phone_number}</span>
+                      </div>
+                    )}
+                  </div>
 
-            <div className="flex-1 text-center md:text-left">
-              <span className="bg-[#F58A4B] text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-lg">
-                {userProfile.role}
-              </span>
-              <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase italic mt-4">
-                {userProfile.name}
-              </h1>
-              <div className="mt-4 flex items-center justify-center md:justify-start gap-4 text-slate-400">
-                <div className="flex items-center gap-2">
-                  <Mail size={16} className="text-[#F58A4B]" />
-                  <span className="text-sm font-bold">{userProfile.email}</span>
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+                    <button
+                      onClick={() => setIsInfoModalOpen(true)}
+                      className="px-8 py-3.5 bg-white text-slate-900 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-xl border border-slate-100"
+                    >
+                      <span className="inline-flex items-center gap-2"><Eye size={16} /> View Information</span>
+                    </button>
+                    <button
+                      onClick={() => setIsEditModalOpen(true)}
+                      className="px-8 py-3.5 bg-[#F58A4B] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white hover:text-[#F58A4B] transition-all shadow-xl shadow-[#F58A4B]/20"
+                    >
+                      Edit Profile
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        </div>
+
+          <EditProfileModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            initialData={fullUserData}
+            onUpdate={(updatedData) => {
+              setFullUserData(updatedData);
+              // Update display name if it changed
+              let displayName = updatedData.username;
+              if (updatedData.first_name || updatedData.last_name) {
+                displayName = `${updatedData.first_name || ''} ${updatedData.last_name || ''}`.trim();
+              }
+              setUserProfile(prev => ({
+                ...prev,
+                name: displayName,
+                email: updatedData.email
+              }));
+            }}
+          />
+
+          {isInfoModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+              <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2rem] shadow-2xl relative border border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsInfoModalOpen(false)}
+                  className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                >
+                  <X size={22} />
+                </button>
+
+                <div className="p-8 md:p-10 space-y-6">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">SGM Information</h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</p>
+                      <p className="font-bold text-slate-800">{userProfile.name || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Role</p>
+                      <p className="font-bold text-slate-800">{userProfile.role || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email</p>
+                      <p className="font-bold text-slate-800 break-all">{userProfile.email || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phone</p>
+                      <p className="font-bold text-slate-800">{fullUserData?.phone_number || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Experience</p>
+                      <p className="font-bold text-slate-800">{fullUserData?.experience || 'N/A'}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Expertise</p>
+                      <p className="font-bold text-slate-800 whitespace-pre-wrap">{fullUserData?.expertise || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Projects</p>
+                      <p className="text-xl font-black text-slate-900">{projects.length}</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Employees</p>
+                      <p className="text-xl font-black text-slate-900">{employees.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>

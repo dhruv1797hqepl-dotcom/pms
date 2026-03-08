@@ -4,9 +4,15 @@ import { Building2, Mail, Phone, ArrowRight, Loader2, ChevronLeft } from "lucide
 import Sidebar from "../components/Sidebar";
 import api from "../api";
 
+const VISIT_AGENDA_LIST_ENDPOINTS = {
+    clientsList: "/clients/list/",
+    sgmClients: "/sgm/clients/",
+    employeeClients: "/employees/clients/",
+    externalClients: "/employees/external-clients/",
+};
+
 const VisitAgendaList = () => {
     const navigate = useNavigate();
-    const [sidebarOpen, setSidebarOpen] = useState(true);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -18,11 +24,11 @@ const VisitAgendaList = () => {
                 setError(null);
 
                 const role = (localStorage.getItem("role") || "").toUpperCase();
-                let endpoint = "clients/list/";
+                let endpoint = VISIT_AGENDA_LIST_ENDPOINTS.clientsList;
 
-                if (role === "SGM") endpoint = "sgm/clients/";
-                if (role === "EMPLOYEE") endpoint = "employees/clients/";
-                if (role === "EXTERNAL") endpoint = "employees/external-clients/";
+                if (role === "SGM") endpoint = VISIT_AGENDA_LIST_ENDPOINTS.sgmClients;
+                if (role === "EMPLOYEE") endpoint = VISIT_AGENDA_LIST_ENDPOINTS.employeeClients;
+                if (role === "EXTERNAL") endpoint = VISIT_AGENDA_LIST_ENDPOINTS.externalClients;
 
                 const response = await api.get(endpoint);
                 setClients(Array.isArray(response.data) ? response.data : []);
@@ -39,7 +45,7 @@ const VisitAgendaList = () => {
 
     return (
         <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
-            <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+            <Sidebar />
 
             <main className="flex-1 overflow-y-auto px-8 py-10 space-y-10">
                 <div className="max-w-[1400px] mx-auto space-y-8">

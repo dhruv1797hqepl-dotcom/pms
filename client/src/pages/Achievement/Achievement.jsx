@@ -3,27 +3,21 @@ import Sidebar from '../../components/Sidebar';
 import { Award, CheckCircle2, CircleDot } from 'lucide-react';
 import api from '../../api';
 
-const STORAGE_KEY = 'achievements_store_v1';
+const ACHIEVEMENT_ENDPOINTS = {
+  achievements: 'achievement/achievements/',
+  toggleTokenShared: (achievementId) => `achievement/achievements/${achievementId}/toggle-token-shared/`,
+  sgmEmployees: 'sgm/employees/',
+  adminEmployees: 'admin/users/?role=EMPLOYEE',
+  adminUsers: 'admin/users/',
+};
 
 const Achievement = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [allAchievements, setAllAchievements] = useState(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse achievements:', error);
-      return [];
-    }
-  });
+  const [allAchievements, setAllAchievements] = useState([]);
+  const [loadingAchievements, setLoadingAchievements] = useState(false);
+  const [savingAchievement, setSavingAchievement] = useState(false);
+  const [updatingTokenId, setUpdatingTokenId] = useState(null);
   const [formData, setFormData] = useState({
     employeeId: '',
-    employeeName: '',
     title: '',
     description: '',
   });
@@ -34,11 +28,29 @@ const Achievement = () => {
   const canAssign = ['SGM', 'HQEPL', 'ADMIN'].includes(role);
   const isAdmin = role === 'ADMIN';
   const isEmployee = role === 'EMPLOYEE';
-  const currentUserId = (localStorage.getItem('user_id') || '').toString();
 
-  const currentEmail = (localStorage.getItem('email') || '').toLowerCase();
-  const currentUsername = (localStorage.getItem('username') || '').toLowerCase();
-  const currentName = currentEmail ? currentEmail.split('@')[0].toLowerCase() : currentUsername;
+  const loadAchievements = async () => {
+    try {
+      setLoadingAchievements(true);
+      const response = await api.get(ACHIEVEMENT_ENDPOINTS.achievements);
+      const records = Array.isArray(response.data)
+        ? response.data
+        : Array.isArray(response.data?.results)
+          ? response.data.results
+          : [];
+
+      setAllAchievements(records);
+    } catch (error) {
+      console.error('Failed to load achievements:', error);
+      setAllAchievements([]);
+    } finally {
+      setLoadingAchievements(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAchievements();
+  }, []);
 
   useEffect(() => {
     const loadEmployees = async () => {
@@ -53,7 +65,7 @@ const Achievement = () => {
         let employees = [];
 
         if (role === 'SGM') {
-          const response = await api.get('sgm/employees/');
+          const response = await api.get(ACHIEVEMENT_ENDPOINTS.sgmEmployees);
           employees = Array.isArray(response.data)
             ? response.data
             : Array.isArray(response.data?.results)
@@ -61,14 +73,14 @@ const Achievement = () => {
               : [];
         } else {
           try {
-            const response = await api.get('admin/users/?role=EMPLOYEE');
+            const response = await api.get(ACHIEVEMENT_ENDPOINTS.adminEmployees);
             employees = Array.isArray(response.data)
               ? response.data
               : Array.isArray(response.data?.results)
                 ? response.data.results
                 : [];
           } catch {
-            const fallback = await api.get('admin/users/');
+            const fallback = await api.get(ACHIEVEMENT_ENDPOINTS.adminUsers);
             const allUsers = Array.isArray(fallback.data)
               ? fallback.data
               : Array.isArray(fallback.data?.results)
@@ -106,43 +118,14 @@ const Achievement = () => {
     loadEmployees();
   }, [canAssign, role]);
 
-  const persist = (nextData) => {
-    setAllAchievements(nextData);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextData));
-  };
-
   const visibleAchievements = useMemo(() => {
-    if (isAdmin || role === 'SGM' || role === 'HQEPL') {
-      return [...allAchievements].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    }
-
-    if (isEmployee) {
-      return [...allAchievements]
-        .filter((item) => {
-          const targetEmployeeId = (item.employeeId || '').toString();
-          const targetEmail = (item.employeeEmail || '').toLowerCase();
-          const targetName = (item.employeeName || '').toLowerCase();
-          return (
-            (currentUserId && targetEmployeeId === currentUserId) ||
-            (currentEmail && targetEmail === currentEmail) ||
-            (currentName && targetName === currentName) ||
-            (currentUsername && targetName === currentUsername)
-          );
-        })
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    }
-
-    return [];
-  }, [allAchievements, currentEmail, currentName, currentUserId, currentUsername, isAdmin, isEmployee, role]);
+    return [...allAchievements].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [allAchievements]);
 
   const handleEmployeeSelect = (event) => {
-    const selectedId = event.target.value;
-    const selectedEmployee = employeeOptions.find((employee) => employee.id === selectedId);
-
     setFormData((prev) => ({
       ...prev,
-      employeeId: selectedId,
-      employeeName: selectedEmployee?.name || '',
+      employeeId: event.target.value,
     }));
   };
 
@@ -151,59 +134,65 @@ const Achievement = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleAssign = (event) => {
+  const handleAssign = async (event) => {
     event.preventDefault();
 
     if (!canAssign) {
       return;
     }
 
-    const newItem = {
-      id: Date.now(),
+    const payload = {
       employeeId: formData.employeeId,
-      employeeName: formData.employeeName.trim(),
       title: formData.title.trim(),
       description: formData.description.trim(),
-      assignedByRole: role,
-      assignedBy: localStorage.getItem('email') || localStorage.getItem('username') || role,
-      tokenShared: false,
-      createdAt: new Date().toISOString(),
     };
 
     if (
-      !newItem.employeeId ||
-      !newItem.employeeName ||
-      !newItem.title ||
-      !newItem.description
+      !payload.employeeId ||
+      !payload.title ||
+      !payload.description
     ) {
       return;
     }
 
-    persist([newItem, ...allAchievements]);
+    try {
+      setSavingAchievement(true);
+      const response = await api.post(ACHIEVEMENT_ENDPOINTS.achievements, payload);
+      setAllAchievements((prev) => [response.data, ...prev]);
 
-    setFormData({
-      employeeId: '',
-      employeeName: '',
-      title: '',
-      description: '',
-    });
+      setFormData({
+        employeeId: '',
+        title: '',
+        description: '',
+      });
+    } catch (error) {
+      console.error('Failed to assign achievement:', error);
+    } finally {
+      setSavingAchievement(false);
+    }
   };
 
-  const toggleTokenShared = (achievementId) => {
+  const toggleTokenShared = async (achievementId) => {
     if (!isAdmin) {
       return;
     }
 
-    const nextData = allAchievements.map((item) =>
-      item.id === achievementId ? { ...item, tokenShared: !item.tokenShared } : item
-    );
-
-    persist(nextData);
+    try {
+      setUpdatingTokenId(achievementId);
+      const response = await api.post(ACHIEVEMENT_ENDPOINTS.toggleTokenShared(achievementId));
+      setAllAchievements((prev) =>
+        prev.map((item) => (item.id === achievementId ? response.data : item))
+      );
+    } catch (error) {
+      console.error('Failed to update token sharing state:', error);
+    } finally {
+      setUpdatingTokenId(null);
+    }
   };
 
   return (
     <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar />
 
       <main className="flex-1 overflow-y-auto py-8">
         <div className="max-w-6xl mx-auto px-6 md:px-10 space-y-8 mt-10">
@@ -257,9 +246,10 @@ const Achievement = () => {
                 <div className="md:col-span-2 flex justify-end">
                   <button
                     type="submit"
+                    disabled={savingAchievement}
                     className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition-colors"
                   >
-                    Assign Achievement
+                    {savingAchievement ? 'Assigning...' : 'Assign Achievement'}
                   </button>
                 </div>
               </form>
@@ -271,7 +261,9 @@ const Achievement = () => {
               {isEmployee ? 'My Achievements' : 'Achievement List'}
             </h2>
 
-            {visibleAchievements.length === 0 ? (
+            {loadingAchievements ? (
+              <p className="text-sm text-slate-500">Loading achievements...</p>
+            ) : visibleAchievements.length === 0 ? (
               <p className="text-sm text-slate-500">No achievements available yet.</p>
             ) : (
               <div className="space-y-4">
@@ -301,11 +293,10 @@ const Achievement = () => {
 
                     <div className="flex items-center justify-between">
                       <span
-                        className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg ${
-                          item.tokenShared
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}
+                        className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg ${item.tokenShared
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-amber-50 text-amber-700'
+                          }`}
                       >
                         {item.tokenShared ? <CheckCircle2 size={14} /> : <CircleDot size={14} />}
                         {item.tokenShared ? 'Token Shared' : 'Token Not Shared'}
@@ -314,10 +305,13 @@ const Achievement = () => {
                       {isAdmin && (
                         <button
                           type="button"
+                          disabled={updatingTokenId === item.id}
                           onClick={() => toggleTokenShared(item.id)}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
                         >
-                          Mark as {item.tokenShared ? 'Not Shared' : 'Shared'}
+                          {updatingTokenId === item.id
+                            ? 'Updating...'
+                            : `Mark as ${item.tokenShared ? 'Not Shared' : 'Shared'}`}
                         </button>
                       )}
                     </div>

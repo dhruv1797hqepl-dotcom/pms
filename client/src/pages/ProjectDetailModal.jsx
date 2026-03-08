@@ -2,21 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, User, Briefcase, Info, Users, ShieldCheck } from 'lucide-react';
 import api from '../api';
 
+const PROJECT_DETAIL_ENDPOINTS = {
+  clientById: (clientId) => `/clients/${encodeURIComponent(clientId)}/`,
+  sgmEmployees: '/sgm/employees/',
+  projects: '/projects/',
+  projectById: (projectId) => `/projects/${encodeURIComponent(projectId)}/`,
+};
+
 const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, projectToEdit = null }) => {
   const [loading, setLoading] = useState(false);
   const [currentClient, setCurrentClient] = useState(null); // Store full client details
   const [internalTeamOptions, setInternalTeamOptions] = useState([]);
 
   const normalizeIdList = (value, fallbackObjects = []) => {
-    if (Array.isArray(value) && value.length > 0) {
-      return value
-        .map(item => (typeof item === 'object' && item !== null ? item.id : item))
-        .filter(Boolean);
-    }
-    if (Array.isArray(fallbackObjects) && fallbackObjects.length > 0) {
-      return fallbackObjects.map(item => item?.id).filter(Boolean);
-    }
-    return [];
+    const source = Array.isArray(value) && value.length > 0 ? value : fallbackObjects;
+    return source
+      .map((item) => (typeof item === 'object' && item !== null ? item.id : item))
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  };
+
+  const mergeMemberOptions = (...collections) => {
+    const memberMap = new Map();
+    collections.forEach((collection) => {
+      if (!Array.isArray(collection)) return;
+      collection.forEach((member) => {
+        const memberId = Number(member?.id);
+        if (!Number.isInteger(memberId) || memberId <= 0) return;
+        memberMap.set(memberId, { ...member, id: memberId });
+      });
+    });
+    return Array.from(memberMap.values());
   };
 
   const [formData, setFormData] = useState({
@@ -78,29 +94,35 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
         try {
           const token = localStorage.getItem('access_token');
           const headers = { Authorization: `Bearer ${token}` };
+          const userRole = (localStorage.getItem('role') || '').toUpperCase();
+          const userId = parseInt(localStorage.getItem('user_id') || '0', 10);
 
           // Fetch current client details to get auto-assigned data
           if (clientId) {
-            const clientRes = await api.get(`clients/${clientId}/`, { headers });
+            const clientRes = await api.get(PROJECT_DETAIL_ENDPOINTS.clientById(clientId), { headers });
             const clientData = clientRes.data;
             setCurrentClient(clientData);
 
-            // Set options
-            // Set options
-            setInternalTeamOptions(clientData.internal_team_details || []);
+            let scopedInternalMembers = clientData.internal_team_details || [];
+
+            if (userRole === 'SGM') {
+              try {
+                const employeeRes = await api.get(PROJECT_DETAIL_ENDPOINTS.sgmEmployees, { headers });
+                scopedInternalMembers = Array.isArray(employeeRes.data) ? employeeRes.data : [];
+              } catch (employeeError) {
+                console.warn('Failed to load SGM employee pool, using client internal team fallback', employeeError);
+              }
+            }
+
+            setInternalTeamOptions(
+              mergeMemberOptions(scopedInternalMembers, projectToEdit?.team_members_details || [])
+            );
 
             // Auto-set SGM logic
             // If user is SGM, set themselves
-            const userRole = (localStorage.getItem('role') || '').toUpperCase();
-            const userId = parseInt(localStorage.getItem('user_id') || '0'); // Assuming you store user_id
-
             if (userRole === 'SGM') {
-              // Verify if this SGM is in the client's assigned list (optional UI safety)
               setFormData(prev => ({ ...prev, assigned_sgm: userId }));
             } else if (clientData.assigned_sgms_details && clientData.assigned_sgms_details.length > 0) {
-              // For Admin/HQEPL, maybe select the first one or leave empty?
-              // Let's set the first one for now or handle via dropdown if we add one.
-              // Ideally Admin should pick. For now, default to first.
               setFormData(prev => ({ ...prev, assigned_sgm: clientData.assigned_sgms_details[0].id }));
             }
           }
@@ -120,23 +142,24 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
       const token = localStorage.getItem('access_token');
 
       // Sanitize payload
-      const payload = { ...formData };
-
-      // Map internal team selection to backend field
-      payload.assigned_employees = payload.internal_team_selection;
-      payload.external_team = payload.external_team_selection;
-
-      // Removed unnecessary fields
-      // delete payload.internal_team_selection; 
-
-      if (!payload.assigned_sgm) payload.assigned_sgm = null;
+      const payload = {
+        name: formData.name,
+        target: formData.target,
+        client: formData.client,
+        assigned_sgm: formData.assigned_sgm || null,
+        assigned_employees: normalizeIdList(formData.internal_team_selection),
+        external_team: normalizeIdList(formData.external_team_selection),
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        status: formData.status,
+      };
 
       if (projectToEdit) {
-        await api.patch(`projects/${projectToEdit.id}/`, payload, {
+        await api.patch(PROJECT_DETAIL_ENDPOINTS.projectById(projectToEdit.id), payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } else {
-        await api.post(`projects/`, payload, {
+        await api.post(PROJECT_DETAIL_ENDPOINTS.projects, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
@@ -162,18 +185,23 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
   };
 
   const handleTeamCheck = (id) => {
+    const numericId = Number(id);
+    if (!Number.isInteger(numericId) || numericId <= 0) return;
+
     const current = [...formData.internal_team_selection];
-    if (current.includes(id)) {
-      setFormData({ ...formData, internal_team_selection: current.filter(item => item !== id) });
+    if (current.includes(numericId)) {
+      setFormData({ ...formData, internal_team_selection: current.filter(item => item !== numericId) });
     } else {
-      setFormData({ ...formData, internal_team_selection: [...current, id] });
+      setFormData({ ...formData, internal_team_selection: [...current, numericId] });
     }
   };
 
   if (!isOpen) return null;
 
+  const isSgmUser = (localStorage.getItem('role') || '').toUpperCase() === 'SGM';
+
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-150 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
       <div className="relative bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 border border-slate-100">
         <div className="p-8 md:p-12">
@@ -237,22 +265,36 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
             <div className="space-y-4">
               {/* Internal Team */}
               <div className="space-y-2">
-                <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">Assign Internal Team (From Client's Squad)</label>
+                <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">
+                  Assign Internal Team ({isSgmUser ? "From SGM Assigned Team" : "From Client's Squad"})
+                </label>
                 {internalTeamOptions.length === 0 ? (
                   <div className="p-4 bg-slate-50 text-slate-400 text-xs text-center rounded-2xl border border-dashed border-slate-200">
-                    No internal team members assigned to this client.
+                    {isSgmUser
+                      ? 'No internal members available in your assigned team pool.'
+                      : 'No internal team members assigned to this client.'}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-100 rounded-3xl min-h-[80px]">
-                    {internalTeamOptions.map(m => (
-                      <button type="button" key={m.id} onClick={() => handleTeamCheck(m.id)}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.internal_team_selection.includes(m.id)
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-400 border-slate-200'
-                          }`}>
-                        {m.full_name || m.username}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-100 rounded-3xl min-h-20">
+                    {internalTeamOptions.map((m) => {
+                      const memberId = Number(m.id);
+                      if (!Number.isInteger(memberId) || memberId <= 0) return null;
+
+                      const isSelected = formData.internal_team_selection.includes(memberId);
+                      return (
+                        <button
+                          type="button"
+                          key={memberId}
+                          onClick={() => handleTeamCheck(memberId)}
+                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${isSelected
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-400 border-slate-200'
+                            }`}
+                        >
+                          {m.full_name || m.username}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -265,23 +307,33 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
                     No external members found for this client.
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-100 rounded-3xl min-h-[80px]">
-                    {currentClient?.employees?.map(m => (
-                      <button type="button" key={m.id} onClick={() => {
-                        const current = [...formData.external_team_selection];
-                        if (current.includes(m.id)) {
-                          setFormData({ ...formData, external_team_selection: current.filter(id => id !== m.id) });
-                        } else {
-                          setFormData({ ...formData, external_team_selection: [...current, m.id] });
-                        }
-                      }}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.external_team_selection.includes(m.id)
-                          ? 'bg-[#f5914e] text-white border-[#f5914e]'
-                          : 'bg-white text-slate-400 border-slate-200'
-                          }`}>
-                        {m.name || m.username} <span className="opacity-50 text-[8px] ml-1">({m.role})</span>
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-100 rounded-3xl min-h-20">
+                    {currentClient?.employees?.map((m) => {
+                      const memberId = Number(m.id);
+                      if (!Number.isInteger(memberId) || memberId <= 0) return null;
+
+                      const isSelected = formData.external_team_selection.includes(memberId);
+                      return (
+                        <button
+                          type="button"
+                          key={memberId}
+                          onClick={() => {
+                            const current = [...formData.external_team_selection];
+                            if (current.includes(memberId)) {
+                              setFormData({ ...formData, external_team_selection: current.filter(id => id !== memberId) });
+                            } else {
+                              setFormData({ ...formData, external_team_selection: [...current, memberId] });
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${isSelected
+                            ? 'bg-[#f5914e] text-white border-[#f5914e]'
+                            : 'bg-white text-slate-400 border-slate-200'
+                            }`}
+                        >
+                          {m.name || m.username} <span className="opacity-50 text-[8px] ml-1">({m.role})</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -303,7 +355,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
               </div>
             </div>
 
-            <button disabled={loading} className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] text-[11px] hover:bg-[#f5914e] transition-all shadow-xl shadow-slate-200">
+            <button disabled={loading} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-[0.2em] text-[11px] hover:bg-[#f5914e] transition-all shadow-xl shadow-slate-200">
               {loading ? 'Processing...' : (projectToEdit ? 'Update Configuration' : 'Deploy Project Instance')}
             </button>
           </form>
