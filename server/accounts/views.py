@@ -2,6 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import CustomUser
@@ -11,6 +12,7 @@ from .serializers import (
     AdminCreateUserSerializer,
     AdminListUserSerializer,
     HQEPLListSerializer,
+    UserProfileSerializer,
 )
 from .permissions import IsAdmin, IsHQEPL, IsSGM, IsEmployee
 
@@ -27,22 +29,13 @@ class RegisterView(generics.CreateAPIView):
 # =========================
 # LOGGED-IN USER INFO
 # =========================
-class UserDetailView(generics.RetrieveAPIView):
+class UserDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileSerializer
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
 
-    def get(self, request, *args, **kwargs):
-        user = request.user
-        return Response({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "role": user.role,
-            "is_active": user.is_active,
-            "date_joined": user.date_joined,
-            "last_login": user.last_login,
-        })
+    def get_object(self):
+        return self.request.user
 
 
 # =========================
@@ -116,7 +109,7 @@ class AdminUserListView(generics.ListAPIView):
 
 class HQEPLUserListView(generics.ListAPIView):
     serializer_class = HQEPLListSerializer
-    permission_classes = [IsAuthenticated, IsAdmin | IsHQEPL]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return CustomUser.objects.filter(role=CustomUser.HQEPL, is_active=True).order_by('first_name', 'last_name')

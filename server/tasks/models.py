@@ -115,7 +115,7 @@ class Task(models.Model):
             # Case 2: Start == Target != Completion (Standard logic from notes)
             # Interpretation: 1 / (Completion - Start) * 100
             if start == target and comp != start:
-                denom = (comp - start).days
+                denom = (comp - start).days + 1
                 if denom == 0: return 100.0
                 return round((1 / denom) * 100, 2)
 

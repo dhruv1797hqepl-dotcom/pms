@@ -59,8 +59,18 @@ class DDFMSDeliverable(models.Model):
     source_id = models.PositiveIntegerField(null=True, blank=True)
 
     title = models.CharField(max_length=255)
+    start_date = models.DateField(null=True, blank=True)
     target_date = models.DateField(null=True, blank=True)
     order_index = models.PositiveIntegerField(default=0)
+    is_submitted = models.BooleanField(default=False)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='submitted_ddfms_deliverables'
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

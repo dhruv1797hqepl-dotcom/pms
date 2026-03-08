@@ -13,10 +13,20 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameField(
-            model_name='project',
-            old_name='client_org',
-            new_name='client',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER TABLE projects_project RENAME COLUMN client_org_id TO client_id;',
+                    reverse_sql='ALTER TABLE projects_project RENAME COLUMN client_id TO client_org_id;',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameField(
+                    model_name='project',
+                    old_name='client_org',
+                    new_name='client',
+                ),
+            ],
         ),
         migrations.RemoveField(
             model_name='project',

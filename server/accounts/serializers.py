@@ -130,3 +130,32 @@ class HQEPLListSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         name = f"{obj.first_name} {obj.last_name}".strip()
         return name or obj.username
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = (
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'role',
+            'is_active',
+            'date_joined',
+            'last_login',
+            'phone_number',
+            'experience',
+            'expertise',
+            'photo',
+        )
+        read_only_fields = (
+            'id',
+            'username',
+            'email',
+            'role',
+            'is_active',
+            'date_joined',
+            'last_login',
+        )

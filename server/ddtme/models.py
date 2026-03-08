@@ -93,8 +93,8 @@ class ManDayEntry(models.Model):
     big_task = models.ForeignKey(BigTask, on_delete=models.CASCADE, null=True, blank=True, related_name='manday_entries')
     additional_task = models.ForeignKey(DDTMEAdditionalTask, on_delete=models.CASCADE, null=True, blank=True, related_name='manday_entries')
     
-    plan_hours = models.IntegerField(default=0)
-    off_hours = models.IntegerField(default=0)
+    plan_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    off_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -117,4 +117,40 @@ class ManDayEntry(models.Model):
     def __str__(self):
         task_title = self.big_task.title if self.big_task else (self.additional_task.title if self.additional_task else "Unknown")
         return f"{self.employee} - {task_title} ({self.plan_hours}/{self.off_hours})"
+
+
+class KPI(models.Model):
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="kpis"
+    )
+    name = models.CharField(max_length=255)
+    baseline = models.CharField(max_length=100)
+    target = models.CharField(max_length=100)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
+class KPIUpdate(models.Model):
+    kpi = models.ForeignKey(
+        KPI,
+        on_delete=models.CASCADE,
+        related_name="updates"
+    )
+    month = models.DateField()  # Store as first day of the month
+    update_value = models.CharField(max_length=255, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('kpi', 'month')
+
+    def __str__(self):
+        return f"{self.kpi.name} - {self.month.strftime('%Y-%m')}: {self.update_value}"
 

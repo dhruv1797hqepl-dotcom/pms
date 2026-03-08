@@ -92,6 +92,11 @@ from .serializers import DDTMESubmissionSerializer, DDTMEAdditionalTaskSerialize
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
+from django.contrib.auth import get_user_model
+from employees.models import Employee
+from decimal import Decimal, InvalidOperation
+
+User = get_user_model()
 
 class DDTMESubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = DDTMESubmissionSerializer
@@ -258,23 +263,121 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_update_hours(self, request):
         entries = request.data.get('entries', [])
-        # Entry format: { task_id, task_type ('big' or 'additional'), employee_id, month, year, plan_hours, off_hours }
+        # Entry format: { task_id, task_type ('big' or 'add'/'additional'), employee_id, month, year, plan_hours, off_hours }
+
+        def get_owner_user():
+            hqepl_qs = User.objects.filter(role='HQEPL', is_active=True)
+            owner_user = hqepl_qs.filter(
+                models.Q(username__icontains='mls') |
+                models.Q(first_name__icontains='mls') |
+                models.Q(last_name__icontains='mls') |
+                models.Q(email__icontains='mls')
+            ).first() or hqepl_qs.first()
+
+            if owner_user:
+                return owner_user
+
+            # Fallback to first active admin if HQEPL record is unavailable.
+            return User.objects.filter(role='ADMIN', is_active=True).order_by('id').first()
+
+        def get_sgm_user(task_type, task_id):
+            if task_type == 'big':
+                task = BigTask.objects.select_related('project__assigned_sgm').filter(id=task_id).first()
+                if task and task.project and task.project.assigned_sgm:
+                    return task.project.assigned_sgm
+                return None
+
+            task = DDTMEAdditionalTask.objects.select_related('project__assigned_sgm', 'client').prefetch_related('client__assigned_sgms').filter(id=task_id).first()
+            if not task:
+                return None
+            if task.project and task.project.assigned_sgm:
+                return task.project.assigned_sgm
+            if task.client and task.client.assigned_sgms.exists():
+                return task.client.assigned_sgms.first()
+            return None
+
+        def resolve_employee(raw_employee_id, task_type, task_id):
+            if raw_employee_id is None:
+                return None
+
+            employee_ref = str(raw_employee_id).strip()
+            if not employee_ref:
+                return None
+
+            alias = employee_ref.lower()
+            if alias in {'sgm', 'mls'}:
+                linked_user = get_sgm_user(task_type, task_id) if alias == 'sgm' else get_owner_user()
+                if not linked_user:
+                    return None
+                employee_obj, _ = Employee.objects.get_or_create(user=linked_user)
+                return employee_obj
+
+            if employee_ref.startswith('u-'):
+                user_id_str = employee_ref[2:]
+                if not user_id_str.isdigit():
+                    return None
+                user_obj = User.objects.filter(id=int(user_id_str)).first()
+                if not user_obj:
+                    return None
+                employee_obj, _ = Employee.objects.get_or_create(user=user_obj)
+                return employee_obj
+
+            if employee_ref.startswith('e-'):
+                employee_id_str = employee_ref[2:]
+                if not employee_id_str.isdigit():
+                    return None
+                return Employee.objects.filter(id=int(employee_id_str)).first()
+
+            if employee_ref.isdigit():
+                numeric_id = int(employee_ref)
+
+                # Backward compatibility path: existing payloads may send employee PK.
+                employee_obj = Employee.objects.filter(id=numeric_id).first()
+                if employee_obj:
+                    return employee_obj
+
+                # If a user id is sent directly, resolve and ensure employee profile exists.
+                user_obj = User.objects.filter(id=numeric_id).first()
+                if user_obj:
+                    employee_obj, _ = Employee.objects.get_or_create(user=user_obj)
+                    return employee_obj
+
+            return None
         
         results = []
         errors = []
         for entry in entries:
             try:
-                emp_id = entry.get('employee_id')
-                month = entry.get('month')
-                year = entry.get('year')
-                plan = entry.get('plan_hours', 0)
-                off = entry.get('off_hours', 0)
-                
-                task_type = entry.get('task_type') # 'big' or 'additional'
-                task_id = entry.get('task_id')
+                raw_task_type = str(entry.get('task_type', '')).lower()
+                if raw_task_type == 'big':
+                    task_type = 'big'
+                elif raw_task_type in {'add', 'additional'}:
+                    task_type = 'additional'
+                else:
+                    raise ValueError(f"Invalid task_type: {entry.get('task_type')}")
+
+                task_id = int(entry.get('task_id'))
+                month = int(entry.get('month'))
+                year = int(entry.get('year'))
+
+                try:
+                    plan = Decimal(str(entry.get('plan_hours', 0) or 0))
+                    off = Decimal(str(entry.get('off_hours', 0) or 0))
+                except (InvalidOperation, TypeError, ValueError):
+                    raise ValueError('Plan/Off hours must be numeric values')
+
+                if plan < 0 or off < 0:
+                    raise ValueError('Plan/Off hours cannot be negative')
+
+                plan = plan.quantize(Decimal('0.01'))
+                off = off.quantize(Decimal('0.01'))
+
+                employee_obj = resolve_employee(entry.get('employee_id'), task_type, task_id)
+                if not employee_obj:
+                    raise ValueError(f"Unable to resolve employee: {entry.get('employee_id')}")
                 
                 kwargs = {
-                    'employee_id': emp_id,
+                    'employee': employee_obj,
                     'month': month,
                     'year': year
                 }
@@ -302,4 +405,50 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             return Response({"updated": len(results), "ids": results, "failed": errors}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"updated": len(results), "ids": results, "failed": []})
+
+
+from .models import KPI, KPIUpdate
+from .serializers import KPISerializer, KPIUpdateSerializer
+
+class KPIViewSet(viewsets.ModelViewSet):
+    serializer_class = KPISerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = KPI.objects.all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get('project_id')
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return queryset
+
+class KPIUpdateViewSet(viewsets.ModelViewSet):
+    serializer_class = KPIUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = KPIUpdate.objects.all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        kpi_id = self.request.query_params.get('kpi_id')
+        if kpi_id:
+            queryset = queryset.filter(kpi_id=kpi_id)
+        return queryset
+
+    @action(detail=False, methods=['post'])
+    def batch_update(self, request):
+        updates = request.data.get('updates', [])
+        # updates format: [{kpi_id, month, update_value}, ...]
+        results = []
+        for entry in updates:
+            kpi_id = entry.get('kpi_id')
+            month = entry.get('month')
+            value = entry.get('update_value')
+            if kpi_id and month:
+                obj, created = KPIUpdate.objects.update_or_create(
+                    kpi_id=kpi_id,
+                    month=month,
+                    defaults={'update_value': value}
+                )
+                results.append(obj.id)
+        return Response({"updated": len(results)})
 

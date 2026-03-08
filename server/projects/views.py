@@ -48,7 +48,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 Q(assigned_sgm=user) |
                 Q(external_lead=user) |
                 Q(created_by=user) |
-                Q(client__internal_team=user) |
                 Q(sgm_team__internal_members=user) |
                 Q(sgm_team__external_members=user)
             ).filter(client__status="active").distinct()

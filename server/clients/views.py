@@ -86,7 +86,12 @@ class ClientDetailView(APIView):
         if not (request.user.role in ["ADMIN", "HQEPL"]):
              raise PermissionDenied("You do not have permission to edit this client.")
 
-        serializer = ClientSerializer(client, data=request.data, partial=True)
+        serializer = ClientSerializer(
+            client,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

@@ -49,32 +49,59 @@ class ProjectSerializer(serializers.ModelSerializer):
         ]
 
     def get_team_members_details(self, obj):
-        # Fetch internal employees assigned via ProjectTeam
-        team = ProjectTeam.objects.filter(project=obj).first()
-        team_members = team.internal_members.all() if team else []
-        return [
-            {
-                "id": member.id,
-                "username": member.username,
-                "email": member.email
-            }
-            for member in team_members
-        ]
+        members = []
+        seen_ids = set()
 
-    def get_external_team_details(self, obj):
-        team = ProjectTeam.objects.filter(project=obj).first()
-        if team and team.external_members.exists():
-            external_members = team.external_members.all()
-        else:
-            external_members = obj.external_team.all()
-        return [
-            {
+        for emp in obj.assigned_employees.select_related('user').all():
+            user = emp.user
+            seen_ids.add(user.id)
+            members.append({
                 "id": user.id,
                 "username": user.username,
-                "email": user.email
-            }
-            for user in external_members
-        ]
+                "email": user.email,
+            })
+
+        # Backward-compatible fallback for legacy ProjectTeam rows.
+        team = ProjectTeam.objects.filter(project=obj).first()
+        if team:
+            for member in team.internal_members.all():
+                if member.id in seen_ids:
+                    continue
+                seen_ids.add(member.id)
+                members.append({
+                    "id": member.id,
+                    "username": member.username,
+                    "email": member.email,
+                })
+
+        return members
+
+    def get_external_team_details(self, obj):
+        members = []
+        seen_ids = set()
+
+        for user in obj.external_team.all():
+            seen_ids.add(user.id)
+            members.append({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+            })
+
+        # Backward-compatible fallback for legacy ProjectTeam rows.
+        team = ProjectTeam.objects.filter(project=obj).first()
+        if team:
+            for member in team.external_members.all():
+                if member.id in seen_ids:
+                    continue
+                seen_ids.add(member.id)
+                members.append({
+                    "id": member.id,
+                    "username": member.username,
+                    "email": member.email,
+                })
+
+        return members
 
 
 # -----------------------------

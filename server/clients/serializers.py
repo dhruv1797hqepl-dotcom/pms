@@ -62,6 +62,39 @@ class ClientSerializer(serializers.ModelSerializer):
         ret['internal_team_details'] = [format_user(u) for u in instance.internal_team.all()]
         return ret
 
+    def _extract_relation_ids(self, request, field_name, treat_missing_as_empty=False):
+        """
+        Normalize relation IDs from request payloads (multipart or JSON).
+        For PUT requests we treat a missing field as an empty list so team removals
+        are persisted when the client submits no values for that relation.
+        """
+        if not request:
+            return None
+
+        data = request.data
+
+        if hasattr(data, "getlist"):
+            if not treat_missing_as_empty and field_name not in data:
+                return None
+            raw_values = data.getlist(field_name)
+        else:
+            if field_name not in data:
+                return [] if treat_missing_as_empty else None
+            raw_values = data.get(field_name)
+            if not isinstance(raw_values, list):
+                raw_values = [raw_values]
+
+        parsed_ids = []
+        for value in raw_values:
+            if value in (None, "", "null"):
+                continue
+            try:
+                parsed_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        return parsed_ids
+
     def create(self, validated_data):
         request = self.context.get("request")
         raw_username = validated_data.pop("username")
@@ -87,13 +120,68 @@ class ClientSerializer(serializers.ModelSerializer):
                 created_by=creator,
                 **validated_data
             )
-            
-            # ✅ Save SGMs (Many-to-Many)
-            if assigned_sgms:
+
+            # Persist explicit team selections (including empty lists on create).
+            client.assigned_sgms.set(assigned_sgms)
+            client.internal_team.set(internal_team)
+
+        return client
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+
+        # Optional user credential updates from edit modal.
+        new_username = validated_data.pop("username", None)
+        new_email = validated_data.pop("email", None)
+        new_password = validated_data.pop("password", None)
+
+        assigned_sgms = validated_data.pop("assigned_sgms", serializers.empty)
+        internal_team = validated_data.pop("internal_team", serializers.empty)
+
+        with transaction.atomic():
+            client = super().update(instance, validated_data)
+
+            user = client.user
+            user_dirty = False
+
+            if new_username:
+                user.username = new_username
+                user_dirty = True
+
+            if new_email:
+                user.email = new_email.strip().lower()
+                user_dirty = True
+
+            if new_password:
+                user.set_password(new_password)
+                user_dirty = True
+
+            if user_dirty:
+                user.save()
+
+            force_full_replace = bool(request and request.method == "PUT")
+
+            assigned_sgm_ids = self._extract_relation_ids(
+                request,
+                "assigned_sgms",
+                treat_missing_as_empty=force_full_replace,
+            )
+            internal_team_ids = self._extract_relation_ids(
+                request,
+                "internal_team",
+                treat_missing_as_empty=force_full_replace,
+            )
+
+            if assigned_sgm_ids is not None:
+                sgm_users = User.objects.filter(id__in=assigned_sgm_ids, role="SGM")
+                client.assigned_sgms.set(sgm_users)
+            elif assigned_sgms is not serializers.empty:
                 client.assigned_sgms.set(assigned_sgms)
-            
-            # ✅ Save Internal Team (Many-to-Many)
-            if internal_team:
+
+            if internal_team_ids is not None:
+                employee_users = User.objects.filter(id__in=internal_team_ids, role="EMPLOYEE")
+                client.internal_team.set(employee_users)
+            elif internal_team is not serializers.empty:
                 client.internal_team.set(internal_team)
 
         return client

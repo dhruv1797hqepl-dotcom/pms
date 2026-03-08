@@ -15,6 +15,7 @@ urlpatterns = [
     path('login/', MyTokenObtainPairView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('me/', UserDetailView.as_view(), name='user_detail'),
+    path('accounts/me/', UserDetailView.as_view(), name='user_detail_compat'),
 
     # Admin management
     path('admin/create-user/', AdminCreateUserView.as_view(), name='admin_create_user'),

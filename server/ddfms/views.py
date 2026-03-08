@@ -1,8 +1,39 @@
+from django.utils import timezone
 from rest_framework import permissions, viewsets
+from rest_framework.exceptions import ValidationError
 from tasks.models import Task
 
 from .models import DDFMSPlan, DDFMSDeliverable, DDFMSStep
 from .serializers import DDFMSPlanSerializer, DDFMSDeliverableSerializer, DDFMSStepSerializer
+
+
+def sync_ddfms_step_task(step, actor):
+    task_queryset = Task.objects.filter(source_module='DDFMS', source_ref_id=step.id)
+
+    if not step.deliverable.is_submitted or not step.responsible or not step.target_date:
+        task_queryset.delete()
+        return
+
+    deliverable = step.deliverable
+    plan = deliverable.plan
+
+    defaults = {
+        'title': f'{deliverable.title} - Step {step.step_number}',
+        'description': f'DDFMS task for {plan.client.company_name} ({plan.month}/{plan.year}), Step {step.step_number}.',
+        'project': None,
+        'client_org': plan.client,
+        'assigned_to': step.responsible,
+        'assigned_by': actor,
+        'start_date': deliverable.start_date or step.target_date,
+        'target_date': step.target_date,
+        'remarks': step.remarks or '',
+    }
+
+    Task.objects.update_or_create(
+        source_module='DDFMS',
+        source_ref_id=step.id,
+        defaults=defaults,
+    )
 
 
 class DDFMSPlanViewSet(viewsets.ModelViewSet):
@@ -38,6 +69,27 @@ class DDFMSDeliverableViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = DDFMSDeliverable.objects.select_related('plan', 'plan__client').all()
 
+    def _validate_submit_ready(self, deliverable):
+        required_step_numbers = range(1, 8)
+        step_map = {step.step_number: step for step in deliverable.steps.all()}
+
+        invalid_steps = []
+        for step_number in required_step_numbers:
+            step = step_map.get(step_number)
+            if not step or not step.responsible_id or not step.target_date:
+                invalid_steps.append(step_number)
+
+        if invalid_steps:
+            raise ValidationError({
+                'is_submitted': (
+                    f'Cannot submit deliverable until Steps {invalid_steps} have both responsible person and target date.'
+                )
+            })
+
+    def _sync_deliverable_tasks(self, deliverable):
+        for step in deliverable.steps.all():
+            sync_ddfms_step_task(step, self.request.user)
+
     def get_queryset(self):
         queryset = super().get_queryset()
 
@@ -62,6 +114,23 @@ class DDFMSDeliverableViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source_id=source_id)
 
         return queryset
+
+    def perform_update(self, serializer):
+        current = self.get_object()
+        next_is_submitted = serializer.validated_data.get('is_submitted', current.is_submitted)
+
+        if next_is_submitted and not current.is_submitted:
+            self._validate_submit_ready(current)
+            deliverable = serializer.save(
+                submitted_at=timezone.now(),
+                submitted_by=self.request.user,
+            )
+        elif not next_is_submitted and current.is_submitted:
+            deliverable = serializer.save(submitted_at=None, submitted_by=None)
+        else:
+            deliverable = serializer.save()
+
+        self._sync_deliverable_tasks(deliverable)
 
 
 class DDFMSStepViewSet(viewsets.ModelViewSet):
@@ -99,40 +168,13 @@ class DDFMSStepViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    def _sync_step_task(self, step, actor):
-        task_queryset = Task.objects.filter(source_module='DDFMS', source_ref_id=step.id)
-
-        if not step.responsible or not step.target_date:
-            task_queryset.delete()
-            return
-
-        deliverable = step.deliverable
-        plan = deliverable.plan
-
-        defaults = {
-            'title': f'{deliverable.title} - Step {step.step_number}',
-            'description': f'DDFMS task for {plan.client.company_name} ({plan.month}/{plan.year}), Step {step.step_number}.',
-            'project': None,
-            'client_org': plan.client,
-            'assigned_to': step.responsible,
-            'assigned_by': actor,
-            'target_date': step.target_date,
-            'remarks': step.remarks or '',
-        }
-
-        Task.objects.update_or_create(
-            source_module='DDFMS',
-            source_ref_id=step.id,
-            defaults=defaults,
-        )
-
     def perform_create(self, serializer):
         step = serializer.save()
-        self._sync_step_task(step, self.request.user)
+        sync_ddfms_step_task(step, self.request.user)
 
     def perform_update(self, serializer):
         step = serializer.save()
-        self._sync_step_task(step, self.request.user)
+        sync_ddfms_step_task(step, self.request.user)
 
     def perform_destroy(self, instance):
         Task.objects.filter(source_module='DDFMS', source_ref_id=instance.id).delete()

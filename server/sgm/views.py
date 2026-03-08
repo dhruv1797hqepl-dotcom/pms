@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
 
 from .models import ProjectTeam
 from .serializers import (
@@ -13,6 +14,7 @@ from .serializers import (
 from .permissions import IsSGM
 from projects.models import Project
 from clients.models import Client  # ✅ add this
+from employees.models import Employee
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -25,7 +27,8 @@ class SGMProjectListView(APIView):
     permission_classes = [IsAuthenticated, IsSGM]
 
     def get(self, request):
-        projects = Project.objects.filter(assigned_sgm=request.user)
+        # Source of truth is client assignment, so admin changes are reflected instantly.
+        projects = Project.objects.filter(client__assigned_sgms=request.user).distinct()
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data)
 
@@ -77,7 +80,37 @@ class EmployeeListView(APIView):
     permission_classes = [IsAuthenticated, IsSGM]
 
     def get(self, request):
-        employees = User.objects.filter(role="EMPLOYEE")
+        handled_clients = Client.objects.filter(assigned_sgms=request.user).distinct()
+        handled_projects = Project.objects.filter(
+            Q(assigned_sgm=request.user) | Q(client__assigned_sgms=request.user)
+        ).distinct()
+
+        client_internal_team_ids = set(
+            handled_clients.values_list("internal_team__id", flat=True)
+        )
+
+        project_team_employee_ids = set(
+            ProjectTeam.objects.filter(project__in=handled_projects)
+            .values_list("internal_members__id", flat=True)
+        )
+        assigned_employee_ids = set(
+            Employee.objects.filter(projects__in=handled_projects)
+            .values_list("user_id", flat=True)
+        )
+
+        scoped_employee_ids = {
+            employee_id
+            for employee_id in client_internal_team_ids.union(
+                project_team_employee_ids,
+                assigned_employee_ids,
+            )
+            if employee_id is not None
+        }
+
+        employees = User.objects.filter(
+            role=User.EMPLOYEE,
+            id__in=scoped_employee_ids,
+        ).order_by("first_name", "last_name", "username", "email")
         serializer = EmployeeSerializer(employees, many=True)
         return Response(serializer.data)
 
@@ -104,16 +137,17 @@ class AssignProjectTeamView(APIView):
         serializer.is_valid(raise_exception=True)
 
         internal_ids = serializer.validated_data.get("internal_members")
-        legacy_ids = serializer.validated_data.get("employees")
-        if internal_ids is None:
-            internal_ids = legacy_ids or []
-        external_ids = serializer.validated_data.get("external_members", [])
+        if internal_ids is None and "employees" in serializer.validated_data:
+            internal_ids = serializer.validated_data.get("employees")
+        external_ids = serializer.validated_data.get("external_members")
 
         team, _ = ProjectTeam.objects.get_or_create(project=project)
 
         if internal_ids is not None:
             internal_users = User.objects.filter(id__in=internal_ids, role="EMPLOYEE")
             team.internal_members.set(internal_users)
+            internal_employee_profiles = Employee.objects.filter(user__in=internal_users)
+            project.assigned_employees.set(internal_employee_profiles)
 
         if external_ids is not None:
             external_users = User.objects.filter(id__in=external_ids, role="EXTERNAL")

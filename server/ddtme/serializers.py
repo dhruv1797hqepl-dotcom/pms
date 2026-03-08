@@ -95,13 +95,19 @@ class DDTMEMonthlyObjectiveSerializer(serializers.ModelSerializer):
 
 class ManDayEntrySerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
+    employee_user_id = serializers.SerializerMethodField()
     big_task_title = serializers.CharField(source='big_task.title', read_only=True)
     additional_task_title = serializers.CharField(source='additional_task.title', read_only=True)
+    plan_hours = serializers.DecimalField(max_digits=8, decimal_places=2, coerce_to_string=False)
+    off_hours = serializers.DecimalField(max_digits=8, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = ManDayEntry
-        fields = ['id', 'employee', 'employee_name', 'month', 'year', 'big_task', 'big_task_title', 'additional_task', 'additional_task_title', 'plan_hours', 'off_hours']
+        fields = ['id', 'employee', 'employee_user_id', 'employee_name', 'month', 'year', 'big_task', 'big_task_title', 'additional_task', 'additional_task_title', 'plan_hours', 'off_hours']
         read_only_fields = ['id']
+
+    def get_employee_user_id(self, obj):
+        return getattr(obj.employee, 'user_id', None)
 
     def get_employee_name(self, obj):
         user = getattr(obj.employee, 'user', None)
@@ -109,4 +115,21 @@ class ManDayEntrySerializer(serializers.ModelSerializer):
             return ""
         full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
         return full_name or user.username or user.email
+
+
+from .models import KPI, KPIUpdate
+
+class KPIUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KPIUpdate
+        fields = ['id', 'kpi', 'month', 'update_value']
+        read_only_fields = ['id']
+
+class KPISerializer(serializers.ModelSerializer):
+    updates = KPIUpdateSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = KPI
+        fields = ['id', 'project', 'name', 'baseline', 'target', 'updates', 'created_at']
+        read_only_fields = ['id', 'created_at']
 

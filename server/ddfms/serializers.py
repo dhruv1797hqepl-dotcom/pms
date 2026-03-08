@@ -24,6 +24,7 @@ class DDFMSStepSerializer(serializers.ModelSerializer):
 
 class DDFMSDeliverableSerializer(serializers.ModelSerializer):
     steps = DDFMSStepSerializer(many=True, read_only=True)
+    submitted_by_name = serializers.CharField(source='submitted_by.username', read_only=True)
 
     class Meta:
         model = DDFMSDeliverable
@@ -33,13 +34,18 @@ class DDFMSDeliverableSerializer(serializers.ModelSerializer):
             'source_type',
             'source_id',
             'title',
+            'start_date',
             'target_date',
             'order_index',
+            'is_submitted',
+            'submitted_at',
+            'submitted_by',
+            'submitted_by_name',
             'steps',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'steps']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'steps', 'submitted_at', 'submitted_by_name']
 
 
 class DDFMSPlanSerializer(serializers.ModelSerializer):

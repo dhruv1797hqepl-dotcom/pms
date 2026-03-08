@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from employees.models import Employee
 from projects.models import Project
 from clients.models import Client, ExternalTeam
@@ -23,9 +24,9 @@ class EmployeeMyProjectsView(APIView):
         employee, created = Employee.objects.get_or_create(user=user)
 
         projects = Project.objects.filter(
-            assigned_employees__user=user,
+            Q(assigned_employees__user=user) | Q(sgm_team__internal_members=user),
             client__status="active"
-        )
+        ).distinct()
 
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data)
@@ -42,24 +43,27 @@ class EmployeeClientListView(APIView):
         if user.role != "EMPLOYEE":
             return Response({"detail": "Forbidden"}, status=403)
 
-        # Get projects assigned to this user
-        projects = Project.objects.filter(assigned_employees__user=user)
-        
-        # Get unique clients from these projects
-        client_ids = projects.values_list('client_id', flat=True).distinct()
-        
-        # Annotate with count of ACTIVE projects assigned to this user
+        project_qs = Project.objects.filter(
+            Q(assigned_employees__user=user) | Q(sgm_team__internal_members=user)
+        ).distinct()
+
+        client_ids = project_qs.values_list("client_id", flat=True).distinct()
+
         clients = Client.objects.filter(id__in=client_ids, status="active").annotate(
             project_count=Count(
                 'projects',
-                filter=Q(projects__assigned_employees__user=user, projects__status='ACTIVE')
+                filter=Q(projects__status='ACTIVE') & (
+                    Q(projects__assigned_employees__user=user) |
+                    Q(projects__sgm_team__internal_members=user)
+                ),
+                distinct=True,
             )
         )
         
         # We need a serializer for Client. We can import it or define a simple one.
         # Ideally, import from clients.serializers
         from clients.serializers import ClientListSerializer
-        serializer = ClientListSerializer(clients, many=True)
+        serializer = ClientListSerializer(clients, many=True, context={"request": request})
         return Response(serializer.data)
 
 
@@ -71,22 +75,25 @@ class ExternalClientListView(APIView):
         if user.role != "EXTERNAL":
             return Response({"detail": "Forbidden"}, status=403)
 
-        client_ids = ExternalTeam.objects.filter(
-            user=user,
-            credential_access=True,
-            status="active",
-            client_org__status="active"
-        ).values_list("client_org_id", flat=True).distinct()
+        project_qs = Project.objects.filter(
+            Q(external_team=user) | Q(external_lead=user),
+            client__status="active",
+        ).distinct()
+
+        client_ids = project_qs.values_list("client_id", flat=True).distinct()
 
         clients = Client.objects.filter(id__in=client_ids, status="active").annotate(
             project_count=Count(
                 'projects',
-                filter=Q(projects__external_team=user, projects__status='ACTIVE')
+                filter=Q(projects__status='ACTIVE') & (
+                    Q(projects__external_team=user) | Q(projects__external_lead=user)
+                ),
+                distinct=True,
             )
         )
 
         from clients.serializers import ClientListSerializer
-        serializer = ClientListSerializer(clients, many=True)
+        serializer = ClientListSerializer(clients, many=True, context={"request": request})
         return Response(serializer.data)
 
 
@@ -102,12 +109,21 @@ class EmployeeProjectDetailView(APIView):
             return Response({"detail": "Forbidden"}, status=403)
 
         try:
-            # Only fetch if user is in the team
+            # Allow access only if the employee is assigned to this project.
             project = Project.objects.get(
                 id=project_id,
-                assigned_employees__user=user,
                 client__status="active"
             )
+
+            is_in_sgm_team = (
+                hasattr(project, "sgm_team")
+                and project.sgm_team.internal_members.filter(id=user.id).exists()
+            )
+            if not (
+                project.assigned_employees.filter(user=user).exists()
+                or is_in_sgm_team
+            ):
+                raise Project.DoesNotExist
         except Project.DoesNotExist:
             return Response(
                 {"detail": "Project not found or access denied"}, 
@@ -138,6 +154,37 @@ class ExternalMyProjectsView(APIView):
             Q(external_team=user) | Q(external_lead=user),
             client_id__in=allowed_client_ids,
             client__status="active"
+        ).distinct()
+
+        serializer = ProjectSerializer(projects, many=True)
+        return Response(serializer.data)
+
+
+class EmployeeClientProjectsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+        if user.role != "EMPLOYEE":
+            return Response({"detail": "Forbidden"}, status=403)
+
+        client = get_object_or_404(Client, id=client_id, status="active")
+
+        has_access = (
+            Project.objects.filter(
+                client=client
+            ).filter(
+                Q(assigned_employees__user=user) | Q(sgm_team__internal_members=user)
+            ).exists()
+        )
+        if not has_access:
+            return Response({"detail": "Forbidden"}, status=403)
+
+        projects = Project.objects.filter(
+            client=client,
+            client__status="active",
+        ).filter(
+            Q(assigned_employees__user=user) | Q(sgm_team__internal_members=user)
         ).distinct()
 
         serializer = ProjectSerializer(projects, many=True)

@@ -22,6 +22,12 @@ class CustomUser(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES,  default='EMPLOYEE')
     email = models.EmailField(unique=True)
 
+    # Shared profile fields used by all role-based profile pages.
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    experience = models.CharField(max_length=255, blank=True, null=True)
+    expertise = models.TextField(blank=True, null=True)
+    photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 

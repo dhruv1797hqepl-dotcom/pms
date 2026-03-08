@@ -1942,3 +1942,13 @@ Filter: Start <= 2026-02-28 AND Target >= 2026-02-01
 Total Tasks Before Filter: 2
 Task 13 'hcghtc': 2026-02-19 to 2026-03-19. Overlaps? True
 Task 12 'New Task': 2026-10-29 to 2026-11-28. Overlaps? False
+
+--- Request: m=3, y=2025 ---
+Filter: Start <= 2025-03-31 AND Target >= 2025-03-01
+Total Tasks Before Filter: 1
+Task 1 'Jan Task': 2025-01-01 to 2025-01-31. Overlaps? False
+
+--- Request: m=2, y=2025 ---
+Filter: Start <= 2025-02-28 AND Target >= 2025-02-01
+Total Tasks Before Filter: 1
+Task 2 'Overlay Task': 2025-01-01 to 2025-03-31. Overlaps? True

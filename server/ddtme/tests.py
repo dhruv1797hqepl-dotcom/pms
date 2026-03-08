@@ -2,16 +2,42 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from clients.models import Client
+from clients.models import Client as ClientOrg
 from .models import DDTMESubmission
 
 User = get_user_model()
 
+
+def create_client_org(*, label, user_email):
+    client_user = User.objects.create_user(
+        username=f"{label}_client_user",
+        email=user_email,
+        password="password",
+        role=User.CLIENT,
+    )
+    return ClientOrg.objects.create(
+        user=client_user,
+        company_name=f"{label} Client",
+        contact_email=f"contact+{label}@example.com",
+        phone="1234567890",
+    )
+
+
 class DDTMESGMVisibilityTest(TestCase):
     def setUp(self):
-        self.client_obj = Client.objects.create(company_name="Test Client", email="test@client.com")
-        self.employee = User.objects.create_user(username='emp', password='password', role='EMPLOYEE')
-        self.sgm = User.objects.create_user(username='sgm', password='password', role='SGM')
+        self.client_obj = create_client_org(label="sgm_visibility", user_email="client_sgm_visibility@example.com")
+        self.employee = User.objects.create_user(
+            username='emp',
+            email='emp@example.com',
+            password='password',
+            role=User.EMPLOYEE,
+        )
+        self.sgm = User.objects.create_user(
+            username='sgm',
+            email='sgm@example.com',
+            password='password',
+            role=User.SGM,
+        )
         
         # Submissions
         self.submission = DDTMESubmission.objects.create(
@@ -38,15 +64,25 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from .models import BigTask
 from projects.models import Project
-from clients.models import Client
 
 User = get_user_model()
 
+
 class BigTaskFilteringTestCase(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='testuser', password='password')
-        self.client = Client.objects.create(name='Test Client', contact_email="test@test.com")
-        self.project = Project.objects.create(name='Test Project', client=self.client, start_date=date(2025,1,1), end_date=date(2025,12,31))
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='testuser@example.com',
+            password='password',
+            role=User.EMPLOYEE,
+        )
+        self.client_obj = create_client_org(label="bigtask_filtering", user_email="client_bigtask_filtering@example.com")
+        self.project = Project.objects.create(
+            name='Test Project',
+            client=self.client_obj,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+        )
         self.client_js = APIClient()
         self.client_js.force_authenticate(user=self.user)
 
@@ -60,7 +96,7 @@ class BigTaskFilteringTestCase(TestCase):
         )
 
         # Filter for FEB (Should match)
-        response = self.client_js.get(f'/api/ddtme/big-tasks/?client_id={self.client.id}&month=2&year=2025')
+        response = self.client_js.get(f'/api/ddtme/big-tasks/?client_id={self.client_obj.id}&month=2&year=2025')
         
         self.assertEqual(response.status_code, 200)
         data = response.data
@@ -81,7 +117,7 @@ class BigTaskFilteringTestCase(TestCase):
         )
 
         # Filter for MAR (Should NOT match)
-        response = self.client_js.get(f'/api/ddtme/big-tasks/?client_id={self.client.id}&month=3&year=2025')
+        response = self.client_js.get(f'/api/ddtme/big-tasks/?client_id={self.client_obj.id}&month=3&year=2025')
         
         data = response.data
         if 'results' in data:
