@@ -5,42 +5,81 @@ import {
   X, Clock, Target, CheckCircle2, Loader2,
   UserPlus, Lock, Activity, Star
 } from 'lucide-react';
-import Navbar from '../components/Navbar';
+import Sidebar from '../components/Sidebar';
 import BigTask from './BigTask'
 import api from '../api';
+
+const PROJECTS_ENDPOINT = 'projects/';
+const SGM_PROJECTS_ENDPOINT = 'sgm/projects/';
+const EMPLOYEE_PROJECTS_ENDPOINT = 'employees/projects/';
+const CLIENTS_ENDPOINT = 'clients/';
+const SGM_EMPLOYEES_ENDPOINT = 'sgm/employees/';
+
+const getProjectEndpointForRole = (role, projectId) => {
+  if (role === 'SGM') return `${SGM_PROJECTS_ENDPOINT}${projectId}/`;
+  if (role === 'EMPLOYEE') return `${EMPLOYEE_PROJECTS_ENDPOINT}${projectId}/`;
+  return `${PROJECTS_ENDPOINT}${projectId}/`;
+};
+
+// Keep existing progress behavior: only SGM uses the sgm endpoint, others use default projects endpoint.
+const getProgressEndpointForRole = (role, projectId) => {
+  if (role === 'SGM') return `${SGM_PROJECTS_ENDPOINT}${projectId}/`;
+  return `${PROJECTS_ENDPOINT}${projectId}/`;
+};
 
 /* ───────────────────────── ASSIGN TEAM MODAL ───────────────────────── */
 const AssignTeamModal = ({ isOpen, onClose, projectId, clientId, onAssigned, initialSelected = [] }) => {
   const [employees, setEmployees] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
-  const normalizedClientId = clientId?.id || clientId;
 
   useEffect(() => {
-    setSelectedEmployees(initialSelected);
+    const normalizedSelection = Array.isArray(initialSelected)
+      ? initialSelected
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+    setSelectedEmployees(normalizedSelection);
   }, [initialSelected, isOpen]);
 
   useEffect(() => {
-    if (isOpen && normalizedClientId) {
+    if (isOpen) {
       const fetchEmployees = async () => {
         try {
           const token = localStorage.getItem('access_token');
-          // Fetch Client's Internal Team
-          const res = await api.get(`clients/${normalizedClientId}/`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setEmployees(res.data.internal_team_details || []);
+          const headers = { Authorization: `Bearer ${token}` };
+          const role = (localStorage.getItem('role') || '').toUpperCase();
+
+          if (role === 'SGM') {
+            const res = await api.get(SGM_EMPLOYEES_ENDPOINT, { headers });
+            setEmployees(Array.isArray(res.data) ? res.data : []);
+            return;
+          }
+
+          if (clientId) {
+            const res = await api.get(`${CLIENTS_ENDPOINT}${clientId}/`, { headers });
+            setEmployees(res.data.internal_team_details || []);
+            return;
+          }
+
+          setEmployees([]);
         } catch (error) {
           console.error("Failed to load employees", error);
+          setEmployees([]);
         }
       };
       fetchEmployees();
     }
-  }, [isOpen, normalizedClientId]);
+  }, [isOpen, clientId]);
 
   const toggleEmployee = (id) => {
+    const numericId = Number(id);
+    if (!Number.isInteger(numericId) || numericId <= 0) return;
+
     setSelectedEmployees(prev =>
-      prev.includes(id) ? prev.filter(empId => empId !== id) : [...prev, id]
+      prev.includes(numericId)
+        ? prev.filter(empId => empId !== numericId)
+        : [...prev, numericId]
     );
   };
 
@@ -50,7 +89,7 @@ const AssignTeamModal = ({ isOpen, onClose, projectId, clientId, onAssigned, ini
       const token = localStorage.getItem('access_token');
       // Use standard PATCH endpoint which uses ProjectSerializer
       // ProjectSerializer expects 'assigned_employees' as list of IDs
-      await api.patch(`projects/${projectId}/`, {
+      await api.patch(`${PROJECTS_ENDPOINT}${projectId}/`, {
         assigned_employees: selectedEmployees
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -80,29 +119,35 @@ const AssignTeamModal = ({ isOpen, onClose, projectId, clientId, onAssigned, ini
         </div>
 
         <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-          {employees.map(emp => (
-            <div
-              key={emp.id}
-              onClick={() => toggleEmployee(emp.id)}
-              className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${selectedEmployees.includes(emp.id)
-                ? 'border-[#F58A4B] bg-orange-50/50'
-                : 'border-slate-100 hover:bg-slate-50 hover:border-slate-200'
-                }`}
-            >
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors ${selectedEmployees.includes(emp.id) ? 'bg-[#F58A4B] text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
-                  {emp.username?.[0]?.toUpperCase()}
+          {employees.map((emp) => {
+            const employeeId = Number(emp?.id);
+            if (!Number.isInteger(employeeId) || employeeId <= 0) return null;
+
+            const isSelected = selectedEmployees.includes(employeeId);
+            return (
+              <div
+                key={employeeId}
+                onClick={() => toggleEmployee(employeeId)}
+                className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${isSelected
+                  ? 'border-[#F58A4B] bg-orange-50/50'
+                  : 'border-slate-100 hover:bg-slate-50 hover:border-slate-200'
+                  }`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors ${isSelected ? 'bg-[#F58A4B] text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
+                    {emp.username?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{emp.username}</p>
+                    <p className="text-[11px] text-slate-400 font-medium">{emp.email}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{emp.username}</p>
-                  <p className="text-[11px] text-slate-400 font-medium">{emp.email}</p>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'border-[#F58A4B] bg-[#F58A4B]' : 'border-slate-200 bg-white'}`}>
+                  {isSelected && <CheckCircle2 size={12} className="text-white" />}
                 </div>
               </div>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${selectedEmployees.includes(emp.id) ? 'border-[#F58A4B] bg-[#F58A4B]' : 'border-slate-200 bg-white'}`}>
-                {selectedEmployees.includes(emp.id) && <CheckCircle2 size={12} className="text-white" />}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <button
@@ -133,7 +178,7 @@ export default function ProjectDetails() {
   const [hierarchyAssignments, setHierarchyAssignments] = useState({});
   const [isSavingHierarchy, setIsSavingHierarchy] = useState(false);
 
-  const hierarchyRoleOptions = ['HH', 'SC', 'SGM'];
+  const hierarchyRoleOptions = ['HH', 'SC'];
 
   const fetchData = async () => {
     if (!projectId) return;
@@ -144,9 +189,7 @@ export default function ProjectDetails() {
       setUserRole(role);
       const headers = { Authorization: `Bearer ${token}` };
 
-      let endpoint = `projects/${projectId}/`;
-      if (role === 'SGM') endpoint = `sgm/projects/${projectId}/`;
-      if (role === 'EMPLOYEE') endpoint = `employees/projects/${projectId}/`;
+      const endpoint = getProjectEndpointForRole(role, projectId);
 
       const projRes = await api.get(endpoint, { headers });
       let projData = projRes.data;
@@ -157,7 +200,7 @@ export default function ProjectDetails() {
 
       if (needsTarget || needsInternalTeam || needsSgm) {
         try {
-          const fallbackRes = await api.get(`projects/${projectId}/`, { headers });
+          const fallbackRes = await api.get(`${PROJECTS_ENDPOINT}${projectId}/`, { headers });
           const fallbackData = fallbackRes.data;
 
           projData = {
@@ -184,7 +227,7 @@ export default function ProjectDetails() {
       try {
         const clientId = projData?.client?.id || projData?.client;
         if (clientId) {
-          const clientRes = await api.get(`clients/${clientId}/`, { headers });
+          const clientRes = await api.get(`${CLIENTS_ENDPOINT}${clientId}/`, { headers });
           setClientSgms(clientRes.data.assigned_sgms_details || []);
         } else {
           setClientSgms([]);
@@ -307,9 +350,7 @@ export default function ProjectDetails() {
       setIsSavingHierarchy(true);
       const token = localStorage.getItem('access_token');
       const role = (localStorage.getItem('role') || '').toUpperCase();
-      let endpoint = `projects/${project.id}/`;
-      if (role === 'SGM') endpoint = `sgm/projects/${project.id}/`;
-      if (role === 'EMPLOYEE') endpoint = `employees/projects/${project.id}/`;
+      const endpoint = getProjectEndpointForRole(role, project.id);
 
       const payload = hierarchyMembers.map(member => ({
         member_key: member.key,
@@ -350,8 +391,7 @@ export default function ProjectDetails() {
     const updateProgress = async () => {
       try {
         const token = localStorage.getItem('access_token');
-        let endpoint = `projects/${projectId}/`;
-        if (userRole === 'SGM') endpoint = `sgm/projects/${projectId}/`;
+        const endpoint = getProgressEndpointForRole(userRole, projectId);
 
         console.log(`Persisting Progress: ${calculatedProgress}% for Project ${projectId}`);
 
@@ -385,208 +425,214 @@ export default function ProjectDetails() {
   if (!project) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-black uppercase text-slate-400 tracking-widest">Instance Not Found</div>;
 
   const canSetHierarchy = ['ADMIN', 'HQEPL', 'SGM'].includes(userRole);
-  const resolvedClientId = project?.client?.id || project?.client || null;
 
   return (
-    <div className="min-h-screen bg-slate-50 antialiased font-sans pb-20 selection:bg-[#F58A4B] selection:text-white">
-      <Navbar hideLogin={true} />
+    <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden selection:bg-[#F58A4B] selection:text-white">
+      <Sidebar />
 
-      {/* 1. PROJECT HEADER */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-20 mx-20 rounded-[2rem] mt-2">
-        <div className="max-w-[1400px] mx-auto px-6 py-3">
-          <div className="flex items-center justify-between gap-4">
-            {/* Left: Back & Client */}
-            <div className="flex items-center gap-3 min-w-fit">
-              <button
-                onClick={() => navigate(-1)}
-                className="flex items-center gap-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-[#F58A4B] transition-colors group"
-              >
-                <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back
-              </button>
-              <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-lg">
-                <Briefcase size={12} className="text-[#F58A4B]" />
-                <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">{project.client?.company_name || project.client_name}</span>
+      <main className="flex-1 overflow-y-auto transition-all duration-300 pb-20">
+
+        {/* 1. PROJECT HEADER */}
+        <div className="bg-white border-b border-slate-200 sticky top-0 z-20 mx-6 md:mx-10 rounded-[2rem] mt-4 shadow-sm">
+          <div className="max-w-[1400px] mx-auto px-6 py-3">
+            <div className="flex items-center justify-between gap-4">
+              {/* Left: Back & Client */}
+              <div className="flex items-center gap-3 min-w-fit">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="flex items-center gap-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-[#F58A4B] transition-colors group"
+                >
+                  <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back
+                </button>
+                <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-lg">
+                  <Briefcase size={12} className="text-[#F58A4B]" />
+                  <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">{project.client?.company_name || project.client_name}</span>
+                </div>
+              </div>
+
+              {/* Center: Project Name */}
+              <h1 className="text-xl font-black text-slate-900 tracking-tight flex-1 text-center">{project.name}</h1>
+
+              {/* Right: Status & Progress */}
+              <div className="flex items-center gap-3 min-w-fit">
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg whitespace-nowrap">
+                  <Activity size={12} className="text-[#F58A4B]" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-bold text-slate-600">{(calculatedProgress ?? project.overall_progress) || 0}%</span>
+                    <div className="w-16 h-1 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#F58A4B] to-orange-400 rounded-full transition-all duration-500"
+                        style={{ width: `${(calculatedProgress ?? project.overall_progress) || 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${project.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                  {project.status || 'ACTIVE'}
+                </span>
+
+                {canSetHierarchy && (
+                  <button
+                    onClick={() => setIsHierarchyModalOpen(true)}
+                    className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                  >
+                    Set Hierarchy
+                  </button>
+                )}
+
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Center: Project Name */}
-            <h1 className="text-xl font-black text-slate-900 tracking-tight flex-1 text-center">{project.name}</h1>
 
-            {/* Right: Status & Progress */}
-            <div className="flex items-center gap-3 min-w-fit">
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg whitespace-nowrap">
-                <Activity size={12} className="text-[#F58A4B]" />
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-bold text-slate-600">{(calculatedProgress ?? project.overall_progress) || 0}%</span>
-                  <div className="w-16 h-1 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#F58A4B] to-orange-400 rounded-full transition-all duration-500"
-                      style={{ width: `${(calculatedProgress ?? project.overall_progress) || 0}%` }}
-                    />
+
+        <div className="max-w-[1400px] mx-auto px-6 pt-2 space-y-10">
+
+          {/* Merged Card: Team | Timeline | Target */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+            <div className="flex divide-x divide-slate-200">
+              {/* TEAM SECTION - Can expand more */}
+              <div className="flex-[1.5] pr-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                    <Users size={18} className="text-[#F58A4B]" /> Team
+                  </h3>
+                  {/* Manual Assignment Button - Restricted to Admin/HQEPL/Assigned SGM */}
+                  {(['ADMIN', 'HQEPL'].includes(userRole) || (userRole === 'SGM' && project.assigned_sgm === parseInt(localStorage.getItem('user_id')))) && (
+                    <button onClick={() => setIsAssignModalOpen(true)} className="p-2 bg-slate-50 text-slate-900 rounded-lg hover:bg-slate-900 hover:text-white transition-colors" title="Manage Team">
+                      <UserPlus size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {/* Internal Team */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Internal Team</p>
+                    <p className="text-sm text-slate-900 leading-relaxed">
+                      {[
+                        project.assigned_sgm_name ? `${project.assigned_sgm_name} (SGM)` : null,
+                        ...(project.team_members_details || []).map(formatInternalMemberWithHierarchy)
+                      ].filter(Boolean).join(', ') || <span className="text-slate-400 italic">No internal members</span>}
+                    </p>
+                  </div>
+
+                  {/* External Team */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">External Team</p>
+                    <p className="text-sm text-slate-900 leading-relaxed">
+                      {[
+                        project.external_lead_email ? `${project.external_lead_email} (Lead)` : null,
+                        ...teamMembers.map(m => m.username)
+                      ].filter(Boolean).join(', ') || <span className="text-slate-400 italic">No external members</span>}
+                    </p>
                   </div>
                 </div>
               </div>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${project.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                {project.status || 'ACTIVE'}
-              </span>
-
-              {canSetHierarchy && (
-                <button
-                  onClick={() => setIsHierarchyModalOpen(true)}
-                  className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
-                >
-                  Set Hierarchy
-                </button>
-              )}
-
-            </div>
-          </div>
-        </div>
-      </div>
-
-
-
-      <div className="max-w-[1400px] mx-auto px-6 pt-2 space-y-10">
-
-        {/* Merged Card: Team | Timeline | Target */}
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <div className="flex divide-x divide-slate-200">
-            {/* TEAM SECTION - Can expand more */}
-            <div className="flex-[1.5] pr-8">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                  <Users size={18} className="text-[#F58A4B]" /> Team
+              {/* TIMELINE SECTION */}
+              <div className="flex-1 px-8">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-1">
+                  <Clock size={18} className="text-[#F58A4B]" /> Timeline
                 </h3>
-                {/* Manual Assignment Button - Restricted to Admin/HQEPL/Assigned SGM */}
-                {(['ADMIN', 'HQEPL'].includes(userRole) || (userRole === 'SGM' && project.assigned_sgm === parseInt(localStorage.getItem('user_id')))) && (
-                  <button onClick={() => setIsAssignModalOpen(true)} className="p-2 bg-slate-50 text-slate-900 rounded-lg hover:bg-slate-900 hover:text-white transition-colors" title="Manage Team">
-                    <UserPlus size={16} />
-                  </button>
-                )}
-              </div>
-              <div className="space-y-4">
-                {/* Internal Team */}
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Internal Team</p>
-                  <p className="text-sm text-slate-900 leading-relaxed">
-                    {[
-                      project.assigned_sgm_name ? `${project.assigned_sgm_name} (SGM)` : null,
-                      ...(project.team_members_details || []).map(formatInternalMemberWithHierarchy)
-                    ].filter(Boolean).join(', ') || <span className="text-slate-400 italic">No internal members</span>}
-                  </p>
-                </div>
 
-                {/* External Team */}
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">External Team</p>
-                  <p className="text-sm text-slate-900 leading-relaxed">
-                    {[
-                      project.external_lead_email ? `${project.external_lead_email} (Lead)` : null,
-                      ...teamMembers.map(m => m.username)
-                    ].filter(Boolean).join(', ') || <span className="text-slate-400 italic">No external members</span>}
+                  <p className="text-sm font-bold text-slate-900">
+                    {project.start_date || 'TBD'} — {project.end_date || 'Ongoing'}
                   </p>
                 </div>
               </div>
-            </div>
-            {/* TIMELINE SECTION */}
-            <div className="flex-1 px-8">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-1">
-                <Clock size={18} className="text-[#F58A4B]" /> Timeline
-              </h3>
-              <div className="space-y-2">
-
-                <p className="text-sm font-bold text-slate-900">
-                  {project.start_date || 'TBD'} — {project.end_date || 'Ongoing'}
+              {/* TARGET SECTION */}
+              <div className="flex-1 pl-8">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <Target size={18} className="text-[#F58A4B]" /> Target
+                </h3>
+                <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+                  {project.target || project.description || "No distinct scope documentation has been initialised for this project."}
                 </p>
               </div>
             </div>
-            {/* TARGET SECTION */}
-            <div className="flex-1 pl-8">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
-                <Target size={18} className="text-[#F58A4B]" /> Target
-              </h3>
-              <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
-                {project.target || project.description || "No distinct scope documentation has been initialised for this project."}
-              </p>
-            </div>
           </div>
-        </div>
-        <div className="pt-10 border-t border-slate-200">
-          {/* <div className="mb-6">
+          <div className="pt-10 border-t border-slate-200">
+            {/* <div className="mb-6">
             <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Project Roadmap</h2>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Detailed Execution Schedule</p>
           </div> */}
 
-          {/* We render the component here */}
-          <BigTask projectId={projectId} onProgressUpdate={setCalculatedProgress} />
+            {/* We render the component here */}
+            <BigTask projectId={projectId} onProgressUpdate={setCalculatedProgress} />
+          </div>
+
         </div>
 
-      </div>
+        <AssignTeamModal
+          isOpen={isAssignModalOpen}
+          onClose={() => setIsAssignModalOpen(false)}
+          projectId={projectId}
+          clientId={project.client}
+          onAssigned={fetchData}
+          initialSelected={project.team_members_details?.map(m => m.id) || []}
+        />
 
-      <AssignTeamModal
-        isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
-        projectId={projectId}
-        clientId={resolvedClientId}
-        onAssigned={fetchData}
-        initialSelected={project.team_members_details?.map(m => m.id) || []}
-      />
+        {isHierarchyModalOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsHierarchyModalOpen(false)} />
+            <div className="relative bg-white w-full max-w-2xl rounded-xl p-8 shadow-2xl border border-slate-100">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Set Hierarchy</h3>
+                <button type="button" onClick={() => setIsHierarchyModalOpen(false)} className="bg-slate-100 p-1.5 rounded-full text-slate-400"><X size={18} /></button>
+              </div>
 
-      {isHierarchyModalOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsHierarchyModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-xl p-8 shadow-2xl border border-slate-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Set Hierarchy</h3>
-              <button type="button" onClick={() => setIsHierarchyModalOpen(false)} className="bg-slate-100 p-1.5 rounded-full text-slate-400"><X size={18} /></button>
-            </div>
+              <div className="mb-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                HH (Handholding), SC (Senior Consultant)
+              </div>
 
-            <div className="mb-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              HH (Handholding), SC (Senior Consultant), SGM (Senior General Manager)
-            </div>
-
-            <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
-              {hierarchyMembers.length === 0 ? (
-                <div className="p-4 text-sm text-slate-500">No internal team members or SGM found for this project.</div>
-              ) : (
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase">
-                      <th className="p-3 text-left">Name</th>
-                      <th className="p-3 text-left">Hierarchy</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {hierarchyMembers.map((member) => (
-                      <tr key={member.key} className="bg-white">
-                        <td className="p-3 text-sm font-semibold text-slate-700">{getMemberDisplayName(member)}</td>
-                        <td className="p-3">
-                          <select
-                            value={member.roleType === 'SGM' ? 'SGM' : (hierarchyAssignments[member.key] || 'HH')}
-                            onChange={(e) => setHierarchyAssignments(prev => ({ ...prev, [member.key]: e.target.value }))}
-                            disabled={member.roleType === 'SGM'}
-                            className="w-full max-w-[220px] bg-white border border-slate-300 px-3 py-2 rounded text-xs font-bold text-slate-700 focus:outline-none"
-                          >
-                            {hierarchyRoleOptions.map(roleOption => (
-                              <option key={roleOption} value={roleOption}>{roleOption}</option>
-                            ))}
-                          </select>
-                        </td>
+              <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
+                {hierarchyMembers.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500">No internal team members or SGM found for this project.</div>
+                ) : (
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase">
+                        <th className="p-3 text-left">Name</th>
+                        <th className="p-3 text-left">Hierarchy</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {hierarchyMembers.map((member) => (
+                        <tr key={member.key} className="bg-white">
+                          <td className="p-3 text-sm font-semibold text-slate-700">{getMemberDisplayName(member)}</td>
+                          <td className="p-3">
+                            <select
+                              value={member.roleType === 'SGM' ? 'SGM' : (hierarchyAssignments[member.key] || 'HH')}
+                              onChange={(e) => setHierarchyAssignments(prev => ({ ...prev, [member.key]: e.target.value }))}
+                              disabled={member.roleType === 'SGM'}
+                              className="w-full max-w-[220px] bg-white border border-slate-300 px-3 py-2 rounded text-xs font-bold text-slate-700 focus:outline-none"
+                            >
+                              {member.roleType === 'SGM' ? (
+                                <option value="SGM">SGM</option>
+                              ) : (
+                                hierarchyRoleOptions.map(roleOption => (
+                                  <option key={roleOption} value={roleOption}>{roleOption}</option>
+                                ))
+                              )}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
 
-            <div className="flex justify-end mt-6">
-              <button type="button" disabled={isSavingHierarchy} onClick={handleSaveHierarchy} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
-                {isSavingHierarchy ? 'Saving...' : 'Done'}
-              </button>
+              <div className="flex justify-end mt-6">
+                <button type="button" disabled={isSavingHierarchy} onClick={handleSaveHierarchy} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
+                  {isSavingHierarchy ? 'Saving...' : 'Done'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div >
+        )}
+      </main>
+    </div>
   );
 }
