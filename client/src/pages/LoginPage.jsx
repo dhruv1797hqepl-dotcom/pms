@@ -3,6 +3,10 @@ import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api";
 
+const LOGIN_ENDPOINTS = {
+  login: "/login/",
+};
+
 const LoginPage = () => {
   const navigate = useNavigate();
 
@@ -16,7 +20,7 @@ const LoginPage = () => {
 
     try {
       // ✅ Login API call
-      const { data } = await api.post("/login/", {
+      const { data } = await api.post(LOGIN_ENDPOINTS.login, {
         email,
         password,
       });
@@ -44,10 +48,18 @@ const LoginPage = () => {
     } catch (err) {
       console.error("Login Error:", err);
 
-      const errorMessage =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        "Invalid email or password";
+      const status = err.response?.status;
+      const responseData = err.response?.data;
+
+      let errorMessage = "Invalid email or password";
+
+      if (status >= 500) {
+        errorMessage = "Server error during login. Please try again in a moment.";
+      } else if (responseData?.detail) {
+        errorMessage = responseData.detail;
+      } else if (responseData?.message) {
+        errorMessage = responseData.message;
+      }
 
       setError(errorMessage);
     }
