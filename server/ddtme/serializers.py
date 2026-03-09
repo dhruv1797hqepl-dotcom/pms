@@ -12,7 +12,8 @@ class BigTaskSerializer(serializers.ModelSerializer):
 
     def get_sgm_name(self, obj):
         if obj.project and obj.project.assigned_sgm:
-            return f"{obj.project.assigned_sgm.first_name} {obj.project.assigned_sgm.last_name}"
+            sgm = obj.project.assigned_sgm
+            return sgm.shortform or f"{sgm.first_name} {sgm.last_name}"
         return "-"
 
     def validate(self, data):
@@ -78,11 +79,12 @@ class DDTMEAdditionalTaskSerializer(serializers.ModelSerializer):
     def get_sgm_name(self, obj):
         # Try to get from project first
         if obj.project and obj.project.assigned_sgm:
-            return f"{obj.project.assigned_sgm.first_name} {obj.project.assigned_sgm.last_name}"
+            sgm = obj.project.assigned_sgm
+            return sgm.shortform or f"{sgm.first_name} {sgm.last_name}"
         # If no project SGM, try to get from client
         if obj.client and obj.client.assigned_sgms.exists():
             sgm = obj.client.assigned_sgms.first()
-            return f"{sgm.first_name} {sgm.last_name}"
+            return sgm.shortform or f"{sgm.first_name} {sgm.last_name}"
         return "-"
 
 
@@ -113,6 +115,8 @@ class ManDayEntrySerializer(serializers.ModelSerializer):
         user = getattr(obj.employee, 'user', None)
         if not user:
             return ""
+        if user.shortform:
+            return user.shortform
         full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
         return full_name or user.username or user.email
 

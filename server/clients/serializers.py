@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Client, ExternalTeam
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 import uuid
 
@@ -19,7 +19,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "username", "email", "password",
             "company_name", "logo", "contact_email",
             "phone", "website", "address", "status",
-            "employees", "assigned_sgms", "internal_team"
+            "employees", "assigned_sgms", "internal_team", "client_hierarchy"
         ]
 
     employees = serializers.SerializerMethodField()
@@ -36,6 +36,7 @@ class ClientSerializer(serializers.ModelSerializer):
             data.append({
                 "id": m.user.id,
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
+                "shortform": m.user.shortform,
                 "email": m.user.email,
                 "role": m.user.role if m.user.role != "EXTERNAL" else "Client Team", 
                 "status": m.status,   # Active/Inactive from ExternalTeam
@@ -45,6 +46,10 @@ class ClientSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+
+        # Include login identifiers in detail payloads for admin edit forms.
+        ret["username"] = instance.user.username
+        ret["email"] = instance.user.email
         
         # Helper to format user
         def format_user(user):
@@ -55,6 +60,7 @@ class ClientSerializer(serializers.ModelSerializer):
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
+                "shortform": user.shortform,
                 "full_name": f"{user.first_name} {user.last_name}".strip() or user.username
             }
 
@@ -177,7 +183,10 @@ class ClientSerializer(serializers.ModelSerializer):
                 user_dirty = True
 
             if new_email:
-                user.email = new_email.strip().lower()
+                normalized_email = new_email.strip().lower()
+                if User.objects.filter(email=normalized_email).exclude(pk=user.pk).exists():
+                    raise serializers.ValidationError({"email": "A user with this email already exists."})
+                user.email = normalized_email
                 user_dirty = True
 
             if new_password:
@@ -185,7 +194,10 @@ class ClientSerializer(serializers.ModelSerializer):
                 user_dirty = True
 
             if user_dirty:
-                user.save()
+                try:
+                    user.save()
+                except IntegrityError:
+                    raise serializers.ValidationError({"email": "A user with this email already exists."})
 
             force_full_replace = bool(request and request.method == "PUT")
 
@@ -235,6 +247,7 @@ class ClientListSerializer(serializers.ModelSerializer):
             {
                 "id": u.id,
                 "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "shortform": u.shortform,
                 "email": u.email
             }
             for u in obj.assigned_sgms.all()

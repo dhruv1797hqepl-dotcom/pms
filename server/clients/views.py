@@ -100,6 +100,25 @@ class ClientDetailView(APIView):
     def patch(self, request, pk):
         client = get_object_or_404(Client, pk=pk)
 
+        # Support hierarchy updates from the client dashboard hierarchy modal.
+        if "client_hierarchy" in request.data:
+            if request.user.role == "SGM":
+                if not client.assigned_sgms.filter(id=request.user.id).exists():
+                    raise PermissionDenied("You do not have permission to update this client.")
+            elif request.user.role not in ["ADMIN", "HQEPL"]:
+                raise PermissionDenied("You do not have permission to update this client.")
+
+            serializer = ClientSerializer(
+                client,
+                data={"client_hierarchy": request.data.get("client_hierarchy")},
+                partial=True,
+                context={"request": request},
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         status_val = request.data.get("status")
         if not status_val:
             return Response({"detail": "Status is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -342,8 +361,12 @@ class ClientEmployeesView(APIView):
             is_allowed = True
         elif user.role == "CLIENT" and client.user_id == user.id:
             is_allowed = True
-        elif user.role == "EMPLOYEE" and client.internal_team.filter(id=user.id).exists():
-            is_allowed = True
+        elif user.role == "EMPLOYEE":
+            # Allowed if in internal_team OR assigned to any project of this client
+            if client.internal_team.filter(id=user.id).exists():
+                is_allowed = True
+            elif projects.filter(assigned_employees__user_id=user.id).exists():
+                is_allowed = True
 
         if not is_allowed:
             raise PermissionDenied("You do not have permission to view this client's employees.")
@@ -370,6 +393,7 @@ class ClientEmployeesView(APIView):
                 "username": emp.user.username,
                 "first_name": emp.user.first_name,
                 "last_name": emp.user.last_name,
+                "shortform": emp.user.shortform,
                 "email": emp.user.email,
                 "role": emp.user.role,
                 "is_active": emp.user.is_active,

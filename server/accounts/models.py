@@ -20,6 +20,7 @@ class CustomUser(AbstractUser):
         
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES,  default='EMPLOYEE')
+    shortform = models.CharField(max_length=50, blank=True, null=True)
     email = models.EmailField(unique=True)
 
     # Shared profile fields used by all role-based profile pages.

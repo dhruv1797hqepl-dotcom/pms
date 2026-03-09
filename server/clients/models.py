@@ -33,6 +33,9 @@ class Client(models.Model):
         limit_choices_to={"role": "EMPLOYEE"}
     )
 
+    # Stores client-level hierarchy assignments used across project workflows.
+    client_hierarchy = models.JSONField(default=list, blank=True)
+
     # External_Team = models.ManyToManyField(
     #     settings.AUTH_USER_MODEL,
     #     related_name="external_teams"

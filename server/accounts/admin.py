@@ -4,16 +4,16 @@ from .models import CustomUser
 
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ['email', 'username', 'role', 'is_staff', 'is_active']
+    list_display = ['email', 'username', 'shortform', 'role', 'is_staff', 'is_active']
     list_filter = ['role', 'is_staff', 'is_active']
     fieldsets = (
-        (None, {'fields': ('email', 'username', 'password', 'role')}),
+        (None, {'fields': ('email', 'username', 'password', 'shortform', 'role')}),
         ('Permissions', {'fields': ('is_staff', 'is_active')}),
     )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'role', 'password1', 'password2', 'is_staff', 'is_active')}
+            'fields': ('email', 'username', 'shortform', 'role', 'password1', 'password2', 'is_staff', 'is_active')}
         ),
     )
     search_fields = ('email',)
