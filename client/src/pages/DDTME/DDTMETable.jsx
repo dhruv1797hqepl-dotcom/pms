@@ -1332,8 +1332,8 @@ const DDTMETable = () => {
                 <th colSpan={showRowRemarks ? 5 : 4} className="sticky left-0 bg-slate-800 z-10"></th>
                 {tablePeople.map((person) => (
                   <React.Fragment key={`sub-${person.id}`}>
-                    <th className="px-3 py-2 text-center text-[9px] font-bold border-l border-slate-700">On</th>
-                    <th className="px-3 py-2 text-center text-[9px] font-bold">Off</th>
+                    <th className="px-3 py-2 text-center text-[9px] font-bold border-l border-slate-700">Onsite HR</th>
+                    <th className="px-3 py-2 text-center text-[9px] font-bold">Offsite HR</th>
                   </React.Fragment>
                 ))}
                 {tablePeople.length === 0 && <th></th>}
