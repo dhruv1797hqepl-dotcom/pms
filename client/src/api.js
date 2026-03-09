@@ -14,8 +14,13 @@ API.interceptors.request.use(
       config.url = normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
     }
 
+    const normalizedUrl = String(config.url || "").toLowerCase();
+    const isAuthEndpoint =
+      normalizedUrl.endsWith("/api/login/") ||
+      normalizedUrl.endsWith("/api/token/refresh/");
+
     const token = localStorage.getItem("access_token");
-    if (token) {
+    if (token && !isAuthEndpoint) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
