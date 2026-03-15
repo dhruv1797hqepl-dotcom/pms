@@ -13,10 +13,13 @@ const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError("");
+    setIsSubmitting(true);
 
     try {
       // ✅ Login API call
@@ -62,6 +65,8 @@ const LoginPage = () => {
       }
 
       setError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -143,9 +148,10 @@ const LoginPage = () => {
 
             <button
               type="submit"
-              className="w-full bg-slate-900 text-white py-5 rounded-full text-xs font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl"
+              disabled={isSubmitting}
+              className="w-full bg-slate-900 text-white py-5 rounded-full text-xs font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-80 disabled:cursor-not-allowed"
             >
-              Log In <ChevronRight size={16} />
+              {isSubmitting ? "Verifying..." : "Log In"} <ChevronRight size={16} />
             </button>
           </form>
         </div>
