@@ -7,8 +7,8 @@ class BigTask(models.Model):
         on_delete=models.CASCADE,
         related_name="big_tasks"
     )
-    title = models.CharField(max_length=255)
-    ddtme_title = models.CharField(max_length=255, blank=True, default='')
+    title = models.CharField(max_length=500)
+    ddtme_title = models.CharField(max_length=500, blank=True, default='')
     start_date = models.DateField()
     target_date = models.DateField()
     status = models.CharField(
@@ -59,7 +59,7 @@ class DDTMEAdditionalTask(models.Model):
     project = models.ForeignKey('projects.Project', on_delete=models.SET_NULL, null=True, blank=True, related_name='ddtme_additional_tasks')
     month = models.IntegerField()
     year = models.IntegerField()
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=500)
     target_date = models.DateField(null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

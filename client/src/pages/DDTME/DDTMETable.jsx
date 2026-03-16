@@ -1258,7 +1258,7 @@ const DDTMETable = () => {
               {clientBigTasks.map((task, idx) => (
                 <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50">{idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50">
+                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50 w-[320px] min-w-[200px] max-w-[320px]">
                     {editingDeliverableKey === `big_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1266,7 +1266,8 @@ const DDTMETable = () => {
                           value={deliverableDraft.title}
                           onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
                           onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('big', task.id)}
-                          className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          maxLength={500}
                           autoFocus
                         />
                         <select
@@ -1302,7 +1303,7 @@ const DDTMETable = () => {
                     ) : (
                       <>
                         <div className="flex items-start justify-between gap-2">
-                          <span>{task.ddtme_title || task.title}</span>
+                          <span className="line-clamp-2 break-words" title={task.ddtme_title || task.title}>{task.ddtme_title || task.title}</span>
                           {canEdit && (
                             <div className="flex items-center gap-1">
                               <button
@@ -1413,7 +1414,7 @@ const DDTMETable = () => {
               {additionalTasks.map((task, idx) => (
                 <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                   <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50">{clientBigTasks.length + idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50">
+                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50 w-[320px] min-w-[200px] max-w-[320px]">
                     {editingDeliverableKey === `add_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1421,7 +1422,8 @@ const DDTMETable = () => {
                           value={deliverableDraft.title}
                           onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
                           onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('add', task.id)}
-                          className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                          maxLength={500}
                           autoFocus
                         />
                         <select
@@ -1457,7 +1459,7 @@ const DDTMETable = () => {
                     ) : (
                       <>
                         <div className="flex items-start justify-between gap-2">
-                          <span>{task.title}</span>
+                          <span className="line-clamp-2 break-words" title={task.title}>{task.title}</span>
                           {canEdit && (
                             <div className="flex items-center gap-1">
                               <button
@@ -1581,6 +1583,7 @@ const DDTMETable = () => {
                         onKeyDown={(e) => e.key === 'Enter' && handleAddAdditionalTask(dIdx)}
                         placeholder="Enter deliverable..."
                         className="flex-[2] px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none"
+                        maxLength={500}
                         autoFocus={dIdx === deliverableDrafts.length - 1}
                       />
                       <select
