@@ -1239,7 +1239,8 @@ const DDTMETable = () => {
 
               </tr>
               <tr className="bg-slate-800 text-white">
-                <th colSpan={showRowRemarks ? 5 : 4} className="sticky left-0 bg-slate-800 z-10"></th>
+                <th className="sticky left-0 bg-slate-800 z-10"></th>
+                <th colSpan={showRowRemarks ? 4 : 3} className="sticky left-10 bg-slate-800 z-10"></th>
                 {tablePeople.map((person) => (
                   <React.Fragment key={`sub-${person.id}`}>
                     <th className="px-3 py-2 text-center text-[9px] font-bold border-l border-slate-700">Onsite Hrs</th>
@@ -1617,14 +1618,15 @@ const DDTMETable = () => {
               {/* Totals Row */}
               {(clientBigTasks.length > 0 || additionalTasks.length > 0) && tablePeople.length > 0 && (
                 <tr className="bg-yellow-50 font-bold sticky bottom-0 z-10 shadow-t">
-                  <td colSpan={showRowRemarks ? 5 : 4} className="px-6 py-4 text-right text-sm sticky left-0 bg-yellow-50 z-20">Total Hours</td>
+                  <td className="sticky left-0 bg-yellow-50 z-20"></td>
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
 
                   {tablePeople.map((person) => (
                     <React.Fragment key={`total-${person.id}`}>
-                      <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800">
+                      <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800 bg-yellow-50">
                         {getTotalHoursForEmp(person.id)}
                       </td>
-                      <td className="px-3 py-4 text-center text-sm text-slate-500">
+                      <td className="px-3 py-4 text-center text-sm text-slate-500 bg-yellow-50">
                         {getTotalOffHoursForEmp(person.id)}
                       </td>
                     </React.Fragment>
