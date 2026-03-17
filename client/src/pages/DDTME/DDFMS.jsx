@@ -1287,6 +1287,12 @@ const DDFMS = () => {
     setSelectedPeriodKey(formatPeriodKey(nextDate.getFullYear(), nextDate.getMonth() + 1));
   };
 
+  const tableVisibleRows = 15;
+  const tableHeaderHeightPx = 120;
+  const tableRowHeightPx = 52;
+  const tableActionRowHeightPx = 62;
+  const tableViewportMaxHeight = tableHeaderHeightPx + (tableVisibleRows * tableRowHeightPx) + tableActionRowHeightPx;
+
   return (
     <div className="h-screen w-screen bg-[#FBFBFB] antialiased font-sans flex overflow-hidden">
       <Sidebar />
@@ -1354,32 +1360,35 @@ const DDFMS = () => {
 
           <div className="mt-6 flex flex-col gap-3">
 
-            <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+            <div
+              className="border border-slate-200 rounded-xl overflow-auto shadow-sm nice-scrollbar"
+              style={{ maxHeight: `${tableViewportMaxHeight}px` }}
+            >
               <table className="w-full min-w-[2600px] border-collapse">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
-                    <th className="sticky left-0 z-30 bg-slate-100 p-3 text-left text-xs font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[350px]">
+                    <th className="sticky left-0 z-30 bg-slate-100 p-3 text-left text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[350px]">
                       Deliverable / Step
                     </th>
-                    <th className="sticky left-[350px] z-30 bg-slate-100 p-3 text-center text-xs font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[120px]">
+                    <th className="sticky left-[350px] z-30 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[120px]">
                       Start Date
                     </th>
-                    <th className="sticky left-[470px] z-30 bg-slate-100 p-3 text-center text-xs font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[120px]">
+                    <th className="sticky left-[470px] z-30 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[120px]">
                       Target Date
                     </th>
                     {stepDefinitions.map((stepText, index) => (
                       <th
                         key={`step-${index + 1}`}
                         colSpan={2}
-                        className="p-3 text-center text-xs font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[180px]"
+                        className="p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[180px]"
                       >
                         <div className="space-y-1 normal-case tracking-normal">
-                          <div className="uppercase text-xs font-black tracking-wider">Step {index + 1}</div>
-                          <div className="text-[13px] font-bold text-slate-600 leading-relaxed">{stepText}</div>
+                          <div className="uppercase text-[11px] font-black tracking-wider">Step {index + 1}</div>
+                          <div className="text-[12px] font-bold text-slate-600 leading-relaxed">{stepText}</div>
                         </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center text-xs font-black uppercase tracking-wider text-slate-700 min-w-[180px]">
+                    <th className="p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 min-w-[180px]">
                       Actions
                     </th>
                   </tr>
@@ -1420,8 +1429,8 @@ const DDFMS = () => {
                       <tr key={deliverable.id} className={`${rowBackgroundClass} border-b border-slate-100`}>
                         <td className={`sticky left-0 z-20 ${rowBackgroundClass} p-2 border-r border-slate-200 align-top`}>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-black text-slate-500">{rowIndex + 1})</span>
-                            <div className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-800">
+                            <span className="text-[13px] font-black text-slate-500">{rowIndex + 1})</span>
+                            <div className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-800">
                               {deliverable.title}
                             </div>
                           </div>
@@ -1434,7 +1443,7 @@ const DDFMS = () => {
                             min={todayStr}
                             onChange={(e) => handleDeliverableStartDateChange(deliverable.id, e.target.value)}
                             disabled={isRowLocked}
-                            className={`w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            className={`w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                           />
                         </td>
 
@@ -1443,7 +1452,7 @@ const DDFMS = () => {
                             type="date"
                             value={deliverable.targetDate || ''}
                             readOnly
-                            className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-700 focus:outline-none"
+                            className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-700 focus:outline-none"
                           />
                         </td>
 
@@ -1458,7 +1467,7 @@ const DDFMS = () => {
                                   value={tableData[ownerKey] || ''}
                                   onChange={(e) => updateCell(ownerKey, e.target.value)}
                                   disabled={isRowLocked}
-                                  className={`w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                  className={`w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 >
                                   <option value="">Select</option>
                                   {responsibleOptions.map((memberOption) => (
@@ -1475,7 +1484,7 @@ const DDFMS = () => {
                                   min={todayStr}
                                   onChange={(e) => updateCell(dateKey, e.target.value)}
                                   disabled={isRowLocked}
-                                  className={`w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                  className={`w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 />
                               </td>
                             </React.Fragment>

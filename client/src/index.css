@@ -21,6 +21,35 @@ body {
 	display: none;
 }
 
+.nice-scrollbar {
+	scrollbar-width: thin;
+	scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.nice-scrollbar::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.nice-scrollbar::-webkit-scrollbar-track {
+	background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+	border-radius: 999px;
+}
+
+.nice-scrollbar::-webkit-scrollbar-thumb {
+	background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+	border-radius: 999px;
+	border: 2px solid #e2e8f0;
+}
+
+.nice-scrollbar::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+}
+
+.nice-scrollbar::-webkit-scrollbar-corner {
+	background: #e2e8f0;
+}
+
 .no-number-spinner {
 	-moz-appearance: textfield;
 	appearance: textfield;
