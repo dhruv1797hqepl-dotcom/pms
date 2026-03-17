@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload } from 'lucide-react';
 import api from '../api';
 
@@ -112,9 +112,44 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     const [excelUploadStatus, setExcelUploadStatus] = useState(null);
     const [columnMapping, setColumnMapping] = useState({});
     const [mappingStep, setMappingStep] = useState(false);
+    const [lastQuickAddedTaskId, setLastQuickAddedTaskId] = useState(null);
+    const [pendingScrollTaskId, setPendingScrollTaskId] = useState(null);
+
+    const tasksTableScrollRef = useRef(null);
 
     const todayKey = getTodayKey();
     const minimumStartDate = laterDateKey(project?.start_date || null, todayKey);
+    const taskVisibleRows = 10;
+    const taskHeaderHeightPx = 46;
+    const taskRowHeightPx = 48;
+    const taskTableViewportMaxHeight = taskHeaderHeightPx + (taskVisibleRows * taskRowHeightPx);
+
+    const bigTaskScrollbarStyles = `
+        .bigtask-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #64748b #e2e8f0;
+        }
+
+        .bigtask-scrollbar::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        .bigtask-scrollbar::-webkit-scrollbar-track {
+            background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 999px;
+        }
+
+        .bigtask-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+            border-radius: 999px;
+            border: 2px solid #e2e8f0;
+        }
+
+        .bigtask-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+        }
+    `;
 
 
     // --- DATA FETCHING ---
@@ -270,6 +305,27 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
         return [...active, ...completed];
     }, [tasks]);
 
+    useEffect(() => {
+        if (!pendingScrollTaskId) return;
+
+        const scrollContainer = tasksTableScrollRef.current;
+        if (!scrollContainer) return;
+
+        const timer = setTimeout(() => {
+            const targetRow = scrollContainer.querySelector(`[data-task-id="${pendingScrollTaskId}"]`);
+
+            if (targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+            } else {
+                scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+            }
+
+            setPendingScrollTaskId(null);
+        }, 120);
+
+        return () => clearTimeout(timer);
+    }, [tasks, pendingScrollTaskId]);
+
 
     // --- HANDLERS (API INTEGRATED) ---
 
@@ -356,6 +412,8 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             const res = await api.post(`ddtme/big-tasks/`, payload);
 
             await fetchTasks();
+            setLastQuickAddedTaskId(res.data.id);
+            setPendingScrollTaskId(res.data.id);
             startEditing({
                 ...res.data,
                 startDate: res.data.start_date,
@@ -380,6 +438,11 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     const saveTask = async (taskId) => {
         if (editingTitle.trim() === '') return;
+
+        if (taskId === lastQuickAddedTaskId && editingStartDate < minimumStartDate) {
+            alert(`Start date cannot be before ${minimumStartDate}.`);
+            return;
+        }
 
         if (new Date(editingStartDate) > new Date(editingTargetDate)) {
             alert("Start date cannot be later than target date");
@@ -645,6 +708,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     return (
         <div className="w-full font-sans text-slate-900 bg-white">
+            <style>{bigTaskScrollbarStyles}</style>
             <div className="flex justify-between items-center mb-6 px-1">
                 <div className="flex items-center gap-3">
                     <span className="bg-[#F58A4B] p-1.5 rounded text-white shadow-sm">
@@ -677,15 +741,16 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                             <button onClick={handleQuickAddTask} className="flex items-center justify-center bg-[#F58A4B] hover:bg-orange-600 text-white px-3 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
                                 <Plus size={14} />
                             </button>
-                            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
-                                <Plus size={14} /> Add Task
-                            </button>
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className="border border-slate-300 overflow-x-auto relative">
+            <div
+                ref={tasksTableScrollRef}
+                className="border border-slate-300 overflow-x-auto overflow-y-auto relative bigtask-scrollbar"
+                style={{ maxHeight: `min(${taskTableViewportMaxHeight}px, calc(100vh - 280px))` }}
+            >
                 <table className="w-full border-collapse min-w-max">
                     <thead>
                         <tr className="bg-slate-100 divide-x divide-slate-300 border-b border-slate-300">
@@ -704,7 +769,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                         {processedTasks.map((task, index) => {
                             const rowBg = task.type === 'Y' ? 'bg-orange-50' : 'bg-white';
                             return (
-                                <tr key={task.id} className={`divide-x divide-slate-300 ${task.type === 'Y' ? 'bg-orange-50' : 'bg-white hover:bg-slate-50'} group`}>
+                                <tr data-task-id={task.id} key={task.id} className={`divide-x divide-slate-300 ${task.type === 'Y' ? 'bg-orange-50' : 'bg-white hover:bg-slate-50'} group`}>
                                     <td className={`p-2 text-center text-xs font-semibold text-slate-500 sticky left-0 z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>{index + 1}</td>
 
                                     <td className={`p-2 pl-3 sticky left-[48px] z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>
@@ -723,7 +788,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                         <label className="text-[9px] text-slate-400 font-bold uppercase block">Start</label>
                                                         <input
                                                             type="date"
-                                                            min={project?.start_date}
+                                                            min={task.id === lastQuickAddedTaskId ? (minimumStartDate || project?.start_date) : project?.start_date}
                                                             max={project?.end_date}
                                                             value={editingStartDate}
                                                             onChange={(e) => setEditingStartDate(e.target.value)}
@@ -734,7 +799,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                         <label className="text-[9px] text-slate-400 font-bold uppercase block">End</label>
                                                         <input
                                                             type="date"
-                                                            min={editingStartDate || project?.start_date}
+                                                            min={editingStartDate || (task.id === lastQuickAddedTaskId ? (minimumStartDate || project?.start_date) : project?.start_date)}
                                                             max={project?.end_date}
                                                             value={editingTargetDate}
                                                             onChange={(e) => setEditingTargetDate(e.target.value)}
