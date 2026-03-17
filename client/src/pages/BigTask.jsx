@@ -3,6 +3,84 @@ import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash
 import api from '../api';
 
 const BigTask = ({ projectId, onProgressUpdate }) => {
+    const formatDateKey = (dateObj) => {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+
+    const getTodayKey = () => formatDateKey(new Date());
+
+    const laterDateKey = (left, right) => {
+        if (left && right) return left > right ? left : right;
+        return left || right || null;
+    };
+
+    const normalizeYmd = (year, month, day) => {
+        const y = Number(year);
+        const m = Number(month);
+        const d = Number(day);
+
+        if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+        if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+
+        const check = new Date(Date.UTC(y, m - 1, d));
+        if (
+            check.getUTCFullYear() !== y ||
+            (check.getUTCMonth() + 1) !== m ||
+            check.getUTCDate() !== d
+        ) {
+            return null;
+        }
+
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    };
+
+    const parseExcelDateValue = (rawValue) => {
+        if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+
+        if (rawValue instanceof Date && !Number.isNaN(rawValue.getTime())) {
+            return formatDateKey(rawValue);
+        }
+
+        if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+            const wholeDays = Math.floor(rawValue);
+            if (wholeDays <= 0) return null;
+
+            // Convert Excel serial date without local timezone drift.
+            const excelEpochMs = Date.UTC(1899, 11, 30);
+            const utcDate = new Date(excelEpochMs + (wholeDays * 86400000));
+            return normalizeYmd(
+                utcDate.getUTCFullYear(),
+                utcDate.getUTCMonth() + 1,
+                utcDate.getUTCDate()
+            );
+        }
+
+        const text = String(rawValue).trim();
+        if (!text) return null;
+
+        const ymdMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+        if (ymdMatch) {
+            return normalizeYmd(ymdMatch[1], ymdMatch[2], ymdMatch[3]);
+        }
+
+        const dmyMatch = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+        if (dmyMatch) {
+            let year = Number(dmyMatch[3]);
+            if (year < 100) year += 2000;
+            return normalizeYmd(year, dmyMatch[2], dmyMatch[1]);
+        }
+
+        const parsed = new Date(text);
+        if (!Number.isNaN(parsed.getTime())) {
+            return formatDateKey(parsed);
+        }
+
+        return null;
+    };
+
     // --- STATE ---
     const [tasks, setTasks] = useState([]);
     const [project, setProject] = useState(null);
@@ -34,6 +112,9 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     const [excelUploadStatus, setExcelUploadStatus] = useState(null);
     const [columnMapping, setColumnMapping] = useState({});
     const [mappingStep, setMappingStep] = useState(false);
+
+    const todayKey = getTodayKey();
+    const minimumStartDate = laterDateKey(project?.start_date || null, todayKey);
 
 
     // --- DATA FETCHING ---
@@ -212,6 +293,10 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     const handleAddTask = async (e) => {
         e.preventDefault();
+        if (formData.startDate < minimumStartDate) {
+            alert(`Start date cannot be before ${minimumStartDate}.`);
+            return;
+        }
         if (new Date(formData.startDate) > new Date(formData.targetDate)) {
             alert("Start date cannot be later than target date");
             return;
@@ -249,12 +334,12 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     };
 
     const handleQuickAddTask = async () => {
-        const defaultStart = project?.start_date || new Date().toISOString().split('T')[0];
+        const defaultStart = minimumStartDate || todayKey;
 
         // Default target date: start + 30 days, or project end if sooner
         let defaultEnd = new Date(defaultStart);
         defaultEnd.setDate(defaultEnd.getDate() + 30);
-        const endString = defaultEnd.toISOString().split('T')[0];
+        const endString = formatDateKey(defaultEnd);
 
         const projectEnd = project?.end_date;
         const finalTargetDate = (projectEnd && endString > projectEnd) ? projectEnd : endString;
@@ -384,27 +469,18 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             const allRows = excelPreview.allRows;
             let created = 0;
             let errors = [];
+            const uploadDayKey = getTodayKey();
+            const minUploadStartDate = laterDateKey(project?.start_date || null, uploadDayKey);
+
             for (let i = 0; i < allRows.length; i++) {
                 const row = allRows[i];
                 const title = columnMapping['title'] !== '' ? String(row[columnMapping['title']] || '').trim() : '';
                 if (!title) continue;
                 let startDate = columnMapping['start_date'] !== undefined && columnMapping['start_date'] !== '' ? row[columnMapping['start_date']] : null;
                 let targetDate = columnMapping['target_date'] !== undefined && columnMapping['target_date'] !== '' ? row[columnMapping['target_date']] : null;
-                // Try to parse dates
-                const parseDate = (val) => {
-                    if (!val) return null;
-                    if (typeof val === 'number') {
-                        // Excel serial date
-                        const epoch = new Date(1899, 11, 30);
-                        epoch.setDate(epoch.getDate() + val);
-                        return epoch.toISOString().split('T')[0];
-                    }
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-                    return null;
-                };
-                startDate = parseDate(startDate) || project?.start_date || new Date().toISOString().split('T')[0];
-                targetDate = parseDate(targetDate) || project?.end_date || startDate;
+                startDate = parseExcelDateValue(startDate) || minUploadStartDate || uploadDayKey;
+                targetDate = parseExcelDateValue(targetDate) || project?.end_date || startDate;
+
                 // Clamp dates within project range
                 const projStart = project?.start_date;
                 const projEnd = project?.end_date;
@@ -413,6 +489,15 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 if (projStart && targetDate < projStart) targetDate = projStart;
                 if (projEnd && targetDate > projEnd) targetDate = projEnd;
                 if (startDate > targetDate) targetDate = startDate;
+
+                if (minUploadStartDate && startDate < minUploadStartDate) {
+                    errors.push({
+                        row: i + 2,
+                        message: `Start date ${startDate} cannot be before ${minUploadStartDate}`
+                    });
+                    continue;
+                }
+
                 try {
                     await api.post('ddtme/big-tasks/', {
                         project: projectId,
@@ -852,7 +937,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Start Date</label>
-                                    <input type="date" required min={project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
+                                    <input type="date" required min={minimumStartDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Target Date</label>

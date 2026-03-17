@@ -129,6 +129,7 @@ const MandaysPlanning = () => {
         const role = (localStorage.getItem('role') || '').toUpperCase();
         const isSgm = role === 'SGM';
         const isEmployee = role === 'EMPLOYEE';
+        const isPrivilegedViewer = role === 'HQEPL' || role === 'ADMIN';
 
         let clientsEndpoint = 'clients/list/';
         if (isSgm) {
@@ -159,11 +160,14 @@ const MandaysPlanning = () => {
         if ((isSgm || isEmployee) && currentUser) {
           const userId = currentUser.id;
           const profileId = currentUser.employee_profile_id;
+          const normalizedCurrentRole = String(currentUser.role || role || '').toUpperCase();
           
           employeeMap.set(String(userId), {
             ...currentUser,
             id: userId,
             employee_id: userId,
+            user_id: userId,
+            role: normalizedCurrentRole,
             full_name: currentUserDisplayName || getEmployeeDisplayName(currentUser),
           });
           
@@ -184,6 +188,8 @@ const MandaysPlanning = () => {
                 ...emp,
                 id: userId,
                 employee_id: userId, 
+                user_id: userId,
+                role: String(emp.role || 'EMPLOYEE').toUpperCase(),
               });
               if (emp.employee_profile_id) {
                 employeeProfileToUserId.set(String(emp.employee_profile_id), String(userId));
@@ -220,6 +226,8 @@ const MandaysPlanning = () => {
 
               employeeMap.set(key, {
                 ...existing,
+                user_id: existing.user_id || userId,
+                role: String(existing.role || employee.role || '').toUpperCase(),
                 first_name: existing.first_name || employee.first_name || '',
                 last_name: existing.last_name || employee.last_name || '',
                 username: existing.username || employee.username || '',
@@ -233,6 +241,40 @@ const MandaysPlanning = () => {
               }
             });
           });
+        }
+
+        if (isPrivilegedViewer) {
+          try {
+            const allUsersResponse = await api.get('admin/users/');
+            const scopedUsers = unwrapList(allUsersResponse.data).filter((user) => {
+              const normalizedRole = String(user.role || '').toUpperCase();
+              return ['SGM', 'EMPLOYEE', 'HQEPL'].includes(normalizedRole);
+            });
+
+            scopedUsers.forEach((user) => {
+              const userId = user.id;
+              const key = String(userId);
+              const existing = employeeMap.get(key) || {
+                id: userId,
+                employee_id: userId,
+                employee_name: '',
+              };
+
+              employeeMap.set(key, {
+                ...existing,
+                id: userId,
+                employee_id: existing.employee_id || userId,
+                user_id: userId,
+                role: String(user.role || '').toUpperCase(),
+                first_name: existing.first_name || user.first_name || '',
+                last_name: existing.last_name || user.last_name || '',
+                username: existing.username || user.username || '',
+                email: existing.email || user.email || '',
+              });
+            });
+          } catch (allUsersError) {
+            console.warn('Failed to fetch global staff list for HQEPL/Admin:', allUsersError);
+          }
         }
 
         // Fetch man days for all clients
@@ -274,18 +316,15 @@ const MandaysPlanning = () => {
 
             const existingEmployee = employeeMap.get(String(userId));
             if (!existingEmployee) {
-              employeeMap.set(String(userId), {
-                id: userId,
-                employee_id: userId,
-                user_id: userId,
-                first_name: '',
-                last_name: '',
-                username: '',
-                email: '',
-                employee_name: entry.employee_name || '',
-                full_name: entry.employee_name || '',
-              });
-            } else if (!existingEmployee.full_name && entry.employee_name) {
+              return;
+            }
+
+            const normalizedEmployeeRole = String(existingEmployee.role || '').toUpperCase();
+            if (normalizedEmployeeRole === 'ADMIN') {
+              return;
+            }
+
+            if (!existingEmployee.full_name && entry.employee_name) {
               employeeMap.set(String(userId), {
                 ...existingEmployee,
                 full_name: entry.employee_name,
@@ -301,87 +340,9 @@ const MandaysPlanning = () => {
           });
         });
 
-        // Optional: HQEPL/Admin full visibility enrichment
-        if (role === 'HQEPL' || role === 'ADMIN') {
-          // ... existing logic for HQEPL ...
-          // Note: To keep it concise and fix the bug, I'll simplify the merging.
-          // Since the user is specifically concerned about duplicates, the Map approach is already better.
-          try {
-            const allUsersResponse = await api.get('admin/users/');
-            const scopedUsers = unwrapList(allUsersResponse.data).filter((user) => {
-              const normalizedRole = String(user.role || '').toUpperCase();
-              return ['SGM', 'EMPLOYEE', 'HQEPL'].includes(normalizedRole);
-            });
-
-            const identityToKey = new Map();
-            employeeMap.forEach((employee, key) => {
-              const email = String(employee.email || '').toLowerCase();
-              const username = String(employee.username || '').toLowerCase();
-
-              if (email) {
-                identityToKey.set(`email:${email}`, key);
-              }
-              if (username) {
-                identityToKey.set(`username:${username}`, key);
-              }
-              if (employee.user_id) {
-                identityToKey.set(`user:${employee.user_id}`, key);
-              }
-            });
-
-            scopedUsers.forEach((user) => {
-              const email = String(user.email || '').toLowerCase();
-              const username = String(user.username || '').toLowerCase();
-              const userId = user.id;
-
-              const matchedKey =
-                (email && identityToKey.get(`email:${email}`)) ||
-                (username && identityToKey.get(`username:${username}`)) ||
-                (userId && identityToKey.get(`user:${userId}`));
-
-              if (matchedKey) {
-                const existing = employeeMap.get(matchedKey);
-                employeeMap.set(matchedKey, {
-                  ...existing,
-                  user_id: existing.user_id || userId || null,
-                  first_name: existing.first_name || user.first_name || '',
-                  last_name: existing.last_name || user.last_name || '',
-                  username: existing.username || user.username || '',
-                  email: existing.email || user.email || '',
-                });
-                return;
-              }
-
-              const syntheticKey = `user_${userId}`;
-              employeeMap.set(syntheticKey, {
-                id: syntheticKey,
-                employee_id: null,
-                user_id: userId,
-                first_name: user.first_name || '',
-                last_name: user.last_name || '',
-                username: user.username || '',
-                email: user.email || '',
-                employee_name: '',
-              });
-
-              if (email) {
-                identityToKey.set(`email:${email}`, syntheticKey);
-              }
-              if (username) {
-                identityToKey.set(`username:${username}`, syntheticKey);
-              }
-              if (userId) {
-                identityToKey.set(`user:${userId}`, syntheticKey);
-              }
-            });
-          } catch (allUsersError) {
-            console.warn('Failed to fetch global staff list for HQEPL/Admin:', allUsersError);
-          }
-        }
-
-        const mergedEmployees = Array.from(employeeMap.values()).sort((a, b) =>
-          getEmployeeDisplayName(a).localeCompare(getEmployeeDisplayName(b))
-        );
+        const mergedEmployees = Array.from(employeeMap.values())
+          .filter((employee) => String(employee.role || '').toUpperCase() !== 'ADMIN')
+          .sort((a, b) => getEmployeeDisplayName(a).localeCompare(getEmployeeDisplayName(b)));
 
         setHrRows(mergedEmployees);
         setHoursMatrix(nextHoursMatrix);
