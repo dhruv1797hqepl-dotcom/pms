@@ -86,7 +86,6 @@ const WeeklyScore = () => {
   const [scopedClients, setScopedClients] = useState([]);
   const [scopedProjects, setScopedProjects] = useState([]);
   const [selectedClient, setSelectedClient] = useState('all');
-  const [selectedProject, setSelectedProject] = useState('all');
   const [loading, setLoading] = useState(true);
 
   const weeks = useMemo(
@@ -172,36 +171,27 @@ const WeeklyScore = () => {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [allTasks, scopedProjects]);
 
-  useEffect(() => {
-    if (selectedProject === 'all') return;
-    const isValidProject = projectOptions.some(project => project.id === selectedProject);
-    if (!isValidProject) {
-      setSelectedProject('all');
-    }
-  }, [projectOptions, selectedProject]);
-
   const filteredTasks = useMemo(() => {
     return allTasks.filter(task => {
       if (selectedClient !== 'all' && String(task.client_org) !== selectedClient) return false;
-      if (selectedProject !== 'all' && String(task.project) !== selectedProject) return false;
       return true;
     });
-  }, [allTasks, selectedClient, selectedProject]);
+  }, [allTasks, selectedClient]);
 
   const teamData = useMemo(() => {
     const grouped = {};
     filteredTasks.forEach(task => {
-      if (!task.assigned_to) return;
-      if (!grouped[task.assigned_to]) grouped[task.assigned_to] = [];
-      grouped[task.assigned_to].push(task);
+      if (!task.project) return;
+      if (!grouped[task.project]) grouped[task.project] = [];
+      grouped[task.project].push(task);
     });
 
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
 
-    return members
-      .map(member => {
-        const tasks = grouped[member.id] || [];
+    return Object.entries(grouped)
+      .map(([projectId, tasks]) => {
+        const projectName = tasks[0]?.project_name || `Project ${projectId}`;
         const weeklyData = weeks.map(week => {
           const weekTasks = tasks.filter(task => {
             if (!task.target_date) return false;
@@ -214,14 +204,14 @@ const WeeklyScore = () => {
         });
 
         return {
-          id: member.id,
-          name: member.name || member.email || 'Unknown',
+          id: projectId,
+          name: projectName,
           weeklyData,
           overall: computeOverallFromWeeklyData(weeklyData),
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredTasks, members, weeks, currentDate]);
+  }, [filteredTasks, weeks, currentDate]);
 
   const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const shortMonth = currentDate.toLocaleString('default', { month: 'short' });
@@ -283,27 +273,11 @@ const WeeklyScore = () => {
                   value={selectedClient}
                   onChange={(e) => {
                     setSelectedClient(e.target.value);
-                    setSelectedProject('all');
                   }}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
                   <option value="all">All Clients</option>
                   {clientOptions.map(client => (
                     <option key={client.id} value={client.id}>{client.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="w-full lg:max-w-sm">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                  Project View
-                </label>
-                <select
-                  value={selectedProject}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                  <option value="all">All Projects</option>
-                  {projectOptions.map(project => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
               </div>
@@ -381,20 +355,15 @@ const WeeklyScore = () => {
                       </td>
                     </tr>
                   ) : (
-                    teamData.map((user, idx) => (
-                      <tr key={user.id || idx} className="hover:bg-slate-50 border-b border-slate-100 transition-colors">
+                    teamData.map((project, idx) => (
+                      <tr key={project.id || idx} className="hover:bg-slate-50 border-b border-slate-100 transition-colors">
                         <td className="px-4 py-3 border border-slate-100 text-center text-slate-500 text-xs">
                           {idx + 1}
                         </td>
                         <td className="px-6 py-3 border border-slate-100">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs shrink-0">
-                              {(user.name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
-                            </div>
-                            <span className="font-medium text-slate-700">{user.name}</span>
-                          </div>
+                          <span className="font-medium text-slate-700">{project.name}</span>
                         </td>
-                        {user.weeklyData.map((wd, i) => (
+                        {project.weeklyData.map((wd, i) => (
                           <React.Fragment key={i}>
                             <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(wd.ats)}`}>
                               {wd.ats}
@@ -404,11 +373,11 @@ const WeeklyScore = () => {
                             </td>
                           </React.Fragment>
                         ))}
-                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(user.overall.ats)}`}>
-                          {user.overall.ats}
+                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(project.overall.ats)}`}>
+                          {project.overall.ats}
                         </td>
-                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(user.overall.otc)}`}>
-                          {user.overall.otc}
+                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(project.overall.otc)}`}>
+                          {project.overall.otc}
                         </td>
                       </tr>
                     ))
