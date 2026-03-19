@@ -641,6 +641,19 @@ const EmployeeDashboard = () => {
     return `${day}-${month}-${year}`;
   };
 
+  const hasAppliedDateFilter = Boolean(startDate || endDate);
+
+  const appliedDateFilterLabel = useMemo(() => {
+    if (!hasAppliedDateFilter) return "";
+    if (startDate && endDate) {
+      return `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
+    }
+    if (startDate) {
+      return `From ${formatDisplayDate(startDate)}`;
+    }
+    return `Until ${formatDisplayDate(endDate)}`;
+  }, [hasAppliedDateFilter, startDate, endDate]);
+
   const getTaskDate = (task) => {
     const dateCandidates = [task.target_date, task.completion_date, task.created_at, task.updated_at];
     for (const value of dateCandidates) {
@@ -1748,6 +1761,15 @@ const EmployeeDashboard = () => {
 
           {/* Date filter dropdown on the right (Right) */}
           <div className="flex items-center justify-end gap-3 relative" ref={dateFilterRef}>
+            {hasAppliedDateFilter && (
+              <span
+                className="max-w-[220px] truncate px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-300"
+                title={appliedDateFilterLabel}
+              >
+                {appliedDateFilterLabel}
+              </span>
+            )}
+
             <button
               type="button"
               onClick={() => {

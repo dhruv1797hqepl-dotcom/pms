@@ -168,7 +168,7 @@ const ClientProfile = () => {
           </div>
 
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
               <div className="lg:col-span-3">
                 <div className="bg-slate-900 rounded-[3rem] p-7 md:p-10 shadow-2xl relative overflow-hidden text-white h-full">
                   <div className="absolute top-0 right-0 w-96 h-96 bg-[#F58A4B] rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
@@ -237,7 +237,7 @@ const ClientProfile = () => {
                 </div>
               </div>
 
-              <div className="lg:col-span-1">
+              <div className="lg:col-span-2">
                 <ProfileDailyPlanningBox userId={fullUserData?.id} />
               </div>
             </div>

@@ -137,13 +137,19 @@ const ProfileDailyPlanningBox = ({ userId }) => {
                         todayMctcEntries.slice(0, 4).map((entry) => {
                             const entryType = String(entry?.entry_type || '').toLowerCase();
                             const pillClass = typePillStyles[entryType] || 'bg-slate-200 text-slate-700';
+                            const entryLabel = entry.label || 'Untitled entry';
 
                             return (
                                 <div
                                     key={`mctc-${entry.id}`}
                                     className="mt-1 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 first:mt-0"
                                 >
-                                    <span className="truncate">{entry.label || 'Untitled entry'}</span>
+                                    <span
+                                        className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+                                        title={entryLabel}
+                                    >
+                                        {entryLabel}
+                                    </span>
                                     <span className={`shrink-0 rounded-md px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${pillClass}`}>
                                         {entryType === 'task' ? 'Task' : entryType === 'normal' ? 'Normal' : 'Entry'}
                                     </span>
@@ -170,8 +176,9 @@ const ProfileDailyPlanningBox = ({ userId }) => {
                             <div
                                 key={`rc7-${index}-${item}`}
                                 className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 first:mt-0"
+                                title={item}
                             >
-                                {item}
+                                <span className="block overflow-hidden text-ellipsis whitespace-nowrap">{item}</span>
                             </div>
                         ))
                     ) : (
