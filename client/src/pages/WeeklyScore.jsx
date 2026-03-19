@@ -179,54 +179,76 @@ const WeeklyScore = () => {
   }, [allTasks, selectedClient]);
 
   const teamData = useMemo(() => {
-    const grouped = {};
-    
-    filteredTasks.forEach(task => {
-      // Try to get project ID, with fallback to client + a marker for no-project tasks
-      let groupKey = null;
-      let groupType = 'project'; // 'project', 'client', or 'unassigned'
-      
-      if (task.project) {
-        groupKey = `project_${task.project}`;
-      } else if (task.client_org) {
-        // If no project, group by client
-        groupKey = `client_${task.client_org}`;
-        groupType = 'client';
-      } else {
-        // No project or client, group as unassigned
-        groupKey = 'unassigned';
-        groupType = 'unassigned';
-      }
-      
-      if (!grouped[groupKey]) {
-        grouped[groupKey] = { 
-          tasks: [], 
-          type: groupType, 
-          projectId: task.project, 
-          clientId: task.client_org 
-        };
-      }
-      grouped[groupKey].tasks.push(task);
-    });
-
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
 
-    return Object.entries(grouped)
-      .map(([groupKey, groupData]) => {
-        const tasks = groupData.tasks;
-        let displayName = '';
+    // If "All Clients" selected: Group by employee
+    if (selectedClient === 'all') {
+      const employeeMap = {};
+      
+      filteredTasks.forEach(task => {
+        if (!task.assigned_to) return;
+        const employeeId = task.assigned_to;
         
-        if (groupData.type === 'project') {
-          displayName = tasks[0]?.project_name || `Project ${groupData.projectId}`;
-        } else if (groupData.type === 'client') {
-          displayName = tasks[0]?.client_name || `Client ${groupData.clientId}`;
-        } else {
-          displayName = 'Unassigned';
+        if (!employeeMap[employeeId]) {
+          employeeMap[employeeId] = {
+            id: employeeId,
+            name: task.assigned_to_name || `Employee ${employeeId}`,
+            tasks: []
+          };
         }
-        
+        employeeMap[employeeId].tasks.push(task);
+      });
+
+      return Object.values(employeeMap)
+        .map(employee => {
+          const weeklyData = weeks.map(week => {
+            const weekTasks = employee.tasks.filter(task => {
+              if (!task.target_date) return false;
+              const d = new Date(task.target_date);
+              if (d.getMonth() !== month || d.getFullYear() !== year) return false;
+              const day = d.getDate();
+              return day >= week.start && day <= week.end;
+            });
+            return computeAtsOtc(weekTasks);
+          });
+
+          return {
+            id: employee.id,
+            name: employee.name,
+            weeklyData,
+            overall: computeOverallFromWeeklyData(weeklyData),
+            isEmployee: true,
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // If specific client selected: Group by project
+    const projectMap = {};
+    
+    filteredTasks.forEach(task => {
+      if (!task.project) {
+        // If no project, skip
+        return;
+      }
+      
+      const projectId = task.project;
+      
+      if (!projectMap[projectId]) {
+        projectMap[projectId] = {
+          id: projectId,
+          name: task.project_name || `Project ${projectId}`,
+          tasks: []
+        };
+      }
+      projectMap[projectId].tasks.push(task);
+    });
+
+    return Object.values(projectMap)
+      .map(project => {
         const weeklyData = weeks.map(week => {
-          const weekTasks = tasks.filter(task => {
+          const weekTasks = project.tasks.filter(task => {
             if (!task.target_date) return false;
             const d = new Date(task.target_date);
             if (d.getMonth() !== month || d.getFullYear() !== year) return false;
@@ -237,14 +259,15 @@ const WeeklyScore = () => {
         });
 
         return {
-          id: groupKey,
-          name: displayName,
+          id: project.id,
+          name: project.name,
           weeklyData,
           overall: computeOverallFromWeeklyData(weeklyData),
+          isEmployee: false,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredTasks, weeks, currentDate]);
+  }, [filteredTasks, weeks, currentDate, selectedClient]);
 
   const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const shortMonth = currentDate.toLocaleString('default', { month: 'short' });
@@ -388,15 +411,24 @@ const WeeklyScore = () => {
                       </td>
                     </tr>
                   ) : (
-                    teamData.map((project, idx) => (
-                      <tr key={project.id || idx} className="hover:bg-slate-50 border-b border-slate-100 transition-colors">
+                    teamData.map((item, idx) => (
+                      <tr key={item.id || idx} className="hover:bg-slate-50 border-b border-slate-100 transition-colors">
                         <td className="px-4 py-3 border border-slate-100 text-center text-slate-500 text-xs">
                           {idx + 1}
                         </td>
                         <td className="px-6 py-3 border border-slate-100">
-                          <span className="font-medium text-slate-700">{project.name}</span>
+                          {item.isEmployee ? (
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs shrink-0">
+                                {(item.name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
+                              </div>
+                              <span className="font-medium text-slate-700">{item.name}</span>
+                            </div>
+                          ) : (
+                            <span className="font-medium text-slate-700">{item.name}</span>
+                          )}
                         </td>
-                        {project.weeklyData.map((wd, i) => (
+                        {item.weeklyData.map((wd, i) => (
                           <React.Fragment key={i}>
                             <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(wd.ats)}`}>
                               {wd.ats}
@@ -406,11 +438,11 @@ const WeeklyScore = () => {
                             </td>
                           </React.Fragment>
                         ))}
-                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(project.overall.ats)}`}>
-                          {project.overall.ats}
+                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(item.overall.ats)}`}>
+                          {item.overall.ats}
                         </td>
-                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(project.overall.otc)}`}>
-                          {project.overall.otc}
+                        <td className={`px-3 py-3 border border-slate-100 text-center text-xs ${getScoreColor(item.overall.otc)}`}>
+                          {item.overall.otc}
                         </td>
                       </tr>
                     ))
