@@ -46,22 +46,14 @@ const getSatWindow = (today) => {
   });
 };
 
-// Wednesday section shows Mon-Sat window of the current active week.
-const getWedWindow = (today) => {
-  const d = new Date(today);
-  const day = d.getDay();
-  const mon = new Date(today);
-  
-  // If today is Sun(0), Mon is tomorrow.
-  // If today is Mon(1), Mon is today.
-  // If today is Tue(2), Mon was yesterday.
-  // If today is Wed(3), Mon was 2 days ago.
-  if (day === 0) mon.setDate(today.getDate() + 1);
-  else mon.setDate(today.getDate() - (day - 1));
+// Wednesday section shows Thu-Wed of the same cycle used by the Saturday sheet.
+const getWedWindow = (satWindow) => {
+  if (!Array.isArray(satWindow) || satWindow.length < 4) return [];
 
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(mon);
-    d.setDate(mon.getDate() + i);
+  const thu = new Date(satWindow[3]);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(thu);
+    d.setDate(thu.getDate() + i);
     return d;
   });
 };
@@ -438,7 +430,7 @@ const RC7 = () => {
   const { targetUserId, targetUserLabel, isMemberView } = memberViewContext;
 
   const satDates = useMemo(() => getSatWindow(today), [today]);
-  const wedDates = useMemo(() => getWedWindow(today), [today]);
+  const wedDates = useMemo(() => getWedWindow(satDates), [satDates]);
 
   const [employees, setEmployees] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -458,11 +450,16 @@ const RC7 = () => {
   const [satSubmitted, setSatSubmitted] = useState(false);
   const [wedSubmitted, setWedSubmitted] = useState(false);
   const [mctcEntries, setMctcEntries] = useState([]);
-  const [currentSatPlan, setCurrentSatPlan] = useState({}); // New state to hold THIS WEEK's Sat plan for sync
+  const [currentSatPlan, setCurrentSatPlan] = useState({});
+  const [currentWedPlan, setCurrentWedPlan] = useState({});
+  const [satPrefillDone, setSatPrefillDone] = useState(false);
+  const [wedPrefillDone, setWedPrefillDone] = useState(false);
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
+      setSatPrefillDone(false);
+      setWedPrefillDone(false);
       try {
         let resolvedUser = null;
         let resolvedUserId = '';
@@ -553,9 +550,8 @@ const RC7 = () => {
           setSatSubmitted(false);
         }
 
-        // FETCH THIS WEEK'S SATURDAY PLAN (FOR WED SYNC)
+        // Fetch overlapping Saturday plan used to prefill Thu-Sat in Wednesday sheet.
         try {
-          const wedKeys = wedDates.map(toDateKey);
           const currentSatParams = {
             type: 'sat',
             start: wedKeys[0],
@@ -568,6 +564,22 @@ const RC7 = () => {
           setCurrentSatPlan(currentSatRes.data?.plans || currentSatRes.data || {});
         } catch {
           setCurrentSatPlan({});
+        }
+
+        // Fetch overlapping Wednesday plan used to prefill Wednesday in Saturday sheet.
+        try {
+          const currentWedParams = {
+            type: 'wed',
+            start: satKeys[0],
+            end: satKeys[satKeys.length - 1],
+          };
+          if (isMemberView && resolvedSelectedUserId) {
+            currentWedParams.user = resolvedSelectedUserId;
+          }
+          const currentWedRes = await api.get('rc7/planning/', { params: currentWedParams });
+          setCurrentWedPlan(currentWedRes.data?.plans || currentWedRes.data || {});
+        } catch {
+          setCurrentWedPlan({});
         }
 
         try {
@@ -611,90 +623,121 @@ const RC7 = () => {
     return employees.find((emp) => String(emp.id) === effectiveEmployeeId) || selectedUser || currentUser;
   }, [currentUser, effectiveEmployeeId, employees, selectedUser]);
 
-  const syncWednesdayPreFill = (currentWedPlan, currentSatPlan, entries) => {
-    if (!effectiveEmployeeId) return currentWedPlan;
+  const hasCellData = (cell) => {
+    const normalized = normalizeCell(cell);
+    return Boolean(String(normalized.location || '').trim())
+      || normalized.deliverables.some((item) => String(item || '').trim());
+  };
+
+  const clonePrefillCell = (cell) => {
+    const normalized = normalizeCell(cell);
+    return {
+      location: normalized.location || '',
+      deliverables: [...normalized.deliverables],
+    };
+  };
+
+  const syncWednesdayPreFill = (currentWedPlanData, overlapSatPlan, entries) => {
+    if (!effectiveEmployeeId) {
+      return { newPlan: currentWedPlanData, changed: false };
+    }
 
     const wedKeys = wedDates.map(toDateKey);
-    const newWedPlan = { ...currentWedPlan };
+    const newWedPlan = { ...currentWedPlanData };
     const empPlan = { ...(newWedPlan[effectiveEmployeeId] || {}) };
     let changed = false;
 
-    // 1. First 3 days (Thu, Fri, Sat) from Saturday RC7
-    for (let i = 0; i < 3; i++) {
-        const dateKey = wedKeys[i];
-        const satCell = normalizeCell(currentSatPlan[effectiveEmployeeId]?.[dateKey]);
-        const currentCell = normalizeCell(empPlan[dateKey]);
-        
-        if ((satCell.deliverable || satCell.location) && !currentCell.deliverable && !currentCell.location) {
-            empPlan[dateKey] = {
-                location: satCell.location,
-                deliverable: satCell.deliverable,
-                deliverables: [...satCell.deliverables]
-            };
-            changed = true;
-        }
-    }
+    wedKeys.forEach((dateKey) => {
+      const dayNum = new Date(dateKey).getDay();
+      const currentCell = normalizeCell(empPlan[dateKey]);
 
-    // 2. Thu, Fri, Sat of ANY cycle pulls from MCTC if RC7 is empty
-    wedKeys.forEach(dateKey => {
-        const date = new Date(dateKey);
-        const dayNum = date.getDay();
-        if (dayNum >= 4 && dayNum <= 6) {
-            const dayEntries = entries.filter(e => e.entry_date === dateKey);
-            if (dayEntries.length > 0) {
-                const mctcDeliverables = dayEntries.map(e => e.label);
-                const currentCell = normalizeCell(empPlan[dateKey]);
-                if (currentCell.deliverables.filter(Boolean).length === 0) {
-                    empPlan[dateKey] = {
-                        ...currentCell,
-                        deliverables: mctcDeliverables,
-                        deliverable: mctcDeliverables.join('\n')
-                    };
-                    changed = true;
-                }
-            }
+      // Thu-Sat in Wednesday sheet should start from Saturday sheet overlap.
+      if (dayNum >= 4 && dayNum <= 6) {
+        const satCell = normalizeCell(overlapSatPlan?.[effectiveEmployeeId]?.[dateKey]);
+        if (hasCellData(satCell) && !hasCellData(currentCell)) {
+          empPlan[dateKey] = clonePrefillCell(satCell);
+          changed = true;
+          return;
         }
+      }
+
+      // Mon-Wed in Wednesday sheet should prefill from MCTC when empty.
+      if (dayNum >= 1 && dayNum <= 3) {
+        if (String(currentCell.location || '').toLowerCase() === 'holiday' || hasCellData(currentCell)) {
+          return;
+        }
+
+        const dayEntries = entries.filter((entry) => entry.entry_date === dateKey);
+        const mctcDeliverables = dayEntries
+          .map((entry) => String(entry.label || '').trim())
+          .filter(Boolean);
+
+        if (!mctcDeliverables.length) return;
+
+        empPlan[dateKey] = {
+          ...currentCell,
+          deliverables: mctcDeliverables,
+        };
+        changed = true;
+      }
     });
 
     if (changed) {
-        newWedPlan[effectiveEmployeeId] = empPlan;
+      newWedPlan[effectiveEmployeeId] = empPlan;
     }
+
     return { newPlan: newWedPlan, changed };
   };
 
-  const syncSaturdayPreFill = (currentSatPlan, entries) => {
-    if (!effectiveEmployeeId) return currentSatPlan;
+  const syncSaturdayPreFill = (currentSatPlanData, overlapWedPlan, entries) => {
+    if (!effectiveEmployeeId) {
+      return { newPlan: currentSatPlanData, changed: false };
+    }
 
     const satKeys = satDates.map(toDateKey);
-    const newSatPlan = { ...currentSatPlan };
+    const newSatPlan = { ...currentSatPlanData };
     const empPlan = { ...(newSatPlan[effectiveEmployeeId] || {}) };
     let changed = false;
 
-    satKeys.forEach(dateKey => {
-        const date = new Date(dateKey);
-        const dayNum = date.getDay();
-        if (dayNum >= 4 && dayNum <= 6) {
-            const dayEntries = entries.filter(e => e.entry_date === dateKey);
-            if (dayEntries.length > 0) {
-                const mctcDeliverables = dayEntries.map(e => e.label);
-                const currentCell = normalizeCell(empPlan[dateKey]);
-                if (currentCell.deliverables.filter(Boolean).length === 0) {
-                    empPlan[dateKey] = {
-                        ...currentCell,
-                        deliverables: mctcDeliverables,
-                        deliverable: mctcDeliverables.join('\n')
-                    };
-                    changed = true;
-                }
-            }
+    satKeys.forEach((dateKey) => {
+      const dayNum = new Date(dateKey).getDay();
+      const currentCell = normalizeCell(empPlan[dateKey]);
+      const isHoliday = String(currentCell.location || '').toLowerCase() === 'holiday';
+
+      // Wednesday cell in Saturday sheet should start from Wednesday sheet overlap.
+      if (dayNum === 3) {
+        const wedCell = normalizeCell(overlapWedPlan?.[effectiveEmployeeId]?.[dateKey]);
+        if (hasCellData(wedCell) && !hasCellData(currentCell)) {
+          empPlan[dateKey] = clonePrefillCell(wedCell);
+          changed = true;
+          return;
         }
+      }
+
+      // Remaining Saturday sheet days (and Wednesday fallback) prefill from MCTC when empty.
+      if (isHoliday || hasCellData(currentCell)) {
+        return;
+      }
+
+      const dayEntries = entries.filter((entry) => entry.entry_date === dateKey);
+      const mctcDeliverables = dayEntries
+        .map((entry) => String(entry.label || '').trim())
+        .filter(Boolean);
+
+      if (!mctcDeliverables.length) return;
+
+      empPlan[dateKey] = {
+        ...currentCell,
+        deliverables: mctcDeliverables,
+      };
+      changed = true;
     });
 
     if (changed) {
-        newSatPlan[effectiveEmployeeId] = empPlan;
-        setSatDirty(true);
+      newSatPlan[effectiveEmployeeId] = empPlan;
     }
-    return newSatPlan;
+
+    return { newPlan: newSatPlan, changed };
   };
 
   const updatePlanCell = (setter, employeeId, dateKey, updater) => {
@@ -765,37 +808,74 @@ const RC7 = () => {
   const wedHandlers = createHandlers(setWedPlan, setWedDirty);
 
   useEffect(() => {
-    if (!satDirty || isMemberView || !isSatCycleActive || satSubmitted || !effectiveEmployeeId) {
+    if (
+      loading
+      || satPrefillDone
+      || isMemberView
+      || !isSatCycleActive
+      || satSubmitted
+      || !effectiveEmployeeId
+      || satDirty
+    ) {
       return;
     }
 
-    const wedKeys = wedDates.map(toDateKey);
     const satKeys = satDates.map(toDateKey);
 
-    const timer = setTimeout(async () => {
-      // Fetch MCTC for both ranges to be safe
+    let cancelled = false;
+
+    const applySaturdayPrefill = async () => {
       try {
         const mctcRes = await api.get('mctc/entries/', {
           params: {
             user: effectiveEmployeeId,
-            start_date: satKeys[0] < wedKeys[0] ? satKeys[0] : wedKeys[0],
-            end_date: satKeys[satKeys.length - 1] > wedKeys[wedKeys.length - 1] ? satKeys[satKeys.length - 1] : wedKeys[wedKeys.length - 1]
-          }
+            start_date: satKeys[0],
+            end_date: satKeys[satKeys.length - 1],
+          },
         });
-        const entries = mctcRes.data || [];
+
+        if (cancelled) return;
+
+        const entries = Array.isArray(mctcRes.data) ? mctcRes.data : [];
         setMctcEntries(entries);
 
-        // Pre-fill logic if dirty/loading
-        if (isSatCycleActive) {
-          setSatPlan(prev => syncSaturdayPreFill(prev, entries));
+        const { newPlan, changed } = syncSaturdayPreFill(satPlan, currentWedPlan, entries);
+        if (changed) {
+          setSatPlan(newPlan);
+          setSatDirty(true);
         }
-        if (isWedCycleActive) {
-          setWedPlan(prev => syncWednesdayPreFill(prev, satPlan, entries));
-        }
+
+        setSatPrefillDone(true);
       } catch (err) {
-        console.error('Failed to fetch MCTC sync data:', err);
+        console.error('Failed to prefill Saturday sheet:', err);
       }
-    }, 500);
+    };
+
+    applySaturdayPrefill();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentWedPlan,
+    effectiveEmployeeId,
+    isMemberView,
+    isSatCycleActive,
+    loading,
+    satDates,
+    satDirty,
+    satPrefillDone,
+    satPlan,
+    setSatPrefillDone,
+    satSubmitted,
+  ]);
+
+  useEffect(() => {
+    if (!satDirty || isMemberView || !isSatCycleActive || satSubmitted || !effectiveEmployeeId) {
+      return;
+    }
+
+    const satKeys = satDates.map(toDateKey);
 
     const timerSave = setTimeout(async () => {
       try {
@@ -820,10 +900,71 @@ const RC7 = () => {
     }, AUTOSAVE_DELAY_MS);
 
     return () => {
-        clearTimeout(timer);
-        clearTimeout(timerSave);
+      clearTimeout(timerSave);
     };
-  }, [effectiveEmployeeId, isMemberView, isSatCycleActive, satSubmitted, satDates, satDirty, satPlan, wedPlan]);
+  }, [effectiveEmployeeId, isMemberView, isSatCycleActive, satSubmitted, satDates, satDirty, satPlan]);
+
+  useEffect(() => {
+    if (
+      loading
+      || wedPrefillDone
+      || isMemberView
+      || !isWedCycleActive
+      || wedSubmitted
+      || !effectiveEmployeeId
+      || wedDirty
+    ) {
+      return;
+    }
+
+    const wedKeys = wedDates.map(toDateKey);
+    let cancelled = false;
+
+    const applyWednesdayPrefill = async () => {
+      try {
+        const mctcRes = await api.get('mctc/entries/', {
+          params: {
+            user: effectiveEmployeeId,
+            start_date: wedKeys[0],
+            end_date: wedKeys[wedKeys.length - 1],
+          },
+        });
+
+        if (cancelled) return;
+
+        const entries = Array.isArray(mctcRes.data) ? mctcRes.data : [];
+        setMctcEntries(entries);
+
+        const { newPlan, changed } = syncWednesdayPreFill(wedPlan, currentSatPlan, entries);
+        if (changed) {
+          setWedPlan(newPlan);
+          setWedDirty(true);
+        }
+
+        setWedPrefillDone(true);
+      } catch (err) {
+        console.error('Failed to prefill Wednesday sheet:', err);
+      }
+    };
+
+    applyWednesdayPrefill();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentSatPlan,
+    effectiveEmployeeId,
+    isMemberView,
+    isWedCycleActive,
+    loading,
+    wedDates,
+    wedDirty,
+    wedPrefillDone,
+    wedPlan,
+    setWedPrefillDone,
+    wedSubmitted,
+  ]);
 
   useEffect(() => {
     if (!wedDirty || isMemberView || !isWedCycleActive || wedSubmitted || !effectiveEmployeeId) {
@@ -831,31 +972,6 @@ const RC7 = () => {
     }
 
     const wedKeys = wedDates.map(toDateKey);
-    const satKeys = satDates.map(toDateKey);
-
-    const timer = setTimeout(async () => {
-      try {
-        const mctcRes = await api.get('mctc/entries/', {
-          params: {
-            user: effectiveEmployeeId,
-            start_date: satKeys[0] < wedKeys[0] ? satKeys[0] : wedKeys[0],
-            end_date: satKeys[satKeys.length - 1] > wedKeys[wedKeys.length - 1] ? satKeys[satKeys.length - 1] : wedKeys[wedKeys.length - 1]
-          }
-        });
-        const entries = mctcRes.data || [];
-        setMctcEntries(entries);
-
-        if (isWedCycleActive) {
-          const { newPlan, changed } = syncWednesdayPreFill(wedPlan, currentSatPlan, entries);
-          if (changed) {
-            setWedPlan(newPlan);
-            setWedDirty(true);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch MCTC sync data for Wednesday:', err);
-      }
-    }, 500);
 
     const timerSave = setTimeout(async () => {
       try {
@@ -883,10 +999,9 @@ const RC7 = () => {
     }, AUTOSAVE_DELAY_MS);
 
     return () => {
-        clearTimeout(timer);
-        clearTimeout(timerSave);
+      clearTimeout(timerSave);
     };
-  }, [effectiveEmployeeId, isMemberView, isWedCycleActive, wedSubmitted, wedDates, wedDirty, wedPlan, satPlan, currentSatPlan]);
+  }, [effectiveEmployeeId, isMemberView, isWedCycleActive, wedSubmitted, wedDates, wedDirty, wedPlan]);
 
   const handleSubmitCycle = async (type) => {
     const isSat = type === 'sat';
