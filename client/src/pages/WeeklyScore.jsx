@@ -180,18 +180,51 @@ const WeeklyScore = () => {
 
   const teamData = useMemo(() => {
     const grouped = {};
+    
     filteredTasks.forEach(task => {
-      if (!task.project) return;
-      if (!grouped[task.project]) grouped[task.project] = [];
-      grouped[task.project].push(task);
+      // Try to get project ID, with fallback to client + a marker for no-project tasks
+      let groupKey = null;
+      let groupType = 'project'; // 'project', 'client', or 'unassigned'
+      
+      if (task.project) {
+        groupKey = `project_${task.project}`;
+      } else if (task.client_org) {
+        // If no project, group by client
+        groupKey = `client_${task.client_org}`;
+        groupType = 'client';
+      } else {
+        // No project or client, group as unassigned
+        groupKey = 'unassigned';
+        groupType = 'unassigned';
+      }
+      
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = { 
+          tasks: [], 
+          type: groupType, 
+          projectId: task.project, 
+          clientId: task.client_org 
+        };
+      }
+      grouped[groupKey].tasks.push(task);
     });
 
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
 
     return Object.entries(grouped)
-      .map(([projectId, tasks]) => {
-        const projectName = tasks[0]?.project_name || `Project ${projectId}`;
+      .map(([groupKey, groupData]) => {
+        const tasks = groupData.tasks;
+        let displayName = '';
+        
+        if (groupData.type === 'project') {
+          displayName = tasks[0]?.project_name || `Project ${groupData.projectId}`;
+        } else if (groupData.type === 'client') {
+          displayName = tasks[0]?.client_name || `Client ${groupData.clientId}`;
+        } else {
+          displayName = 'Unassigned';
+        }
+        
         const weeklyData = weeks.map(week => {
           const weekTasks = tasks.filter(task => {
             if (!task.target_date) return false;
@@ -204,8 +237,8 @@ const WeeklyScore = () => {
         });
 
         return {
-          id: projectId,
-          name: projectName,
+          id: groupKey,
+          name: displayName,
           weeklyData,
           overall: computeOverallFromWeeklyData(weeklyData),
         };
