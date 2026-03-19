@@ -53,6 +53,20 @@ class TaskVisibilityTests(APITestCase):
             assigned_by=self.sgm,
             source_module='DIRECT',
         )
+        self.employee_ddfms_delegated = Task.objects.create(
+            title='Employee DDFMS delegated task',
+            target_date=due_date,
+            assigned_to=self.employee_two,
+            assigned_by=self.employee_one,
+            source_module='DDFMS',
+        )
+        self.employee_direct_delegated = Task.objects.create(
+            title='Employee direct delegated task',
+            target_date=due_date,
+            assigned_to=self.employee_two,
+            assigned_by=self.employee_one,
+            source_module='DIRECT',
+        )
         self.received_task = Task.objects.create(
             title='Task received by SGM',
             target_date=due_date,
@@ -91,6 +105,19 @@ class TaskVisibilityTests(APITestCase):
 
         self.assertIn(self.ddfms_delegated.id, row_ids)
         self.assertIn(self.direct_delegated.id, row_ids)
+
+    def test_employee_task_list_hides_ddfms_tasks_delegated_to_others(self):
+        self.client.force_authenticate(user=self.employee_one)
+
+        response = self.client.get('/api/tasks/')
+
+        self.assertEqual(response.status_code, 200)
+        rows = self._as_task_list(response.data)
+        row_ids = {row['id'] for row in rows}
+
+        self.assertNotIn(self.employee_ddfms_delegated.id, row_ids)
+        self.assertIn(self.employee_direct_delegated.id, row_ids)
+        self.assertIn(self.ddfms_delegated.id, row_ids)
 
     def test_assigned_by_name_is_ddfms_for_ddfms_tasks(self):
         self.client.force_authenticate(user=self.employee_one)

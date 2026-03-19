@@ -92,9 +92,9 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         queryset = Task.objects.filter(Q(assigned_to=user) | Q(assigned_by=user))
 
-        # For SGM users, hide DDFMS tasks that were delegated to others.
-        # SGM should still see DDFMS steps assigned to themselves.
-        if user.role == User.SGM:
+        # For SGM/EMPLOYEE users, hide DDFMS tasks that they delegated to others.
+        # They should still see DDFMS steps assigned to themselves.
+        if user.role in [User.SGM, User.EMPLOYEE]:
             queryset = queryset.exclude(
                 Q(source_module='DDFMS', assigned_by=user) & ~Q(assigned_to=user)
             )

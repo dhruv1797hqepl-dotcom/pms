@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import Sidebar from "../../components/Sidebar";
@@ -29,8 +29,14 @@ const buildMonthLabel = (month, year) => {
 	return date.toLocaleString("default", { month: "short", year: "numeric" });
 };
 
+const buildLongMonthLabel = (month, year) => {
+	const date = new Date(year, month - 1, 1);
+	return date.toLocaleString("default", { month: "long", year: "numeric" }).toUpperCase();
+};
+
 const DDTMERYG = () => {
 	const { clientId } = useParams();
+	const navigate = useNavigate();
 	const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
 	const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -44,9 +50,6 @@ const DDTMERYG = () => {
 	const [saveError, setSaveError] = useState("");
 
 	const title = `${buildMonthLabel(selectedMonth, selectedYear)} Deliverable Plan`;
-	const statusTitle = submission?.status === "Approved"
-		? `Approved status for ${buildMonthLabel(selectedMonth, selectedYear)}`
-		: `Awaiting approval for ${buildMonthLabel(selectedMonth, selectedYear)}`;
 
 	const keyObjectiveCounts = useMemo(() => {
 		return objectives.reduce((acc, row) => {
@@ -64,15 +67,40 @@ const DDTMERYG = () => {
 		}, {});
 	}, [activityRows]);
 
-	const totals = useMemo(() => {
-		return objectives.reduce(
-			(acc, row) => {
-				acc.deliverablesCount += Number(row.deliverablesCount || 0);
-				return acc;
-			},
-			{ keyObjectivesCount: objectives.length, deliverablesCount: activityRows.length }
-		);
-	}, [objectives, activityRows]);
+	const summaryRows = useMemo(() => {
+		const totalObjectives = objectives.length;
+		const totalDeliverables = activityRows.length;
+
+		return rgyOptions.map((colorOpt) => {
+			const objCount = keyObjectiveCounts[colorOpt.value] || 0;
+			const objPercent = totalObjectives
+				? Math.round((objCount / totalObjectives) * 100)
+				: 0;
+
+			const delCount = overallDeliverablesCounts[colorOpt.value] || 0;
+			const delPercent = totalDeliverables
+				? Math.round((delCount / totalDeliverables) * 100)
+				: 0;
+
+			return {
+				value: colorOpt.value,
+				label: colorOpt.label,
+				objCount,
+				objPercent,
+				delCount,
+				delPercent,
+			};
+		});
+	}, [objectives.length, activityRows.length, keyObjectiveCounts, overallDeliverablesCounts]);
+
+	const majorObjectiveRows = useMemo(() => {
+		const rowCount = Math.max(objectives.length, summaryRows.length);
+		return Array.from({ length: rowCount }, (_, index) => ({
+			objective: objectives[index] || null,
+			summary: summaryRows[index] || null,
+			index,
+		}));
+	}, [objectives, summaryRows]);
 
 	const handlePrevMonth = () => {
 		setSelectedMonth(prev => {
@@ -170,7 +198,6 @@ const DDTMERYG = () => {
 			pdf.text(`${monthLabel} Deliverable Plan`, 14, 16);
 			pdf.setFontSize(10);
 			pdf.text(`Status: ${submission?.status || "N/A"}`, 14, 22);
-			pdf.text(`Totals: ${totals.keyObjectivesCount} objectives, ${totals.deliverablesCount} deliverables`, 14, 27);
 
 			const summaryRows = rgyOptions.map((opt) => {
 				const objCount = keyObjectiveCounts[opt.value] || 0;
@@ -328,22 +355,34 @@ const DDTMERYG = () => {
 			<Sidebar />
 
 			<main className="flex-1 overflow-y-auto transition-all duration-300 pb-20">
-				<div className="max-w-[1500px] mx-auto px-6 py-8 space-y-8">
-					<div className="bg-white rounded-3xl shadow-sm p-6 border border-slate-200">
-						<div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-							<div>
-								<h1 className="text-3xl font-black">{title}</h1>
-								<p className="text-slate-500 italic mt-1 flex items-center gap-2">
-									<Calendar size={16} /> Editable RYG deliverable tracker
-								</p>
+				<div className="max-w-375 mx-auto px-6 py-8 space-y-8">
+					<div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
+						<div className="grid grid-cols-1 gap-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+							<div className="flex items-center gap-3 min-w-0">
+								<button
+									type="button"
+									onClick={() => navigate(-1)}
+									className="p-2 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+								>
+									<ChevronLeft size={16} />
+								</button>
+								<div className="h-6 w-px bg-slate-200" />
+								<div className="flex items-center gap-2 text-slate-800 min-w-0">
+									<Calendar size={16} className="text-slate-500 shrink-0" />
+									<span className="text-base font-black truncate">DDTME Workspace</span>
+								</div>
 							</div>
 
-							<div className="flex flex-col items-end gap-3">
+							<div className="text-center">
+								<p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
+							</div>
+
+							<div className="flex items-center justify-end gap-3">
 								<button
 									type="button"
 									onClick={handleDownloadPdf}
 									disabled={isDownloading}
-									className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+									className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-700 hover:bg-slate-100 disabled:opacity-60"
 								>
 									{isDownloading ? "Downloading..." : "Download PDF"}
 								</button>
@@ -353,25 +392,18 @@ const DDTMERYG = () => {
 										onClick={handlePrevMonth}
 										className="p-2 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
 									>
-										<ChevronLeft size={16} />
+										<ChevronLeft size={14} />
 									</button>
-									<span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-										{buildMonthLabel(selectedMonth, selectedYear)}
+									<span className="text-xs font-black uppercase tracking-[0.16em] text-slate-600 whitespace-nowrap">
+										{buildLongMonthLabel(selectedMonth, selectedYear)}
 									</span>
 									<button
 										type="button"
 										onClick={handleNextMonth}
 										className="p-2 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
 									>
-										<ChevronRight size={16} />
+										<ChevronRight size={14} />
 									</button>
-								</div>
-								<p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{statusTitle}</p>
-								<div className="text-sm font-bold text-slate-600">
-									Totals: {totals.keyObjectivesCount} key objectives, {totals.deliverablesCount} deliverables
-								</div>
-								<div className="text-xs font-semibold text-slate-500">
-									{isSaving ? "Autosaving..." : "Autosave enabled (objectives + big tasks)"}
 								</div>
 							</div>
 						</div>
@@ -399,18 +431,20 @@ const DDTMERYG = () => {
 						<>
 							<div className="bg-white rounded-3xl shadow-sm p-6 border border-slate-200 overflow-x-auto">
 								<div className="flex items-center justify-between mb-4">
-									<h2 className="text-xl font-black">RYG Summary</h2>
+									<h2 className="text-xl font-black">Month&apos;s Major Objectives</h2>
 								</div>
 
-								<table className="w-full border-collapse text-sm">
+								<table className="w-full border-collapse text-sm min-w-245">
 									<thead>
 										<tr className="bg-slate-800 text-white">
-											<th className="p-2 border">RYG</th>
-											<th colSpan={2} className="p-2 border">Key Objectives</th>
+											<th rowSpan={2} className="p-2 border">Sr. No.</th>
+											<th rowSpan={2} className="p-2 border">Objective</th>
+											<th rowSpan={2} className="p-2 border">RYG</th>
+											<th rowSpan={2} className="p-2 border">Summary RYG</th>
+											<th colSpan={2} className="p-2 border">Key Objective</th>
 											<th colSpan={2} className="p-2 border">Overall Deliverables</th>
 										</tr>
 										<tr className="bg-slate-100 text-slate-700">
-											<th className="p-2 border"></th>
 											<th className="p-2 border">Count</th>
 											<th className="p-2 border">%</th>
 											<th className="p-2 border">Count</th>
@@ -418,71 +452,59 @@ const DDTMERYG = () => {
 										</tr>
 									</thead>
 									<tbody>
-										{rgyOptions.map((colorOpt) => {
-											const objCount = keyObjectiveCounts[colorOpt.value] || 0;
-											const totalObjectives = objectives.length;
-											const objPercent = totalObjectives
-												? Math.round((objCount / totalObjectives) * 100)
-												: 0;
-
-											const delCount = overallDeliverablesCounts[colorOpt.value] || 0;
-											const totalDeliverables = activityRows.length;
-											const delPercent = totalDeliverables
-												? Math.round((delCount / totalDeliverables) * 100)
-												: 0;
-
-											return (
-												<tr key={`color-${colorOpt.value}`} className={`${colorOpt.bgClass} font-semibold`}>
-													<td className="p-2 border text-center">
-														<span className={`${getRygClass(colorOpt.value)} rounded-full px-3 py-1 inline-block font-bold`}>
-															{colorOpt.label}
-														</span>
-													</td>
-													<td className="p-2 border text-center">{objCount}</td>
-													<td className="p-2 border text-center">{objPercent}%</td>
-													<td className="p-2 border text-center">{delCount}</td>
-													<td className="p-2 border text-center">{delPercent}%</td>
-												</tr>
-											);
-										})}
-									</tbody>
-								</table>
-							</div>
-
-							<div className="bg-white rounded-3xl shadow-sm p-6 border border-slate-200 overflow-x-auto">
-								<div className="flex items-center justify-between mb-4">
-									<h2 className="text-xl font-black">This Month's Major Objectives</h2>
-								</div>
-
-								<table className="w-full border-collapse text-sm">
-									<thead>
-										<tr className="bg-slate-800 text-white">
-											<th className="p-2 border">Objective</th>
-											<th className="p-2 border">Dropdown</th>
-										</tr>
-									</thead>
-									<tbody>
-										{objectives.map((row, index) => (
-											<tr key={index} className="hover:bg-slate-50">
+										{majorObjectiveRows.map(({ objective, summary, index }) => (
+											<tr key={`major-objective-${index}`} className="hover:bg-slate-50">
+												<td className="p-2 border text-center font-bold text-slate-700">
+													{objective ? (objective.srNo || index + 1) : "-"}
+												</td>
 												<td className="p-2 border">
-													<input
-														value={row.objective}
-														readOnly
-														className="w-full bg-transparent outline-none font-medium"
-													/>
+													{objective ? (
+														<input
+															value={objective.objective}
+															readOnly
+															className="w-full bg-transparent outline-none font-medium"
+														/>
+													) : (
+														<span className="text-slate-300">-</span>
+													)}
 												</td>
 												<td className="p-2 border text-center">
-													<select
-														value={row.ryg}
-														onChange={(e) => handleObjectiveRygChange(index, e.target.value)}
-														className={`${getRygClass(row.ryg)} rounded-lg px-2 py-1 font-bold cursor-pointer whitespace-nowrap`}
-													>
-														{rgyOptions.map(opt => (
-															<option key={opt.value} value={opt.value} className="text-slate-900">
-																{opt.label}
-															</option>
-														))}
-													</select>
+													{objective ? (
+														<select
+															value={objective.ryg}
+															onChange={(e) => handleObjectiveRygChange(index, e.target.value)}
+															className={`${getRygClass(objective.ryg)} rounded-lg px-2 py-1 font-bold cursor-pointer whitespace-nowrap`}
+														>
+															{rgyOptions.map(opt => (
+																<option key={opt.value} value={opt.value} className="text-slate-900">
+																	{opt.label}
+																</option>
+															))}
+														</select>
+													) : (
+														<span className="text-slate-300">-</span>
+													)}
+												</td>
+												<td className="p-2 border text-center">
+													{summary ? (
+														<span className={`${getRygClass(summary.value)} rounded-full px-3 py-1 inline-block font-bold`}>
+															{summary.label}
+														</span>
+													) : (
+														<span className="text-slate-300">-</span>
+													)}
+												</td>
+												<td className="p-2 border text-center font-semibold">
+													{summary ? summary.objCount : "-"}
+												</td>
+												<td className="p-2 border text-center font-semibold">
+													{summary ? `${summary.objPercent}%` : "-"}
+												</td>
+												<td className="p-2 border text-center font-semibold">
+													{summary ? summary.delCount : "-"}
+												</td>
+												<td className="p-2 border text-center font-semibold">
+													{summary ? `${summary.delPercent}%` : "-"}
 												</td>
 											</tr>
 										))}
