@@ -299,14 +299,14 @@ const CompanyLevelDashboard = () => {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white border border-slate-200 rounded-2xl shadow-sm px-5 py-4 flex flex-col transition-all hover:translate-y-[-2px] hover:shadow-lg"
-            style={{ borderLeft: `6px solid ${color}` }}
+            className="bg-white border border-slate-200 rounded-xl md:rounded-2xl shadow-sm px-4 py-2.5 flex flex-col transition-all hover:translate-y-[-2px] hover:shadow-lg"
+            style={{ borderLeft: `4px solid ${color}` }}
         >
             <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
             <div className="flex justify-between items-end mt-1">
-                <h2 className="text-3xl font-black text-slate-900">{value}</h2>
+                <h2 className="text-2xl md:text-3xl font-black text-slate-900">{value}</h2>
                 <div className="text-slate-200 opacity-50">
-                    {React.cloneElement(icon, { size: 18 })}
+                    {React.cloneElement(icon, { size: 16 })}
                 </div>
             </div>
         </motion.div>
@@ -440,7 +440,7 @@ const CompanyLevelDashboard = () => {
                         </motion.div>
 
                         {/* Metrics Grid Section */}
-                        <div className="col-span-12 lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-3 md:gap-4">
                             <MetricCard
                                 label="Total Task"
                                 value={stats.totalTasks}

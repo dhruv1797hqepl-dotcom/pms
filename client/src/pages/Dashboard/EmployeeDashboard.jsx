@@ -1907,7 +1907,7 @@ const EmployeeDashboard = () => {
             </div>
           </div>
 
-          <div className="col-span-12 lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-3 md:gap-4">
             <Stat title="Total Task" value={filteredDashboardStats.total_tasks} color="#6366f1" icon={<LayoutGrid size={18} />} />
             <Stat title="On Time Completion" value={filteredDashboardStats.on_time_count} color="#22c55e" icon={<CheckCircle size={18} />} />
             <Stat title="Overdue" value={filteredDashboardStats.overdue_count} color="#ef4444" icon={<AlertCircle size={18} />} />
@@ -3040,11 +3040,11 @@ const Table = ({
 
 /* ===== HELPER COMPONENTS (ORIGINAL STYLE) ===== */
 const Stat = ({ title, value, icon, color }) => (
-  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-5 py-4 flex flex-col transition-all hover:translate-y-[-2px] hover:shadow-lg" style={{ borderLeft: `6px solid ${color}` }}>
+  <div className="bg-white border border-slate-200 rounded-xl md:rounded-2xl shadow-sm px-4 py-2.5 flex flex-col transition-all hover:translate-y-[-2px] hover:shadow-lg" style={{ borderLeft: `4px solid ${color}` }}>
     <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{title}</p>
     <div className="flex justify-between items-end mt-1">
-      <h2 className="text-3xl font-black text-slate-900">{value}</h2>
-      <div className="text-slate-200 opacity-50">{icon}</div>
+      <h2 className="text-2xl md:text-3xl font-black text-slate-900">{value}</h2>
+      <div className="text-slate-200 opacity-50">{React.cloneElement(icon, { size: 16 })}</div>
     </div>
   </div>
 );
