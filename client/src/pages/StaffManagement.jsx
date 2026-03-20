@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users, UserPlus, Search, Mail, Calendar,
-    ShieldCheck, ChevronLeft,
+    ShieldCheck, ChevronLeft, ChevronDown,
     Trash2, Edit,
     CheckCircle2, XCircle, Loader2, Filter, Briefcase, Plus
 } from 'lucide-react';
@@ -23,6 +23,7 @@ const StaffManagement = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('All');
+    const [expandedMemberId, setExpandedMemberId] = useState(null);
 
     // --- 1. DATA FETCHING & ROLE FILTERING ---
     useEffect(() => {
@@ -300,8 +301,156 @@ const StaffManagement = () => {
                     </div>
 
 
-                    {/* --- TABLE SECTION --- */}
-                    <div className="bg-white border border-slate-100 rounded-xl md:rounded-[3rem] shadow-[0_20px_60px_rgba(0,0,0,0.02)] overflow-hidden">
+                    {/* --- MOBILE CARD VIEW (visible on < md) --- */}
+                    <div className="md:hidden space-y-3">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center gap-4 py-20">
+                                <Loader2 className="animate-spin text-[#F58A4B]" size={40} />
+                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Loading Database</p>
+                            </div>
+                        ) : filteredStaff.length > 0 ? (
+                            filteredStaff.map((member) => {
+                                const isExpanded = expandedMemberId === member.id;
+                                const memberInitials = isManagerMemberView
+                                    ? (member.username?.[0] || member.email?.[0] || 'U').toUpperCase()
+                                    : (member.first_name || member.last_name
+                                        ? `${(member.first_name?.[0] || '').toUpperCase()}${(member.last_name?.[0] || '').toUpperCase()}`
+                                        : member.username?.[0]?.toUpperCase() || 'U');
+                                const memberName = isManagerMemberView
+                                    ? (member.username || member.email)
+                                    : `${member.first_name || ''} ${member.last_name || ''}`.trim() || member.username;
+
+                                return (
+                                    <div key={member.id} className="bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                                        {/* Card Header - always visible */}
+                                        <button
+                                            onClick={() => setExpandedMemberId(isExpanded ? null : member.id)}
+                                            className="w-full flex items-center justify-between px-4 py-4 hover:bg-slate-50 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-slate-900 text-[#F58A4B] rounded-xl flex items-center justify-center text-sm font-black shrink-0">
+                                                    {memberInitials}
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-black text-slate-900 text-sm">{memberName}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mt-0.5">
+                                                        <Mail size={10} /> {member.email || '-'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <ChevronDown
+                                                size={18}
+                                                className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                                            />
+                                        </button>
+
+                                        {/* Expanded Details */}
+                                        {isExpanded && (
+                                            <div className="border-t border-slate-100 px-4 py-3 space-y-3 bg-slate-50/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {isManagerMemberView ? (
+                                                    /* Manager view: Dashboard, MCTC, RC7 links */
+                                                    <div className="flex flex-col gap-2">
+                                                        <button
+                                                            onClick={() => navigate(`/employeedashboard?member=${member.id}`)}
+                                                            className="w-full text-left px-3 py-2.5 bg-white rounded-lg border border-slate-100 text-xs font-black uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors"
+                                                        >
+                                                            View Dashboard
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const mName = `${member.first_name || ''} ${member.last_name || ''}`.trim() || member.username || member.email || `Member ${member.id}`;
+                                                                navigate(`/mctc?member=${member.id}&memberName=${encodeURIComponent(mName)}`);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2.5 bg-white rounded-lg border border-slate-100 text-xs font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 transition-colors"
+                                                        >
+                                                            View MCTC
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const mName = `${member.first_name || ''} ${member.last_name || ''}`.trim() || member.username || member.email || `Member ${member.id}`;
+                                                                navigate(`/rc7?member=${member.id}&memberName=${encodeURIComponent(mName)}`);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2.5 bg-white rounded-lg border border-slate-100 text-xs font-black uppercase tracking-wider text-violet-600 hover:bg-violet-50 transition-colors"
+                                                        >
+                                                            View RC7
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    /* Admin/default view: Role, Status, Date, Password, Actions */
+                                                    <>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</span>
+                                                            <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg tracking-widest border
+                                                                ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                    member.role?.toLowerCase() === 'sgm' ? 'bg-orange-50 text-[#F58A4B] border-orange-100' :
+                                                                        'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                                                {member.role || 'Employee'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</span>
+                                                            {member.is_active ? (
+                                                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase">
+                                                                    <CheckCircle2 size={12} /> Active
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-400 text-[10px] font-black uppercase">
+                                                                    <XCircle size={12} /> Inactive
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</span>
+                                                            <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                                                                <Calendar size={12} className="text-slate-300" />
+                                                                {formatDate(member.date_joined)}
+                                                            </span>
+                                                        </div>
+                                                        {isAdminRole && (
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</span>
+                                                                <div className="text-right">
+                                                                    <p className="text-[11px] font-black tracking-wide text-slate-700">{member.password_display || 'N/A'}</p>
+                                                                    <p className="text-[9px] font-bold text-slate-400">{formatDateTime(member.password_changed_at)}</p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {!isClientRole && (
+                                                            <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={() => openEditModal(member)}
+                                                                        className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
+                                                                    >
+                                                                        <Edit size={14} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDelete(member.id)}
+                                                                        className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="flex flex-col items-center gap-3 opacity-20 py-16">
+                                <Filter size={48} />
+                                <p className="font-black uppercase tracking-widest text-xs">No records found</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* --- TABLE SECTION (hidden on mobile, visible md+) --- */}
+                    <div className="hidden md:block bg-white border border-slate-100 rounded-xl md:rounded-[3rem] shadow-[0_20px_60px_rgba(0,0,0,0.02)] overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-separate border-spacing-0">
                                 <thead>
