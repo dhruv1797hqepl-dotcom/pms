@@ -662,125 +662,132 @@ const StaffManagement = () => {
             {
                 !isClientRole && editingUser && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                        <div className="bg-white rounded-xl md:rounded-[2rem] w-full max-w-lg shadow-2xl p-5 md:p-8 relative animate-in fade-in zoom-in-95 duration-200">
-                            <button
-                                onClick={closeEditModal}
-                                className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
-                            >
-                                <XCircle size={20} className="text-slate-500" />
-                            </button>
-
-                            <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter mb-1">
-                                Edit <span className="text-[#F58A4B]">{editingUser.username}</span>
-                            </h2>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">
-                                Update Personnel Details
-                            </p>
-
-                            <form onSubmit={handleUpdate} className="space-y-4">
-                                {/* Username (Read Onlyish or Editable) */}
+                        <div className="bg-white rounded-xl md:rounded-[2rem] w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+                            {/* Sticky Header with Close Button */}
+                            <div className="flex items-center justify-between px-5 md:px-8 pt-5 md:pt-8 pb-4 border-b border-slate-100 shrink-0">
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Username</label>
-                                    <input
-                                        type="text"
-                                        name="username"
-                                        value={editFormData.username || ''}
-                                        onChange={handleEditChange}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                    />
+                                    <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase italic tracking-tighter">
+                                        Edit <span className="text-[#F58A4B]">{editingUser.username}</span>
+                                    </h2>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                        Update Personnel Details
+                                    </p>
                                 </div>
-
-                                {/* Email */}
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email Address</label>
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        value={editFormData.email || ''}
-                                        onChange={handleEditChange}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                    />
-                                </div>
-
-                                {/* First Name, Last Name & Short Form */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">First Name</label>
-                                        <input
-                                            type="text"
-                                            name="first_name"
-                                            value={editFormData.first_name || ''}
-                                            onChange={handleEditChange}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Last Name</label>
-                                        <input
-                                            type="text"
-                                            name="last_name"
-                                            value={editFormData.last_name || ''}
-                                            onChange={handleEditChange}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Short Form</label>
-                                        <input
-                                            type="text"
-                                            name="shortform"
-                                            value={editFormData.shortform || ''}
-                                            onChange={handleEditChange}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Role Selection */}
-                                <select
-                                    name="role"
-                                    value={editFormData.role || ''}
-                                    onChange={handleEditChange}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all appearance-none"
-                                >
-                                    <option value="HQEPL">HQEPL</option>
-                                    <option value="SGM">SGM</option>
-                                    <option value="EMPLOYEE">Employee</option>
-                                </select>
-
-                                {/* Optional Password Update */}
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">New Password (Optional)</label>
-                                    <input
-                                        type="password"
-                                        name="password"
-                                        value={editFormData.password || ''}
-                                        onChange={handleEditChange}
-                                        placeholder="Leave empty to keep current password"
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
-                                    />
-                                </div>
-
-                                {/* Active Status Checkbox */}
-                                <div className="flex items-center gap-3 pt-2">
-                                    <input
-                                        type="checkbox"
-                                        name="is_active"
-                                        checked={editFormData.is_active || false}
-                                        onChange={handleEditChange}
-                                        id="isActive"
-                                        className="w-5 h-5 rounded-md text-[#F58A4B] border-slate-300 focus:ring-[#F58A4B]"
-                                    />
-                                    <label htmlFor="isActive" className="text-xs font-bold text-slate-700">User Account Active</label>
-                                </div>
-
                                 <button
-                                    type="submit"
-                                    className="w-full bg-slate-900 text-white py-4 rounded-xl text-xs font-black uppercase tracking-[0.15em] hover:bg-[#F58A4B] transition-all mt-4"
+                                    onClick={closeEditModal}
+                                    className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors shrink-0"
                                 >
-                                    Save Changes
+                                    <XCircle size={20} className="text-slate-500" />
                                 </button>
-                            </form>
+                            </div>
+
+                            {/* Scrollable Form Body */}
+                            <div className="flex-1 overflow-y-auto px-5 md:px-8 py-4 md:py-6">
+                                <form onSubmit={handleUpdate} className="space-y-3 md:space-y-4">
+                                    {/* Username */}
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Username</label>
+                                        <input
+                                            type="text"
+                                            name="username"
+                                            value={editFormData.username || ''}
+                                            onChange={handleEditChange}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                        />
+                                    </div>
+
+                                    {/* Email */}
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email Address</label>
+                                        <input
+                                            type="email"
+                                            name="email"
+                                            value={editFormData.email || ''}
+                                            onChange={handleEditChange}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                        />
+                                    </div>
+
+                                    {/* First Name, Last Name & Short Form */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">First Name</label>
+                                            <input
+                                                type="text"
+                                                name="first_name"
+                                                value={editFormData.first_name || ''}
+                                                onChange={handleEditChange}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Last Name</label>
+                                            <input
+                                                type="text"
+                                                name="last_name"
+                                                value={editFormData.last_name || ''}
+                                                onChange={handleEditChange}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Short Form</label>
+                                            <input
+                                                type="text"
+                                                name="shortform"
+                                                value={editFormData.shortform || ''}
+                                                onChange={handleEditChange}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Role Selection */}
+                                    <select
+                                        name="role"
+                                        value={editFormData.role || ''}
+                                        onChange={handleEditChange}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all appearance-none"
+                                    >
+                                        <option value="HQEPL">HQEPL</option>
+                                        <option value="SGM">SGM</option>
+                                        <option value="EMPLOYEE">Employee</option>
+                                    </select>
+
+                                    {/* Optional Password Update */}
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">New Password (Optional)</label>
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            value={editFormData.password || ''}
+                                            onChange={handleEditChange}
+                                            placeholder="Leave empty to keep current password"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all"
+                                        />
+                                    </div>
+
+                                    {/* Active Status Checkbox */}
+                                    <div className="flex items-center gap-3 pt-1">
+                                        <input
+                                            type="checkbox"
+                                            name="is_active"
+                                            checked={editFormData.is_active || false}
+                                            onChange={handleEditChange}
+                                            id="isActive"
+                                            className="w-5 h-5 rounded-md text-[#F58A4B] border-slate-300 focus:ring-[#F58A4B]"
+                                        />
+                                        <label htmlFor="isActive" className="text-xs font-bold text-slate-700">User Account Active</label>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        className="w-full bg-slate-900 text-white py-3 md:py-4 rounded-xl text-xs font-black uppercase tracking-[0.15em] hover:bg-[#F58A4B] transition-all mt-3"
+                                    >
+                                        Save Changes
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 )
