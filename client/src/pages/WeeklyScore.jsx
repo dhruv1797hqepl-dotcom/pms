@@ -294,17 +294,17 @@ const WeeklyScore = () => {
       <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all duration-300">
-        <div className="max-w-full mx-auto px-6 py-8 space-y-6">
+        <div className="max-w-full mx-auto px-3 md:px-6 py-4 md:py-8 space-y-4 md:space-y-6">
 
           {/* HEADER */}
-          <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm gap-3 md:gap-4">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-600 rounded-lg text-white shadow-md shadow-blue-200">
                 <CalendarDays size={24} />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Planning Period</p>
-                <h1 className="text-2xl font-bold text-slate-900">{monthName}</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-slate-900">{monthName}</h1>
               </div>
             </div>
 
@@ -324,7 +324,7 @@ const WeeklyScore = () => {
           </div>
 
           {/* FILTERS */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
               <div className="w-full lg:max-w-sm">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
@@ -351,7 +351,7 @@ const WeeklyScore = () => {
 
           {/* TABLE */}
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100">
+            <div className="p-4 md:p-6 border-b border-slate-100">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Activity className="text-blue-600" size={20} />
                 Performance Overview

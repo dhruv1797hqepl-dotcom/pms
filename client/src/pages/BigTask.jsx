@@ -709,21 +709,21 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     return (
         <div className="w-full font-sans text-slate-900 bg-white">
             <style>{bigTaskScrollbarStyles}</style>
-            <div className="flex justify-between items-center mb-6 px-1">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 px-1 gap-3">
                 <div className="flex items-center gap-3">
                     <span className="bg-[#F58A4B] p-1.5 rounded text-white shadow-sm">
                         <Zap size={16} fill="currentColor" />
                     </span>
-                    <h1 className="text-xl font-bold tracking-tight text-slate-800 uppercase">Tasks</h1>
+                    <h1 className="text-lg md:text-xl font-bold tracking-tight text-slate-800 uppercase">Tasks</h1>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                <div className="flex items-center gap-2 md:gap-4 flex-wrap">
+                    <div className="flex bg-slate-100 p-0.5 md:p-1 rounded-lg">
                         {['Day', 'Week', 'Month', 'Year'].map(mode => (
                             <button
                                 key={mode}
                                 onClick={() => setViewMode(mode)}
-                                className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === mode
+                                className={`px-2 py-1 md:px-3 md:py-1.5 rounded-md text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === mode
                                     ? 'bg-white text-[#F58A4B] shadow-sm'
                                     : 'text-slate-500 hover:text-slate-700'
                                     }`}
@@ -734,11 +734,11 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                     </div>
 
                     {canEdit && (
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setShowExcelModal(true)} className="flex items-center gap-2 bg-blue-100 border border-blue-300 text-blue-700 hover:bg-blue-200 px-3 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
-                                <Upload size={14} /> Upload Excel
+                        <div className="flex items-center gap-1 md:gap-2">
+                            <button onClick={() => setShowExcelModal(true)} className="flex items-center gap-1 md:gap-2 bg-blue-100 border border-blue-300 text-blue-700 hover:bg-blue-200 px-2 py-1.5 md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors">
+                                <Upload size={14} /> <span className="hidden sm:inline">Upload Excel</span><span className="sm:hidden">Upload</span>
                             </button>
-                            <button onClick={handleQuickAddTask} className="flex items-center justify-center bg-[#F58A4B] hover:bg-orange-600 text-white px-3 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
+                            <button onClick={handleQuickAddTask} className="flex items-center justify-center bg-[#F58A4B] hover:bg-orange-600 text-white px-2 py-1.5 md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors">
                                 <Plus size={14} />
                             </button>
                         </div>
@@ -754,15 +754,15 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 <table className="w-full border-collapse min-w-max">
                     <thead>
                         <tr className="bg-slate-100 divide-x divide-slate-300 border-b border-slate-300">
-                            <th className="p-2 w-12 min-w-[48px] text-center text-[10px] font-bold text-slate-600 uppercase sticky left-0 z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Sr. No.</th>
-                            <th className="p-2 w-[300px] min-w-[300px] text-left text-[10px] font-bold text-slate-600 uppercase pl-3 sticky left-[48px] z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Task Description (Dates)</th>
-                            <th className="p-2 w-24 min-w-[96px] text-center text-[10px] font-bold text-slate-600 uppercase sticky left-[348px] z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Target Date</th>
+                            <th className="p-2 w-10 md:w-12 min-w-[40px] md:min-w-[48px] text-center text-[9px] md:text-[10px] font-bold text-slate-600 uppercase sticky left-0 z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Sr.</th>
+                            <th className="p-2 w-[180px] md:w-[300px] min-w-[180px] md:min-w-[300px] text-left text-[9px] md:text-[10px] font-bold text-slate-600 uppercase pl-3 sticky left-[40px] md:left-[48px] z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Task Description</th>
+                            <th className="p-2 w-20 md:w-24 min-w-[80px] md:min-w-[96px] text-center text-[9px] md:text-[10px] font-bold text-slate-600 uppercase sticky left-[220px] md:left-[348px] z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Target</th>
                             {timelineColumns.map((col, i) => (
                                 <th key={i} className="p-1 text-center text-[10px] font-bold text-slate-600 uppercase bg-slate-50 min-w-[40px] whitespace-nowrap">
                                     {col.label}
                                 </th>
                             ))}
-                            <th className="p-2 w-32 min-w-[128px] text-center text-[10px] font-bold text-slate-600 uppercase sticky right-0 z-30 bg-slate-100 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Status</th>
+                            <th className="p-2 w-28 md:w-32 min-w-[112px] md:min-w-[128px] text-center text-[9px] md:text-[10px] font-bold text-slate-600 uppercase sticky right-0 z-30 bg-slate-100 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-300">
@@ -772,7 +772,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                 <tr data-task-id={task.id} key={task.id} className={`divide-x divide-slate-300 ${task.type === 'Y' ? 'bg-orange-50' : 'bg-white hover:bg-slate-50'} group`}>
                                     <td className={`p-2 text-center text-xs font-semibold text-slate-500 sticky left-0 z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>{index + 1}</td>
 
-                                    <td className={`p-2 pl-3 sticky left-[48px] z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>
+                                    <td className={`p-2 pl-3 sticky left-[40px] md:left-[48px] z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>
                                         {editingTaskId === task.id && canEdit ? (
                                             <div className="space-y-2 py-1">
                                                 <input
@@ -844,7 +844,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                         )}
                                     </td>
 
-                                    <td className={`p-2 text-center text-[10px] font-bold text-slate-600 sticky left-[348px] z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>
+                                    <td className={`p-2 text-center text-[10px] font-bold text-slate-600 sticky left-[220px] md:left-[348px] z-20 ${rowBg} group-hover:bg-slate-50 transition-colors`}>
                                         {task.targetDate || '-'}
                                     </td>
 
@@ -888,12 +888,12 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
             {/* KPI Section */}
             <div className="mt-8">
-                <div className="flex justify-between items-center mb-4 px-1">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
                     <div className="flex items-center gap-3">
                         <span className="bg-slate-900 p-1.5 rounded text-white shadow-sm">
                             <Target size={16} />
                         </span>
-                        <h2 className="text-lg font-bold tracking-tight text-slate-800 uppercase">Key Performance Indicators (KPIs)</h2>
+                        <h2 className="text-base md:text-lg font-bold tracking-tight text-slate-800 uppercase">Key Performance Indicators (KPIs)</h2>
                     </div>
                     {canEdit && (
                         <button onClick={handleQuickAddKpi} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors">
@@ -989,7 +989,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             {isModalOpen && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-                    <form onSubmit={handleAddTask} className="relative bg-white w-full max-w-lg rounded-xl p-8 shadow-2xl border border-slate-100">
+                    <form onSubmit={handleAddTask} className="relative bg-white w-full max-w-lg rounded-xl p-5 md:p-8 shadow-2xl border border-slate-100">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Add Task</h3>
                             <button type="button" onClick={() => setIsModalOpen(false)} className="bg-slate-100 p-1.5 rounded-full text-slate-400"><CloseIcon size={18} /></button>
@@ -999,7 +999,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Task Title</label>
                                 <input required className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold focus:outline-none" placeholder="Task Name" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Start Date</label>
                                     <input type="date" required min={minimumStartDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
@@ -1019,7 +1019,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             {showExcelModal && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeExcelModal} />
-                    <div className="relative bg-white w-full max-w-lg rounded-xl p-8 shadow-2xl border border-slate-100 max-h-[80vh] overflow-y-auto">
+                    <div className="relative bg-white w-full max-w-lg rounded-xl p-5 md:p-8 shadow-2xl border border-slate-100 max-h-[80vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">
                                 {mappingStep ? 'Map Excel Columns' : 'Upload Excel File'}

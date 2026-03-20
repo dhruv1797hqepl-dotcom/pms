@@ -72,7 +72,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4 md:p-6">
       <Link
         to="/"
         className="mb-8 flex items-center gap-2 text-slate-500 hover:text-[#F58A4B] transition-colors font-bold uppercase text-[10px] tracking-[0.2em]"
@@ -80,9 +80,9 @@ const LoginPage = () => {
         <ArrowLeft size={16} /> Back to Homepage
       </Link>
 
-      <div className="w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex min-h-[600px] border-2 border-slate-300">
+      <div className="w-full max-w-5xl bg-white rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden flex min-h-[480px] md:min-h-[600px] border-2 border-slate-300">
         {/* Left Panel */}
-        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-16 flex-col justify-between relative text-white">
+        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-10 xl:p-16 flex-col justify-between relative text-white">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#F58A4B] opacity-10 blur-3xl rounded-full"></div>
 
           <div>
@@ -90,7 +90,7 @@ const LoginPage = () => {
               System Excellence
             </span>
 
-            <h2 className="mt-10 text-5xl font-black leading-[1.1] tracking-tighter">
+            <h2 className="mt-10 text-4xl xl:text-5xl font-black leading-[1.1] tracking-tighter">
               Empowering your <br />
               <span className="text-[#F58A4B] italic font-light">
                 Transformation.
@@ -104,9 +104,9 @@ const LoginPage = () => {
         </div>
 
         {/* Right Panel */}
-        <div className="w-full lg:w-1/2 p-12 md:p-20 flex flex-col justify-center bg-white">
+        <div className="w-full lg:w-1/2 p-8 md:p-12 lg:p-20 flex flex-col justify-center bg-white">
           <div className="mb-10">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter">
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter">
               Login
             </h1>
             <div className="h-1 w-12 bg-[#F58A4B] mt-2"></div>
@@ -160,7 +160,7 @@ const LoginPage = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-slate-900 text-white py-5 rounded-full text-xs font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-80 disabled:cursor-not-allowed"
+              className="w-full bg-slate-900 text-white py-4 md:py-5 rounded-full text-xs font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-80 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Verifying..." : "Log In"} <ChevronRight size={16} />
             </button>
