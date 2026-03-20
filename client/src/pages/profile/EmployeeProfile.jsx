@@ -73,7 +73,7 @@ const EmployeeProfile = () => {
   const [visibleCards, setVisibleCards] = useState(4);
 
   useEffect(() => {
-    const updateVisible = () => setVisibleCards(window.innerWidth < 768 ? 2 : 4);
+    const updateVisible = () => setVisibleCards(window.innerWidth < 768 ? 1 : 4);
     updateVisible();
     window.addEventListener('resize', updateVisible);
     return () => window.removeEventListener('resize', updateVisible);
@@ -90,7 +90,7 @@ const EmployeeProfile = () => {
   ];
 
   const maxStatsIndex = Math.max(0, stats.length - visibleCards);
-  const slidePercent = visibleCards === 2 ? 50 : 25;
+  const slidePercent = visibleCards === 1 ? 100 : 25;
 
   const handleStatsLeft = () => {
     setStatsStartIndex((prev) => Math.max(0, prev - 1));
@@ -140,7 +140,7 @@ const EmployeeProfile = () => {
                   <button
                     key={index}
                     onClick={() => navigate(stat.path)}
-                    className="min-w-0 shrink-0 basis-1/2 md:basis-1/4 px-1.5 md:px-3 text-left transition-all duration-300 group outline-none"
+                    className="min-w-0 shrink-0 basis-full md:basis-1/4 px-1.5 md:px-3 text-left transition-all duration-300 group outline-none"
                   >
                     <div className="bg-white border border-slate-200 rounded-[1.5rem] md:rounded-[2rem] shadow-sm hover:shadow-xl hover:border-[#F58A4B]/30 group-hover:-translate-y-1 transition-all duration-300 p-4 md:p-6 h-full">
                       <div className={`w-8 h-8 md:w-10 md:h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-3 md:mb-4 group-hover:scale-110 transition-transform`}>

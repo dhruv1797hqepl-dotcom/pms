@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, LayoutDashboard, Briefcase, Target, Box, Users2, LogOut, CalendarRange, MapPin, CircleUser, ChevronDown, ChevronUp, Trophy, Building2, ClipboardCheck, TrendingUp, CheckCircle2, FileSpreadsheet, FileBarChart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutDashboard, Briefcase, Target, Box, Users2, LogOut, CalendarRange, MapPin, CircleUser, ChevronDown, ChevronUp, Trophy, Building2, ClipboardCheck, TrendingUp, CheckCircle2, FileSpreadsheet, FileBarChart, Menu, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import api from '../api';
@@ -9,6 +9,7 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clientsExpanded, setClientsExpanded] = useState(false);
   const [actionPlanExpanded, setActionPlanExpanded] = useState(false);
   const [clients, setClients] = useState([]);
@@ -238,9 +239,71 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* Sidebar */}
+      {/* Mobile Hamburger Button */}
+      <button
+        type="button"
+        onClick={() => setMobileMenuOpen(true)}
+        className="fixed top-3 left-3 z-[200] md:hidden flex items-center justify-center w-10 h-10 rounded-xl bg-[#1e293b] text-white shadow-lg"
+        aria-label="Open navigation menu"
+      >
+        <Menu size={22} />
+      </button>
+
+      {/* Mobile Fullscreen Overlay Menu */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[250] md:hidden bg-[#1e293b]/98 backdrop-blur-md flex flex-col animate-in fade-in duration-200">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+            <img src="/WhiteLogo.png" alt="HQEPL Logo" className="h-10 object-contain" />
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 rounded-full hover:bg-white/10 text-white"
+              aria-label="Close menu"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+            {menuItems
+              .filter(item => !item.roles || item.roles.includes(role))
+              .map((item, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    navigate(item.path);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-left transition-all ${
+                    isMenuItemActive(item)
+                      ? 'bg-[#F58A4B] text-white font-bold'
+                      : 'text-white/80 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="text-sm font-semibold">{item.label}</span>
+                </button>
+              ))}
+          </nav>
+
+          <div className="px-5 pb-6">
+            <button
+              onClick={() => {
+                handleLogout();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl bg-white/10 text-white/90 hover:bg-red-500/20 hover:text-red-100 transition-all"
+            >
+              <LogOut size={20} />
+              <span className="text-sm font-semibold">Logout</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Sidebar */}
       <aside
-        className={`relative h-full bg-[#1e293b] text-white shadow-lg transition-all duration-300 ease-in-out flex flex-col ${isOpen ? 'w-64' : 'w-20'
+        className={`relative h-full bg-[#1e293b] text-white shadow-lg transition-all duration-300 ease-in-out hidden md:flex flex-col ${isOpen ? 'w-64' : 'w-20'
           }`}
       >
         {/* Logo Section */}
