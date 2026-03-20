@@ -238,7 +238,7 @@ const StaffManagement = () => {
             <main className="flex-1 overflow-y-auto">
                 {/* HEADER */}
                 <div className="bg-white border-b border-slate-200">
-                    <div className="max-w-[1600px] mx-auto px-6 md:px-10 py-6">
+                    <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-10 py-4 md:py-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="space-y-3">
                                 <button
@@ -249,15 +249,15 @@ const StaffManagement = () => {
                                     Back to Portal
                                 </button>
                                 <div className="space-y-1">
-                                    <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Internal <span className="text-[#F58A4B]">Members</span></h1>
-                                    <p className="text-slate-500 font-medium text-sm flex items-center gap-2"><Briefcase size={16} /> Enterprise Staff Directory</p>
+                                    <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">Internal <span className="text-[#F58A4B]">Members</span></h1>
+                                    <p className="text-slate-500 font-medium text-xs md:text-sm flex items-center gap-2"><Briefcase size={16} /> Enterprise Staff Directory</p>
                                 </div>
                             </div>
 
                             {!isClientRole && (
                                 <button
                                     onClick={() => navigate('/admin/createuser')}
-                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-[#F58A4B] transition-all shadow-lg flex items-center gap-2"
+                                    className="px-4 py-2.5 md:px-6 md:py-3 bg-slate-900 text-white rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-wider hover:bg-[#F58A4B] transition-all shadow-lg flex items-center gap-2"
                                 >
                                     <Plus size={16} /> Add New Staff
                                 </button>
@@ -266,9 +266,9 @@ const StaffManagement = () => {
                     </div>
                 </div>
 
-                <div className="max-w-[1600px] mx-auto px-6 md:px-10 pt-10 space-y-12">
+                <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-10 pt-6 md:pt-10 space-y-6 md:space-y-12">
                     {/* Controls Section */}
-                    <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl p-4 rounded-[2rem] border border-white/50 shadow-xl shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500">
+                    <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-[2rem] border border-white/50 shadow-xl shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 transition-all duration-500">
                         <div className="relative w-full md:w-[480px] group">
                             <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
                                 <Search className="text-slate-300 group-focus-within:text-[#F58A4B] transition-colors duration-300" size={20} />
@@ -276,18 +276,18 @@ const StaffManagement = () => {
                             <input
                                 type="text"
                                 placeholder="Search by name, email, or ID..."
-                                className="block w-full pl-14 pr-6 py-4 bg-slate-50/50 border-0 rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#F58A4B]/20 focus:bg-white transition-all duration-300"
+                                className="block w-full pl-14 pr-6 py-3 md:py-4 bg-slate-50/50 border-0 rounded-xl md:rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#F58A4B]/20 focus:bg-white transition-all duration-300"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
 
-                        <div className="flex items-center gap-1.5 bg-slate-100/50 p-1.5 rounded-2xl">
+                        <div className="flex items-center gap-1 md:gap-1.5 bg-slate-100/50 p-1 md:p-1.5 rounded-xl md:rounded-2xl flex-wrap">
                             {(isManagerMemberView ? ['All'] : ['All', 'HQEPL', 'SGM', 'Employee']).map((filter) => (
                                 <button
                                     key={filter}
                                     onClick={() => setActiveFilter(filter)}
-                                    className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeFilter === filter
+                                    className={`px-3 py-2 md:px-6 md:py-3 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeFilter === filter
                                         ? 'bg-white text-[#F58A4B] shadow-lg shadow-black/5 ring-1 ring-black/5 scale-100'
                                         : 'text-slate-400 hover:text-slate-600 hover:bg-white/50 scale-95 hover:scale-100'
                                         }`}
@@ -301,29 +301,29 @@ const StaffManagement = () => {
 
 
                     {/* --- TABLE SECTION --- */}
-                    <div className="bg-white border border-slate-100 rounded-[3rem] shadow-[0_20px_60px_rgba(0,0,0,0.02)] overflow-hidden">
+                    <div className="bg-white border border-slate-100 rounded-xl md:rounded-[3rem] shadow-[0_20px_60px_rgba(0,0,0,0.02)] overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-separate border-spacing-0">
                                 <thead>
                                     <tr className="bg-slate-50/50">
-                                        <th className="px-10 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                        <th className="px-4 md:px-10 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                             {isManagerMemberView ? 'Name' : 'Member'}
                                         </th>
                                         {isManagerMemberView ? (
                                             <>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Dashboard</th>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">MCTC</th>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">RC7</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Dashboard</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">MCTC</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">RC7</th>
                                             </>
                                         ) : (
                                             <>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Role</th>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Status</th>
-                                                <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Joined Date</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Role</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Status</th>
+                                                <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Joined Date</th>
                                                 {isAdminRole && (
-                                                    <th className="px-8 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Password</th>
+                                                    <th className="px-4 md:px-8 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Password</th>
                                                 )}
-                                                <th className="px-10 py-7 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Actions</th>
+                                                <th className="px-4 md:px-10 py-4 md:py-7 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Actions</th>
                                             </>
                                         )}
                                     </tr>
@@ -342,9 +342,9 @@ const StaffManagement = () => {
                                         filteredStaff.map((member) => (
                                             isManagerMemberView ? (
                                                 <tr key={member.id} className="hover:bg-slate-50/80 transition-all group">
-                                                    <td className="px-10 py-6">
-                                                        <div className="flex items-center gap-5">
-                                                            <div className="w-14 h-14 bg-slate-900 text-[#F58A4B] rounded-2xl flex items-center justify-center text-xl font-black group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-lg">
+                                                    <td className="px-4 md:px-10 py-4 md:py-6">
+                                                        <div className="flex items-center gap-3 md:gap-5">
+                                                            <div className="w-10 h-10 md:w-14 md:h-14 bg-slate-900 text-[#F58A4B] rounded-xl md:rounded-2xl flex items-center justify-center text-base md:text-xl font-black group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-lg">
                                                                 {(member.username?.[0] || member.email?.[0] || 'U').toUpperCase()}
                                                             </div>
                                                             <div>
@@ -392,9 +392,9 @@ const StaffManagement = () => {
                                             ) : (
                                                 <tr key={member.id} className="hover:bg-slate-50/80 transition-all group">
                                                     {/* Identity Card */}
-                                                    <td className="px-10 py-6">
-                                                        <div className="flex items-center gap-5">
-                                                            <div className="w-14 h-14 bg-slate-900 text-[#F58A4B] rounded-2xl flex items-center justify-center text-xl font-black group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-lg">
+                                                    <td className="px-4 md:px-10 py-4 md:py-6">
+                                                        <div className="flex items-center gap-3 md:gap-5">
+                                                            <div className="w-10 h-10 md:w-14 md:h-14 bg-slate-900 text-[#F58A4B] rounded-xl md:rounded-2xl flex items-center justify-center text-base md:text-xl font-black group-hover:bg-[#F58A4B] group-hover:text-white transition-all shadow-lg">
                                                                 {member.first_name || member.last_name
                                                                     ? `${(member.first_name?.[0] || '').toUpperCase()}${(member.last_name?.[0] || '').toUpperCase()}`
                                                                     : member.username?.[0].toUpperCase()}
@@ -513,7 +513,7 @@ const StaffManagement = () => {
             {
                 !isClientRole && editingUser && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                        <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl p-8 relative animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-white rounded-xl md:rounded-[2rem] w-full max-w-lg shadow-2xl p-5 md:p-8 relative animate-in fade-in zoom-in-95 duration-200">
                             <button
                                 onClick={closeEditModal}
                                 className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"

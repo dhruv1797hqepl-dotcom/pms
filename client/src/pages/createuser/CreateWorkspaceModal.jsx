@@ -182,18 +182,18 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
     return (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-300">
+            <div className="relative bg-white w-full max-w-xl rounded-xl md:rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-300">
 
                 {/* Step Indicator */}
                 <div className="flex h-1.5 w-full bg-slate-100">
                     <div className={`h-full bg-[#F58A4B] transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
                 </div>
 
-                <div className="p-8 md:p-10">
+                <div className="p-5 md:p-8 lg:p-10">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <span className="text-[10px] font-black text-[#F58A4B] uppercase tracking-[0.2em]">Step 0{step} / 03</span>
-                            <h2 className="text-2xl font-black uppercase italic tracking-tighter mt-1">
+                            <h2 className="text-xl md:text-2xl font-black uppercase italic tracking-tighter mt-1">
                                 {step === 1 && <>Client <span className="text-[#F58A4B]">Credentials</span></>}
                                 {step === 2 && <>Company <span className="text-[#F58A4B]">Information</span></>}
                                 {step === 3 && <>Team <span className="text-[#F58A4B]">Assignments</span></>}
@@ -219,7 +219,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                         {step === 2 && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                 <ModalInput icon={Building2} label="Company Name" placeholder="e.g. Acme Corp" value={formData.company_name} onChange={(v) => setFormData({ ...formData, company_name: v })} />
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <ModalInput icon={Phone} label="Phone Number" placeholder="+91..." value={formData.phone} onChange={(v) => setFormData({ ...formData, phone: v })} />
                                     <ModalInput icon={Globe} label="Website" placeholder="www.acme.com" value={formData.website} onChange={(v) => setFormData({ ...formData, website: v })} />
                                 </div>
@@ -275,14 +275,14 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                         {/* Navigation Buttons */}
                         <div className="flex gap-3 pt-4">
                             {step > 1 && (
-                                <button type="button" onClick={prevStep} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all flex items-center justify-center gap-2">
+                                <button type="button" onClick={prevStep} className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all flex items-center justify-center gap-2">
                                     <ChevronLeft size={16} /> Back
                                 </button>
                             )}
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="flex-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-[#F58A4B] transition-all shadow-lg flex items-center justify-center gap-2"
+                                className="flex-2 py-3 md:py-4 bg-slate-900 text-white rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-[#F58A4B] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 {loading ? 'Processing...' : (
                                     <>

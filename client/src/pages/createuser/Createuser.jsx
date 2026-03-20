@@ -103,7 +103,7 @@ const CreateUser = () => {
       <Sidebar />
 
       <main className="flex-1 overflow-y-auto transition-all duration-300 pb-20">
-        <div className="max-w-3xl mx-auto px-6 py-12">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-12">
 
           {/* Navigation Header */}
           <button
@@ -114,9 +114,9 @@ const CreateUser = () => {
             Back to Dashboard
           </button>
 
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-xl md:rounded-3xl shadow-sm overflow-hidden">
             {/* Header Section */}
-            <div className="bg-white px-8 py-10 border-b border-slate-50 relative overflow-hidden">
+            <div className="bg-white px-5 py-6 md:px-8 md:py-10 border-b border-slate-50 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2"></div>
 
               <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -125,7 +125,7 @@ const CreateUser = () => {
                     <UserPlus size={24} />
                   </div>
                   <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
                       Onboard New User
                     </h1>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -141,7 +141,7 @@ const CreateUser = () => {
             </div>
 
             {/* Form Section */}
-            <div className="p-8 md:p-12">
+            <div className="p-5 md:p-8 lg:p-12">
               <form onSubmit={handleCreateAndEmail} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -178,7 +178,7 @@ const CreateUser = () => {
                   </div>
 
                   {/* First Name & Last Name */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">First Name</label>
                       <input
