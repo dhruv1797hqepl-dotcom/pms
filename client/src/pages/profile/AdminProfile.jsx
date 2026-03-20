@@ -128,14 +128,14 @@ const AdminProfile = () => {
       <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
       <main className="flex-1 overflow-y-auto">
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-10 space-y-6 md:space-y-8">
 
         <ProfileGreetingBanner name={username} />
 
         {/* HEADER */}
-        <div className="flex justify-between items-center border-b border-slate-200 pb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-6 md:pb-8">
           <div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">
               Admin <span className="text-[#F58A4B]">Portal</span>
             </h1>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">Operational Integrity Verified</p>
@@ -152,7 +152,7 @@ const AdminProfile = () => {
             <button
               key={index}
               onClick={() => navigate(action.path)}
-              className={`${action.color} p-4 rounded-[1.5rem] text-white flex items-center justify-between group transition-all hover:translate-y-[-2px] shadow-lg active:scale-95`}
+              className={`${action.color} p-3 md:p-4 rounded-[1.5rem] text-white flex items-center justify-between group transition-all hover:translate-y-[-2px] shadow-lg active:scale-95`}
             >
               <div className="flex items-center gap-4">
                 <div className="p-2.5 bg-white/10 rounded-xl group-hover:bg-white group-hover:text-slate-900 transition-all">
@@ -172,17 +172,17 @@ const AdminProfile = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* Admin Info */}
-          <div className="lg:col-span-7 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm flex items-center gap-8 group">
+          <div className="lg:col-span-7 bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] p-5 md:p-8 shadow-sm flex flex-col md:flex-row items-center gap-5 md:gap-8 group">
             <div className="relative">
               <div className="absolute inset-0 bg-[#F58A4B] opacity-0 group-hover:opacity-20 rounded-[2rem] blur-xl transition-all" />
               {adminPhotoSrc ? (
                 <img
                   src={adminPhotoSrc}
                   alt="Admin"
-                  className="relative w-32 h-32 rounded-[2rem] border-4 border-slate-50 object-cover shadow-xl grayscale hover:grayscale-0 transition-all duration-500"
+                  className="relative w-24 h-24 lg:w-32 lg:h-32 rounded-[1.5rem] lg:rounded-[2rem] border-4 border-slate-50 object-cover shadow-xl grayscale hover:grayscale-0 transition-all duration-500"
                 />
               ) : (
-                <div className="relative w-32 h-32 rounded-[2rem] border-4 border-slate-50 bg-slate-100 text-slate-700 flex items-center justify-center text-4xl font-black shadow-xl uppercase">
+                <div className="relative w-24 h-24 lg:w-32 lg:h-32 rounded-[1.5rem] lg:rounded-[2rem] border-4 border-slate-50 bg-slate-100 text-slate-700 flex items-center justify-center text-3xl lg:text-4xl font-black shadow-xl uppercase">
                   {adminInitial}
                 </div>
               )}
@@ -192,7 +192,7 @@ const AdminProfile = () => {
               <span className="bg-slate-900 text-white text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-lg shadow-sm">
                 System Administrator
               </span>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tighter mt-4 italic uppercase leading-none">{username}</h1>
+              <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tighter mt-3 md:mt-4 italic uppercase leading-none">{username}</h1>
               <p className="mt-3 text-sm font-bold text-slate-600 break-all">
                 Password: <span className="text-slate-900">{adminPassword}</span>
               </p>
@@ -221,7 +221,7 @@ const AdminProfile = () => {
               metrics.map((metric, index) => (
                 <div
                   key={index}
-                  className="bg-white border border-slate-100 p-5 rounded-[1.5rem] shadow-sm flex items-center justify-between group hover:border-[#F58A4B]/40 transition-all"
+                  className="bg-white border border-slate-100 p-4 md:p-5 rounded-[1.5rem] shadow-sm flex items-center justify-between group hover:border-[#F58A4B]/40 transition-all"
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 ${metric.bg} ${metric.color} rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform`}>

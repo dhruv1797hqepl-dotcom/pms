@@ -123,7 +123,7 @@ const ProfileDailyPlanningBox = ({ userId }) => {
     }, [userId]);
 
     return (
-        <div className="h-full rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="h-full rounded-[1.5rem] lg:rounded-[2rem] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.18em]">Today's Planning</p>
 
             <div className="mt-4">
