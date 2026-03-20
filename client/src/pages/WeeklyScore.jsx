@@ -186,10 +186,23 @@ const WeeklyScore = () => {
     if (selectedClient === 'all') {
       const employeeMap = {};
       
+      // Initialize map with all employees and SGMs from members array
+      members.forEach(member => {
+        const role = String(member.role || '').toUpperCase();
+        if (role === 'EMPLOYEE' || role === 'SGM' || role === 'HQEPL') {
+          employeeMap[member.id] = {
+            id: member.id,
+            name: member.full_name || member.username || `Employee ${member.id}`,
+            tasks: []
+          };
+        }
+      });
+      
       filteredTasks.forEach(task => {
         if (!task.assigned_to) return;
         const employeeId = task.assigned_to;
         
+        // If employee not in map (e.g. they weren't in members list), add them
         if (!employeeMap[employeeId]) {
           employeeMap[employeeId] = {
             id: employeeId,
@@ -249,6 +262,11 @@ const WeeklyScore = () => {
       }
       projectMap[groupKey].tasks.push(task);
     });
+
+    // Remove unassigned projects if specific client is selected (cleanup)
+    if (selectedClient !== 'all') {
+      delete projectMap['unassigned_projects'];
+    }
 
     return Object.values(projectMap)
       .map(project => {

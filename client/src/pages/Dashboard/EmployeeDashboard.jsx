@@ -137,8 +137,13 @@ const EmployeeDashboard = () => {
   };
 
   const getInternalDirectoryMembers = () => {
-    const directoryMembers = dedupeMembersByIdentity(assignableDirectory.internal);
+    let directoryMembers = dedupeMembersByIdentity(assignableDirectory.internal);
     if (directoryMembers.length === 0) return [];
+
+    // HQEPL should not see Admin in internal assignments
+    if (String(currentUser?.role || '').toUpperCase() === 'HQEPL') {
+      directoryMembers = directoryMembers.filter(m => String(m.role || '').toUpperCase() !== 'ADMIN');
+    }
 
     if (isInternalRole(currentUser?.role)) {
       return withCurrentUser(directoryMembers);
