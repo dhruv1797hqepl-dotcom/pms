@@ -515,7 +515,7 @@ const MCTC = () => {
                                                                         : "text-slate-500 hover:text-slate-800"
                                                                         }`}
                                                                 >
-                                                                    Normal
+                                                                    Reminder
                                                                 </button>
                                                                 <button
                                                                     onClick={() => setTaskType("task")}

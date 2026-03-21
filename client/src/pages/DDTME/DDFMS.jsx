@@ -1314,6 +1314,8 @@ const DDFMS = () => {
   const stickyDateColumnWidthPx = 150;
   const stickyStartDateLeftPx = stickyDeliverableWidthPx;
   const stickyTargetDateLeftPx = stickyDeliverableWidthPx + stickyDateColumnWidthPx;
+  const stickyMainHeaderTopPx = 0;
+  const stickySubHeaderTopPx = 88;
   const ddfmsScrollbarStyles = `
     .ddfms-scrollbar {
       scrollbar-width: thin;
@@ -1416,20 +1418,20 @@ const DDFMS = () => {
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
                     <th
-                      className="sticky left-0 z-30 bg-slate-100 p-3 text-left text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
-                      style={{ width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                      className="sticky left-0 z-50 bg-slate-100 p-3 text-left text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
                     >
                       Deliverable / Step
                     </th>
                     <th
-                      className="sticky z-30 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
-                      style={{ left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                      className="sticky z-50 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                     >
                       Start Date
                     </th>
                     <th
-                      className="sticky z-30 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
-                      style={{ left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                      className="sticky z-50 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                     >
                       Target Date
                     </th>
@@ -1437,7 +1439,7 @@ const DDFMS = () => {
                       <th
                         key={`step-${index + 1}`}
                         colSpan={2}
-                        className="p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[180px]"
+                        className="sticky top-0 z-40 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[180px]"
                       >
                         <div className="space-y-1 normal-case tracking-normal">
                           <div className="uppercase text-[11px] font-black tracking-wider">Step {index + 1}</div>
@@ -1445,40 +1447,49 @@ const DDFMS = () => {
                         </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 min-w-[180px]">
+                    <th className="sticky top-0 z-40 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 min-w-[180px]">
                       Actions
                     </th>
                   </tr>
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th
-                      className="sticky left-0 z-30 bg-slate-50 p-2 text-left text-[11px] font-bold text-slate-500 border-r border-slate-200"
-                      style={{ width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                      className="sticky left-0 z-50 bg-slate-50 p-2 text-left text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
                     >
                       Item
                     </th>
                     <th
-                      className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
-                      style={{ left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                      className="sticky z-50 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                     >
                       Start Date
                     </th>
                     <th
-                      className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
-                      style={{ left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                      className="sticky z-50 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                     >
                       Target Date
                     </th>
                     {stepDefinitions.map((_, index) => (
                       <React.Fragment key={`step-sub-${index + 1}`}>
-                        <th className="p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]">
+                        <th
+                          className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]"
+                          style={{ top: `${stickySubHeaderTopPx}px` }}
+                        >
                           Responsible Person
                         </th>
-                        <th className="p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]">
+                        <th
+                          className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]"
+                          style={{ top: `${stickySubHeaderTopPx}px` }}
+                        >
                           Target Date
                         </th>
                       </React.Fragment>
                     ))}
-                    <th className="p-2 text-center text-[11px] font-bold text-slate-500 min-w-[180px]">
+                    <th
+                      className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 min-w-[180px]"
+                      style={{ top: `${stickySubHeaderTopPx}px` }}
+                    >
                       Row Action
                     </th>
                   </tr>
