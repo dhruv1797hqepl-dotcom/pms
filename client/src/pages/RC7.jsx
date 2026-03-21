@@ -173,7 +173,8 @@ const PlanSheet = ({
   saving,
   saved,
   showAutoSaveStatus,
-  onSubmit, // passed new prop
+  onSubmit, 
+  onManualPullMCTC,
 }) => {
   const headers = dates.map((date) => ({
     key: toDateKey(date),
@@ -332,7 +333,17 @@ const PlanSheet = ({
                       {canEdit ? (
                         <div className="space-y-1.5">
                           {!isHoliday && (
-                            <div className="flex justify-end">
+                            <div className="flex justify-end gap-2">
+                              {onManualPullMCTC && (
+                                <button
+                                  type="button"
+                                  onClick={() => onManualPullMCTC(employeeId, head.key)}
+                                  className="inline-flex mr-auto items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 transition-colors hover:bg-blue-100"
+                                  title="Pull missing MCTC tasks for this date"
+                                >
+                                  Pull MCTC
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => onAddDeliverable(employeeId, head.key)}
@@ -663,7 +674,7 @@ const RC7 = () => {
 
       // Mon-Wed in Wednesday sheet should prefill from MCTC when empty.
       if (dayNum >= 1 && dayNum <= 3) {
-        if (String(currentCell.location || '').toLowerCase() === 'holiday') {
+        if (String(currentCell.location || '').toLowerCase() === 'holiday' || hasCellData(currentCell)) {
           return;
         }
 
@@ -674,14 +685,9 @@ const RC7 = () => {
 
         if (!mctcDeliverables.length) return;
 
-        const existingGroup = currentCell.deliverables.map(item => item.trim()).filter(Boolean);
-        const newToSync = mctcDeliverables.filter(item => !existingGroup.includes(item));
-
-        if (!newToSync.length) return;
-
         empPlan[dateKey] = {
           ...currentCell,
-          deliverables: [...existingGroup, ...newToSync],
+          deliverables: mctcDeliverables,
         };
         changed = true;
       }
@@ -720,7 +726,7 @@ const RC7 = () => {
       }
 
       // Remaining Saturday sheet days (and Wednesday fallback) prefill from MCTC when empty.
-      if (isHoliday) {
+      if (isHoliday || hasCellData(currentCell)) {
         return;
       }
 
@@ -731,14 +737,9 @@ const RC7 = () => {
 
       if (!mctcDeliverables.length) return;
 
-      const existingGroup = currentCell.deliverables.map(item => item.trim()).filter(Boolean);
-      const newToSync = mctcDeliverables.filter(item => !existingGroup.includes(item));
-
-      if (!newToSync.length) return;
-
       empPlan[dateKey] = {
         ...currentCell,
-        deliverables: [...existingGroup, ...newToSync],
+        deliverables: mctcDeliverables,
       };
       changed = true;
     });
@@ -812,6 +813,40 @@ const RC7 = () => {
       });
       markDirty(true);
     },
+    onManualPullMCTC: (employeeId, dateKey) => {
+      // Find missing entries from mctcEntries
+      setter(prev => {
+        const dayEntries = mctcEntries.filter(e => e.entry_date === dateKey);
+        const mctcDeliverables = dayEntries.map(e => String(e.label || '').trim()).filter(Boolean);
+
+        if (!mctcDeliverables.length) {
+          alert("No MCTC tasks found for this date.");
+          return prev;
+        }
+
+        const empPlan = prev[employeeId] || {};
+        const currentCell = normalizeCell(empPlan[dateKey]);
+        const existingGroup = currentCell.deliverables.map(item => item.trim()).filter(Boolean);
+        const newToSync = mctcDeliverables.filter(item => !existingGroup.includes(item));
+
+        if (!newToSync.length) {
+          alert("All MCTC tasks for this date are already reflected here.");
+          return prev;
+        }
+
+        markDirty(true);
+        return {
+          ...prev,
+          [employeeId]: {
+            ...empPlan,
+            [dateKey]: {
+              ...currentCell,
+              deliverables: [...existingGroup, ...newToSync]
+            }
+          }
+        };
+      });
+    }
   });
 
   const satHandlers = createHandlers(setSatPlan, setSatDirty);
@@ -1126,6 +1161,7 @@ const RC7 = () => {
                     saved={activeSaved}
                     showAutoSaveStatus={!isMemberView && activeCycleActive && Boolean(effectiveEmployeeId) && !activeSubmitted}
                     onSubmit={() => handleSubmitCycle(type)}
+                    onManualPullMCTC={activeHandlers.onManualPullMCTC}
                   />
                 );
               })}
