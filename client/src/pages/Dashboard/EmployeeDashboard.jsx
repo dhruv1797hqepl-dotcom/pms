@@ -2733,6 +2733,37 @@ const Table = ({
     return sourceModule || "N/A";
   };
 
+  const getTaskDisplayStatus = (task) => {
+    const normalizedStatus = String(task?.status || '').trim().toLowerCase();
+
+    if (task?.completion_date || normalizedStatus.includes('completed')) {
+      return 'Completed';
+    }
+
+    if (normalizedStatus.includes('delay') || normalizedStatus.includes('late')) {
+      return 'Delayed';
+    }
+
+    if (task?.target_date) {
+      const targetDate = new Date(task.target_date);
+      if (!Number.isNaN(targetDate.getTime())) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        targetDate.setHours(0, 0, 0, 0);
+
+        if (targetDate < today) {
+          return 'Overdue';
+        }
+      }
+    }
+
+    if (normalizedStatus.includes('on time')) {
+      return 'On Time';
+    }
+
+    return 'In Progress';
+  };
+
   return (
     <div className="max-w-7xl mx-auto mt-10 px-6">
       <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden transition-all hover:shadow-md">
@@ -2808,7 +2839,7 @@ const Table = ({
                   </td>
                   {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{t.target_date}</td>}
                   {mode === "completed" && <td className="px-4 py-3 text-[11px] font-bold text-emerald-500 whitespace-nowrap">{t.completion_date}</td>}
-                  <td className="px-4 py-3 text-center"><StatusBadge status={t.status} /></td>
+                  <td className="px-4 py-3 text-center"><StatusBadge status={getTaskDisplayStatus(t)} /></td>
                   {(mode === "overview" || mode === "assigned") && <td className="px-4 py-3 text-center">{t.assigned_file ? <Download size={16} className="mx-auto text-blue-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
                   {mode === "completed" && <td className="px-4 py-3 text-[11px] font-medium text-slate-600 max-w-[200px] truncate" title={getCompletedRemarkLabel(t)}>{getCompletedRemarkLabel(t)}</td>}
                   {(mode === "completed" || mode === "assigned") && <td className="px-4 py-3 text-center">{t.completion_file ? <Download size={16} className="mx-auto text-emerald-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
