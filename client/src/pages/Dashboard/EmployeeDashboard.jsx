@@ -2125,17 +2125,28 @@ const EmployeeDashboard = () => {
 
                           {/* TYPE: INTERNAL / NORMAL */}
                           <td className="px-4 py-3 align-top">
-                            <label className="flex items-center gap-2 cursor-pointer mt-2">
-                              <input
-                                type="checkbox"
-                                checked={task.isInternal}
-                                onChange={(e) => handleRowChange(index, "isInternal", e.target.checked)}
-                                className="accent-emerald-500 scale-110"
-                              />
-                              <span className={`text-[10px] font-bold uppercase ${task.isInternal ? "text-emerald-500" : "text-slate-400"}`}>
-                                {task.isInternal ? "Internal" : "Client"}
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={task.isInternal}
+                              aria-label={task.isInternal ? "Internal task selected" : "Client task selected"}
+                              onClick={() => handleRowChange(index, "isInternal", !task.isInternal)}
+                              className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 transition-all hover:border-slate-300 hover:bg-slate-100"
+                            >
+                              <span className={`text-[10px] font-black transition-colors ${task.isInternal ? "text-emerald-600" : "text-slate-400"}`}>
+                                Internal
                               </span>
-                            </label>
+                              <span
+                                className={`relative h-6 w-11 rounded-full transition-colors ${task.isInternal ? "bg-emerald-500" : "bg-slate-300"}`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${task.isInternal ? "translate-x-5" : "translate-x-0.5"}`}
+                                />
+                              </span>
+                              <span className={`text-[10px] font-black transition-colors ${!task.isInternal ? "text-emerald-600" : "text-slate-400"}`}>
+                                Client
+                              </span>
+                            </button>
                           </td>
 
                           {/* CLIENT SELECTION (AUTOCOMPLETE) */}
