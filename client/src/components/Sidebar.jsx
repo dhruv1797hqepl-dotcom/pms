@@ -10,11 +10,46 @@ const Sidebar = () => {
   const location = useLocation();
   const [hoveredItem, setHoveredItem] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [clientsExpanded, setClientsExpanded] = useState(false);
-  const [actionPlanExpanded, setActionPlanExpanded] = useState(false);
+  const [clientsExpanded, setClientsExpanded] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('sidebar_clientsExpanded')) || false; } catch { return false; }
+  });
+  const [actionPlanExpanded, setActionPlanExpanded] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('sidebar_actionPlanExpanded')) || false; } catch { return false; }
+  });
   const [clients, setClients] = useState([]);
   const [clientProjects, setClientProjects] = useState({});
-  const [expandedClients, setExpandedClients] = useState({});
+  const [expandedClients, setExpandedClients] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('sidebar_expandedClients')) || {}; } catch { return {}; }
+  });
+
+  const navRef = React.useRef(null);
+
+  useEffect(() => {
+    sessionStorage.setItem('sidebar_clientsExpanded', JSON.stringify(clientsExpanded));
+  }, [clientsExpanded]);
+
+  useEffect(() => {
+    sessionStorage.setItem('sidebar_actionPlanExpanded', JSON.stringify(actionPlanExpanded));
+  }, [actionPlanExpanded]);
+
+  useEffect(() => {
+    sessionStorage.setItem('sidebar_expandedClients', JSON.stringify(expandedClients));
+  }, [expandedClients]);
+
+  useEffect(() => {
+    const savedScrollPos = sessionStorage.getItem('sidebar_scrollPos');
+    if (savedScrollPos && navRef.current) {
+      setTimeout(() => {
+        if (navRef.current) {
+          navRef.current.scrollTop = parseInt(savedScrollPos, 10);
+        }
+      }, 50);
+    }
+  }, [clients, expandedClients, clientsExpanded, actionPlanExpanded]);
+
+  const handleScroll = (e) => {
+    sessionStorage.setItem('sidebar_scrollPos', e.target.scrollTop);
+  };
   const role = (localStorage.getItem('role') || '').toUpperCase();
 
   useEffect(() => {
@@ -331,7 +366,11 @@ const Sidebar = () => {
         </div>
 
         {/* Menu Items */}
-        <nav className="px-4 space-y-2 flex-1 overflow-y-auto no-scrollbar">
+        <nav 
+          ref={navRef}
+          onScroll={handleScroll}
+          className="px-4 space-y-2 flex-1 overflow-y-auto no-scrollbar"
+        >
           {menuItems
             .filter(item => !item.roles || item.roles.includes(role))
             .map((item, index) => (

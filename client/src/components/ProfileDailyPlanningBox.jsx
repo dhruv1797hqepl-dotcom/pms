@@ -134,7 +134,7 @@ const ProfileDailyPlanningBox = ({ userId }) => {
                             Loading MCTC entries...
                         </p>
                     ) : todayMctcEntries.length ? (
-                        todayMctcEntries.slice(0, 4).map((entry) => {
+                        todayMctcEntries.map((entry) => {
                             const entryType = String(entry?.entry_type || '').toLowerCase();
                             const pillClass = typePillStyles[entryType] || 'bg-slate-200 text-slate-700';
                             const entryLabel = entry.label || 'Untitled entry';
@@ -172,7 +172,7 @@ const ProfileDailyPlanningBox = ({ userId }) => {
                             Loading RC7 deliverables...
                         </p>
                     ) : todayRc7Deliverables.length ? (
-                        todayRc7Deliverables.slice(0, 4).map((item, index) => (
+                        todayRc7Deliverables.map((item, index) => (
                             <div
                                 key={`rc7-${index}-${item}`}
                                 className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 first:mt-0"

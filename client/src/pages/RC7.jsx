@@ -663,7 +663,7 @@ const RC7 = () => {
 
       // Mon-Wed in Wednesday sheet should prefill from MCTC when empty.
       if (dayNum >= 1 && dayNum <= 3) {
-        if (String(currentCell.location || '').toLowerCase() === 'holiday' || hasCellData(currentCell)) {
+        if (String(currentCell.location || '').toLowerCase() === 'holiday') {
           return;
         }
 
@@ -674,9 +674,14 @@ const RC7 = () => {
 
         if (!mctcDeliverables.length) return;
 
+        const existingGroup = currentCell.deliverables.map(item => item.trim()).filter(Boolean);
+        const newToSync = mctcDeliverables.filter(item => !existingGroup.includes(item));
+
+        if (!newToSync.length) return;
+
         empPlan[dateKey] = {
           ...currentCell,
-          deliverables: mctcDeliverables,
+          deliverables: [...existingGroup, ...newToSync],
         };
         changed = true;
       }
@@ -715,7 +720,7 @@ const RC7 = () => {
       }
 
       // Remaining Saturday sheet days (and Wednesday fallback) prefill from MCTC when empty.
-      if (isHoliday || hasCellData(currentCell)) {
+      if (isHoliday) {
         return;
       }
 
@@ -726,9 +731,14 @@ const RC7 = () => {
 
       if (!mctcDeliverables.length) return;
 
+      const existingGroup = currentCell.deliverables.map(item => item.trim()).filter(Boolean);
+      const newToSync = mctcDeliverables.filter(item => !existingGroup.includes(item));
+
+      if (!newToSync.length) return;
+
       empPlan[dateKey] = {
         ...currentCell,
-        deliverables: mctcDeliverables,
+        deliverables: [...existingGroup, ...newToSync],
       };
       changed = true;
     });
