@@ -1,7 +1,8 @@
 from django.urls import path
 from .views import (
     ClientCreateView, ClientListView, ClientExternalMemberView, ClientExternalMemberDetailView,
-    ExternalTeamCreateView, ClientProjectsView, ClientMeView, ClientDetailView, ClientEmployeesView
+    ExternalTeamCreateView, ClientProjectsView, ClientMeView, ClientDetailView, ClientEmployeesView,
+    ClientActionTasksView
 )
 
 app_name = "client"
