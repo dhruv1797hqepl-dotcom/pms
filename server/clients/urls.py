@@ -16,4 +16,5 @@ urlpatterns = [
     path("external-team/", ExternalTeamCreateView.as_view(), name="external_team_create"),
     path("<int:client_id>/projects/", ClientProjectsView.as_view(), name="client_projects"),
     path("<int:client_id>/employees/", ClientEmployeesView.as_view(), name="client_employees"),
+    path("<int:client_id>/action-tasks/", ClientActionTasksView.as_view(), name="client_action_tasks"),
 ]

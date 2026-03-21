@@ -62,7 +62,7 @@ const getNotificationTargetPath = (notification) => {
         const projectId = parsePositiveInt(metadata.project_id);
 
         if (sourceModule === 'ACTION_TASK' && projectId) {
-            return `/projects/${projectId}/actionplan`;
+            return `/projects/${projectId}`;
         }
 
         const params = new URLSearchParams();

@@ -13,14 +13,14 @@ import api from '../api';
 import { resolveMediaUrl } from '../utils/media';
 
 const ActionPlanDashboard = () => {
-  const { projectId } = useParams();
+  const { clientId } = useParams();
   const navigate = useNavigate();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionTasks, setActionTasks] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
   const [projectOptions, setProjectOptions] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(projectId || "");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null); // { id, role }
 
@@ -49,126 +49,94 @@ const ActionPlanDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (projectId) setSelectedProjectId(String(projectId));
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!selectedProjectId) return;
-    fetchData(selectedProjectId);
+    if (clientId) {
+      fetchData(clientId);
+    }
     setNewTask((prev) => ({
       ...prev,
       assigned_to: "",
       assign_file: null
     }));
-  }, [selectedProjectId]);
+  }, [clientId]);
 
-  const fetchCurrentUser = async () => {
-    try {
-      const { data } = await api.get('/me/');
-      setCurrentUser(data);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      const role = localStorage.getItem('role');
-      if (role) setCurrentUser({ role });
-    }
-  };
-
-  const fetchData = async (activeProjectId) => {
+  const fetchData = async (cId) => {
     try {
       setLoading(true);
       const role = (localStorage.getItem('role') || '').toUpperCase();
-      let projectEndpoint = `/projects/${activeProjectId}/`;
-
-      if (role === 'SGM') projectEndpoint = `/sgm/projects/${activeProjectId}/`;
-      if (role === 'EMPLOYEE' || role === 'EXTERNAL') projectEndpoint = `/employees/projects/${activeProjectId}/`;
-
-      const [tasksRes, projectRes] = await Promise.all([
-        api.get(`/projects/${activeProjectId}/tasks/`),
-        api.get(projectEndpoint)
-      ]);
-
-      setActionTasks(tasksRes.data);
-
-      const p = projectRes.data;
-      const baseOption = { id: String(activeProjectId), name: p.name || "Current Project" };
-      const members = [];
-      const iIds = [];
-      const eIds = [];
-
-      // 1. SGM (Internal)
-      if (p.assigned_sgm_details) {
-        members.push({ ...p.assigned_sgm_details, type: 'INTERNAL' });
-        iIds.push(p.assigned_sgm_details.id);
+      
+      // 1. Fetch Client Tasks
+      try {
+        const tasksRes = await api.get(`/clients/${cId}/action-tasks/`);
+        setActionTasks(tasksRes.data);
+      } catch (err) {
+        console.error("Error fetching client tasks:", err);
       }
 
-      // 2. Internal Team
-      if (Array.isArray(p.team_members_details)) {
-        members.push(...p.team_members_details.map(m => ({ ...m, type: 'INTERNAL' })));
-        iIds.push(...p.team_members_details.map(m => m.id));
+      // 2. Fetch Projects to aggregate members and populate project dropdown for New Task
+      let listEndpoint = '/projects/';
+      if (role === 'EMPLOYEE' || role === 'EXTERNAL') listEndpoint = '/employees/my-projects/';
+
+      const projectListRes = await api.get(listEndpoint);
+      // Ensure we only look at projects matching this client
+      const clientProjects = projectListRes.data.filter(
+        proj => String(proj.client?.id || proj.client) === String(cId)
+      );
+
+      const options = clientProjects.map(proj => ({
+        id: String(proj.id),
+        name: proj.name || `Project ${proj.id}`
+      }));
+      setProjectOptions(options);
+
+      if (options.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(options[0].id);
       }
 
-      // 3. External Team
-      if (Array.isArray(p.external_team_details)) {
-        members.push(...p.external_team_details.map(m => ({ ...m, type: 'EXTERNAL' })));
-        eIds.push(...p.external_team_details.map(m => m.id));
-      }
+      // 3. Aggregate Members across all client projects
+      const membersMap = new Map();
+      const iIds = new Set();
+      const eIds = new Set();
 
-      // 4. External Lead
-      if (p.external_lead) {
-        const lead = {
-          id: p.external_lead,
-          username: p.external_lead_name || "External Lead",
-          email: p.external_lead_email || "",
-          type: 'EXTERNAL'
-        };
-        members.push(lead);
-        eIds.push(p.external_lead);
-      }
-
-      // 5. Creator (Internal)
-      if (p.created_by) {
-        members.push({
-          id: p.created_by,
-          username: "Creator",
-          email: p.created_by_email || "",
-          type: 'INTERNAL'
-        });
-        iIds.push(p.created_by);
-      }
-
-      // Deduplicate by ID
-      const uniqueMembers = Array.from(new Map(members.map(m => [m.id, m])).values());
-      setProjectMembers(uniqueMembers);
-      setInternalIds([...new Set(iIds)]);
-      setExternalIds([...new Set(eIds)]);
-
-      const clientId = p.client?.id || p.client;
-      if (clientId) {
-        try {
-          let listEndpoint = '/projects/';
-          if (role === 'EMPLOYEE' || role === 'EXTERNAL') listEndpoint = '/employees/my-projects/';
-
-          const projectListRes = await api.get(listEndpoint);
-          const clientProjects = projectListRes.data.filter(
-            proj => String(proj.client?.id || proj.client) === String(clientId)
-          );
-
-          const options = clientProjects.map(proj => ({
-            id: String(proj.id),
-            name: proj.name || `Project ${proj.id}`
-          }));
-
-          const hasActive = options.some(opt => opt.id === String(activeProjectId));
-          setProjectOptions(hasActive ? options : [baseOption, ...options]);
-        } catch (listError) {
-          setProjectOptions([baseOption]);
+      clientProjects.forEach(p => {
+        if (p.assigned_sgm_details) {
+          membersMap.set(p.assigned_sgm_details.id, { ...p.assigned_sgm_details, type: 'INTERNAL' });
+          iIds.add(p.assigned_sgm_details.id);
         }
-      } else {
-        setProjectOptions([baseOption]);
-      }
+        if (Array.isArray(p.team_members_details)) {
+          p.team_members_details.forEach(m => {
+            membersMap.set(m.id, { ...m, type: 'INTERNAL' });
+            iIds.add(m.id);
+          });
+        }
+        if (Array.isArray(p.external_team_details)) {
+          p.external_team_details.forEach(m => {
+            membersMap.set(m.id, { ...m, type: 'EXTERNAL' });
+            eIds.add(m.id);
+          });
+        }
+        if (p.external_lead) {
+            membersMap.set(p.external_lead, {
+                id: p.external_lead,
+                username: p.external_lead_name || "External Lead",
+                email: p.external_lead_email || "",
+                type: 'EXTERNAL'
+            });
+            eIds.add(p.external_lead);
+        }
+        if (p.created_by) {
+            membersMap.set(p.created_by, {
+                id: p.created_by,
+                username: p.created_by_name || "Creator",
+                email: p.created_by_email || "",
+                type: 'INTERNAL'
+            });
+            iIds.add(p.created_by);
+        }
+      });
 
-      console.log("PROJECT DATA:", projectRes.data);
-
+      setProjectMembers(Array.from(membersMap.values()));
+      setInternalIds([...iIds]);
+      setExternalIds([...eIds]);
 
     } catch (error) {
       console.error("Error fetching action plan data:", error);
@@ -196,7 +164,7 @@ const ActionPlanDashboard = () => {
       });
       setIsModalOpen(false);
       setNewTask({ task: "", target_date: "", start_date: new Date().toISOString().split('T')[0], assigned_to: "", assign_file: null });
-      fetchData(selectedProjectId); // Refresh list
+      fetchData(clientId); // Refresh list
     } catch (error) {
       console.error("Error creating task:", error);
       if (error.response) {
@@ -217,10 +185,7 @@ const ActionPlanDashboard = () => {
   };
 
   const handleProjectSelect = (e) => {
-    const nextProjectId = e.target.value;
-    if (!nextProjectId || nextProjectId === String(selectedProjectId)) return;
-    setSelectedProjectId(nextProjectId);
-    navigate(`/projects/${nextProjectId}/actionplan`);
+    setSelectedProjectId(e.target.value);
   };
 
   const initiateCompleteTask = (task) => {
@@ -254,7 +219,7 @@ const ActionPlanDashboard = () => {
         },
       });
 
-      fetchData(selectedProjectId); // Refresh
+      fetchData(clientId); // Refresh
       setCompleteModalOpen(false);
       setSelectedTask(null);
       setCompletionFile(null);
@@ -354,11 +319,10 @@ const ActionPlanDashboard = () => {
       <Sidebar />
 
       <div className="flex-1 overflow-y-auto">
-        <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-12 gap-4 pb-20">
+        <main className="max-w-full xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-12 gap-4 pb-20">
 
-        {/* FILTER BAR (MOVED) */}
-        <div className="col-span-12 flex flex-wrap gap-2 mb-2 items-center justify-between">
-          <div className="flex flex-wrap gap-2">
+        <div className="col-span-12 flex flex-col sm:flex-row gap-4 mb-2 items-start sm:items-center justify-between">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           {['ALL', 'MY', 'HQEPL', 'CLIENT'].map((filter) => {
             const label = filter === 'ALL' ? 'All Actions'
               : filter === 'MY' ? 'My Actions'
@@ -369,7 +333,7 @@ const ActionPlanDashboard = () => {
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
-                className={`px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${isActive
+                className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 sm:flex-none ${isActive
                   ? 'bg-slate-900 text-white shadow-lg scale-105'
                   : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300 hover:text-slate-600'
                   }`}
@@ -378,19 +342,6 @@ const ActionPlanDashboard = () => {
               </button>
             )
           })}
-          </div>
-
-          <div className="min-w-[220px]">
-            <select
-              value={selectedProjectId}
-              onChange={handleProjectSelect}
-              className="w-full bg-white border border-slate-200 rounded-full px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none"
-              disabled={projectOptions.length === 0}
-            >
-              {projectOptions.map((proj) => (
-                <option key={proj.id} value={proj.id}>{proj.name}</option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -453,16 +404,16 @@ const ActionPlanDashboard = () => {
 
 
           <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-slate-50 flex flex-wrap justify-between items-center gap-4 bg-white">
+            <div className="p-4 sm:p-5 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white">
               <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tighter uppercase italic">Action Matrix</h2>
-                <p className="text-slate-400 text-[9px] font-bold tracking-[0.2em] uppercase mt-0.5">Execution & Monitoring</p>
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tighter uppercase italic">Action Matrix</h2>
+                <p className="text-slate-400 text-[8px] sm:text-[9px] font-bold tracking-[0.2em] uppercase mt-0.5">Execution & Monitoring</p>
               </div>
 
               {!isExternal && (
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#F58A4B] transition-all shadow-lg active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#F58A4B] transition-all shadow-lg active:scale-95"
                 >
                   <Plus size={14} /> New Action Entry
                 </button>

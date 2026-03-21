@@ -9,8 +9,9 @@ from .models import Client, ExternalTeam
 from .serializers import ClientSerializer, ClientListSerializer, ExternalMemberCreateSerializer, ExternalTeamSerializer
 from .permissions import IsAdminOrHQEPL
 
-from projects.models import Project
-from projects.serializers import ProjectSerializer
+from projects.models import Project, ActionTask
+from projects.serializers import ProjectSerializer, ActionTaskSerializer
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -406,3 +407,40 @@ class ClientEmployeesView(APIView):
             })
             
         return Response(data)
+
+class ClientActionTasksView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+        client = get_object_or_404(Client, id=client_id)
+        
+        # Check permissions (similar to ClientProjectsView)
+        if user.role in ["ADMIN", "HQEPL"]:
+            pass
+        elif user.role == "SGM" and client.assigned_sgms.filter(id=user.id).exists():
+            pass
+        elif user.role == "CLIENT" and client.user_id == user.id:
+            pass
+        elif user.role in ["EMPLOYEE", "EXTERNAL"]:
+            # Allowed if they have access to at least any project of this client
+            pass
+        else:
+            raise PermissionDenied("You are not allowed to view client tasks.")
+
+        projects = Project.objects.filter(client_id=client_id)
+        
+        if user.role in ["EMPLOYEE", "EXTERNAL"]:
+            projects = projects.filter(
+                Q(assigned_employees__user=user) |
+                Q(external_team=user) |
+                Q(assigned_sgm=user) |
+                Q(external_lead=user) |
+                Q(created_by=user) |
+                Q(sgm_team__internal_members=user) |
+                Q(sgm_team__external_members=user)
+            ).distinct()
+
+        tasks = ActionTask.objects.filter(action_plan__project__in=projects)
+        serializer = ActionTaskSerializer(tasks, many=True)
+        return Response(serializer.data)

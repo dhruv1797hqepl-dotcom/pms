@@ -449,40 +449,13 @@ const Sidebar = () => {
                         {clients.map((client) => (
                           <div key={client.id}>
                             <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-white/80 hover:bg-white/10 text-sm">
-                              <span
-                                className="flex-1 text-left truncate text-white"
+                              <button
+                                onClick={() => navigate(`/clients/${client.id}/actionplan`)}
+                                className={`flex-1 text-left truncate text-white hover:text-white transition-colors ${location.pathname === `/clients/${client.id}/actionplan` ? 'font-bold text-[#F58A4B]' : ''}`}
                               >
                                 {client.company_name}
-                              </span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleClient(client.id);
-                                }}
-                                className="p-1 hover:bg-white/20 rounded ml-2"
-                              >
-                                {expandedClients[client.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                               </button>
                             </div>
-
-                            {/* Projects under client for Action Plan */}
-                            {expandedClients[client.id] && clientProjects[client.id] && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {clientProjects[client.id].map((project) => (
-                                  <button
-                                    key={project.id}
-                                    onClick={() => navigate(`/projects/${project.id}/actionplan`)}
-                                    className={`w-full text-left px-3 py-1.5 rounded-lg text-white/70 hover:bg-white hover:text-white/90 text-xs truncate transition-colors ${location.pathname === `/projects/${project.id}/actionplan` ? 'bg-white text-slate-900 font-bold' : ''
-                                      }`}
-                                  >
-                                    • {project.name}
-                                  </button>
-                                ))}
-                                {clientProjects[client.id].length === 0 && (
-                                  <div className="px-3 py-1.5 text-white/50 text-xs">No projects</div>
-                                )}
-                              </div>
-                            )}
                           </div>
                         ))}
                         {clients.length === 0 && (

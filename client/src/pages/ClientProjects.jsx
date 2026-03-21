@@ -231,13 +231,9 @@ export default function ClientProjects() {
 
               <div className="flex items-center gap-3 flex-wrap">
                 <button
-                  onClick={() => hasProjects && navigate(`/projects/${projects[0].id}/actionplan`)}
-                  disabled={!hasProjects}
-                  className={`px-3 py-2 md:px-5 md:py-3 rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm ${hasProjects
-                    ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                    : 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  title={hasProjects ? 'Open Action Plan' : 'No projects available'}
+                  onClick={() => navigate(`/clients/${clientId}/actionplan`)}
+                  className={`px-3 py-2 md:px-5 md:py-3 rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50`}
+                  title="Open Client Action Plan"
                 >
                   <LayoutGrid size={16} className="text-[#F58A4B]" /> Action Plan
                 </button>

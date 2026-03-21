@@ -67,7 +67,7 @@ const App = () => {
         <Route path="/ddfms" element={<DDFMSBasePage />} />
         <Route path="/ddfms/client/:clientId" element={<DDFMS />} />
 
-        <Route path="/projects/:projectId/actionplan" element={<ActionPlanDashboard />} />
+        <Route path="/clients/:clientId/actionplan" element={<ActionPlanDashboard />} />
         <Route path="/weeklyscore" element={<WeeklyScore />} />
 
         <Route path="/mctc" element={<MCTC />} />
