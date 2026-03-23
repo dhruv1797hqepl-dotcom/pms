@@ -26,6 +26,7 @@ const MONTH_WEEKS_WITH_DATES = [
 
 const createRepeatRow = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  task: "",
   repeatFrequency: "",
   repeatDays: [],
   repeatWeeks: [],
@@ -83,7 +84,6 @@ const RepeatableTaskPage = () => {
   });
 
   const [formData, setFormData] = useState({
-    task: "",
     client: "",
     project: "",
     assignedTo: "",
@@ -93,6 +93,14 @@ const RepeatableTaskPage = () => {
   });
 
   const [repeatRows, setRepeatRows] = useState([createRepeatRow()]);
+  const [openDropdowns, setOpenDropdowns] = useState({});
+
+  const toggleDropdown = (rowId, field) => {
+    setOpenDropdowns((prev) => ({
+      ...prev,
+      [`${rowId}-${field}`]: !prev[`${rowId}-${field}`],
+    }));
+  };
 
   const minTaskDate = useMemo(() => {
     const now = new Date();
@@ -207,6 +215,11 @@ const RepeatableTaskPage = () => {
       const row = repeatRows[index];
       const rowLabel = `Row ${index + 1}`;
 
+      if (!row.task) {
+        alert(`${rowLabel}: Please enter task name.`);
+        return;
+      }
+
       if (!row.repeatFrequency) {
         alert(`${rowLabel}: Please select repeat frequency.`);
         return;
@@ -238,6 +251,11 @@ const RepeatableTaskPage = () => {
       }
     }
 
+    if (!formData.client || !formData.project || !formData.assignedTo) {
+      alert("Please select Client, Project, and Assigned To before creating tasks.");
+      return;
+    }
+
     const selectedProjectObj = formData.isInternal
       ? null
       : clientProjectMap[formData.client]?.find((p) => p.name === formData.project);
@@ -252,7 +270,7 @@ const RepeatableTaskPage = () => {
     try {
       for (const row of repeatRows) {
         const payload = {
-          title: formData.task,
+          title: row.task,
           project: selectedProjectObj ? selectedProjectObj.id : null,
           client_org: selectedProjectObj ? selectedProjectObj.client : null,
           assigned_to: selectedUser.id,
@@ -322,15 +340,88 @@ const RepeatableTaskPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
-              <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
-                <input
-                  required
-                  value={formData.task}
-                  onChange={(e) => setFormData({ ...formData, task: e.target.value })}
-                  className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                  placeholder="Enter repeatable task name"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Client</label>
+                  <select
+                    required
+                    value={formData.isInternal ? "Internal" : formData.client}
+                    onChange={(e) => {
+                      if (e.target.value === "Internal") {
+                        setFormData({
+                          ...formData,
+                          client: "",
+                          project: "",
+                          assignedTo: "",
+                          isInternal: true,
+                        });
+                        return;
+                      }
+
+                      setFormData({
+                        ...formData,
+                        client: e.target.value,
+                        project: "",
+                        assignedTo: "",
+                        isInternal: false,
+                      });
+                    }}
+                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                    disabled={loading}
+                  >
+                    <option value="">Select Client</option>
+                    <option value="Internal">Internal</option>
+                    {Object.keys(clientProjectMap).map((clientName) => (
+                      <option key={clientName} value={clientName}>{clientName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
+                  <select
+                    required={!formData.isInternal}
+                    value={formData.project}
+                    onChange={(e) => setFormData({ ...formData, project: e.target.value, assignedTo: "" })}
+                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                    disabled={loading || formData.isInternal || !formData.client}
+                  >
+                    <option value="">{formData.isInternal ? "N/A" : "Select Project"}</option>
+                    {!formData.isInternal && formData.client && clientProjectMap[formData.client]?.map((project) => (
+                      <option key={project.id} value={project.name}>{project.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assigned To</label>
+                  <select
+                    required
+                    value={formData.assignedTo}
+                    onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                    disabled={loading || (!formData.isInternal && !formData.project)}
+                  >
+                    <option value="">Select Team Member</option>
+                    {getAssignableMembers().map((member) => (
+                      <option key={member.id || member.email} value={member.email}>
+                        {member.full_name || member.username || member.email} ({member.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Start Date</label>
+                  <input
+                    required
+                    type="date"
+                    value={formData.startDate}
+                    min={minTaskDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                  />
+                </div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 overflow-hidden">
@@ -350,10 +441,11 @@ const RepeatableTaskPage = () => {
                     <thead className="bg-slate-50">
                       <tr>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">#</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Task</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Frequency</th>
-                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Weeks (Monthly)</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Weeks</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Days</th>
-                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Repeat End Date</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">End Date</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Action</th>
                       </tr>
                     </thead>
@@ -361,6 +453,15 @@ const RepeatableTaskPage = () => {
                       {repeatRows.map((row, index) => (
                         <tr key={row.id} className="border-t border-slate-100 align-top">
                           <td className="px-3 py-3 text-xs font-black text-slate-600">{index + 1}</td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="text"
+                              value={row.task}
+                              onChange={(e) => updateRepeatRow(row.id, { task: e.target.value })}
+                              placeholder="Enter task name"
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
+                            />
+                          </td>
                           <td className="px-3 py-3">
                             <select
                               value={row.repeatFrequency}
@@ -377,44 +478,64 @@ const RepeatableTaskPage = () => {
                               <option value="Monthly">Monthly</option>
                             </select>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-3 relative">
                             {row.repeatFrequency === "Monthly" ? (
-                              <select
-                                multiple
-                                size={2}
-                                value={row.repeatWeeks}
-                                onChange={(e) => {
-                                  const selected = Array.from(e.target.selectedOptions, (option) => option.value);
-                                  updateRepeatRow(row.id, { repeatWeeks: selected });
-                                }}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
-                              >
-                                {MONTH_WEEKS_WITH_DATES.map((week) => (
-                                  <option key={week.label} value={week.label}>
-                                    {week.label} ({week.dateRange})
-                                  </option>
-                                ))}
-                              </select>
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDropdown(row.id, "weeks")}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300 hover:bg-slate-50 text-left flex justify-between items-center"
+                                >
+                                  <span>{row.repeatWeeks.length > 0 ? `${row.repeatWeeks.length} selected` : "Select weeks"}</span>
+                                  <span className="text-slate-400">▼</span>
+                                </button>
+                                {openDropdowns[`${row.id}-weeks`] && (
+                                  <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-2">
+                                    {MONTH_WEEKS.map((week) => (
+                                      <label key={week} className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={row.repeatWeeks.includes(week)}
+                                          onChange={() => toggleRepeatRowListValue(row.id, "repeatWeeks", week)}
+                                          className="w-4 h-4 accent-emerald-500"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700">{week}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs text-slate-400">Not required</span>
                             )}
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-3 relative">
                             {(row.repeatFrequency === "Daily" || row.repeatFrequency === "Weekly" || row.repeatFrequency === "Monthly") ? (
-                              <select
-                                multiple
-                                size={3}
-                                value={row.repeatDays}
-                                onChange={(e) => {
-                                  const selected = Array.from(e.target.selectedOptions, (option) => option.value);
-                                  updateRepeatRow(row.id, { repeatDays: selected });
-                                }}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
-                              >
-                                {WEEK_DAYS.map((day) => (
-                                  <option key={day} value={day}>{day}</option>
-                                ))}
-                              </select>
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDropdown(row.id, "days")}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300 hover:bg-slate-50 text-left flex justify-between items-center"
+                                >
+                                  <span>{row.repeatDays.length > 0 ? `${row.repeatDays.length} selected` : "Select days"}</span>
+                                  <span className="text-slate-400">▼</span>
+                                </button>
+                                {openDropdowns[`${row.id}-days`] && (
+                                  <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-2 max-h-48 overflow-y-auto">
+                                    {WEEK_DAYS.map((day) => (
+                                      <label key={day} className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={row.repeatDays.includes(day)}
+                                          onChange={() => toggleRepeatRowListValue(row.id, "repeatDays", day)}
+                                          className="w-4 h-4 accent-emerald-500"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700">{day}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs text-slate-400">Select frequency first</span>
                             )}
