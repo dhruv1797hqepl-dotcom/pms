@@ -16,6 +16,14 @@ const WEEK_DAYS = [
 
 const MONTH_WEEKS = ["First", "Second", "Third", "Fourth", "Last"];
 
+const MONTH_WEEKS_WITH_DATES = [
+  { label: "First", dateRange: "1-7" },
+  { label: "Second", dateRange: "8-14" },
+  { label: "Third", dateRange: "15-21" },
+  { label: "Fourth", dateRange: "22-28" },
+  { label: "Last", dateRange: "29+" },
+];
+
 const createRepeatRow = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   repeatFrequency: "",
@@ -314,108 +322,15 @@ const RepeatableTaskPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                <div className="col-span-1 md:col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
-                  <input
-                    required
-                    value={formData.task}
-                    onChange={(e) => setFormData({ ...formData, task: e.target.value })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    placeholder="Enter repeatable task name"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Client</label>
-                  <select
-                    required
-                    value={formData.isInternal ? "Internal" : formData.client}
-                    onChange={(e) => {
-                      if (e.target.value === "Internal") {
-                        setFormData({
-                          ...formData,
-                          client: "",
-                          project: "",
-                          assignedTo: "",
-                          isInternal: true,
-                        });
-                        return;
-                      }
-
-                      setFormData({
-                        ...formData,
-                        client: e.target.value,
-                        project: "",
-                        assignedTo: "",
-                        isInternal: false,
-                      });
-                    }}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading}
-                  >
-                    <option value="">Select Client</option>
-                    <option value="Internal">Internal</option>
-                    {Object.keys(clientProjectMap).map((clientName) => (
-                      <option key={clientName} value={clientName}>{clientName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
-                  <select
-                    required={!formData.isInternal}
-                    value={formData.project}
-                    onChange={(e) => setFormData({ ...formData, project: e.target.value, assignedTo: "" })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading || formData.isInternal || !formData.client}
-                  >
-                    <option value="">{formData.isInternal ? "N/A" : "Select Project"}</option>
-                    {!formData.isInternal && formData.client && clientProjectMap[formData.client]?.map((project) => (
-                      <option key={project.id} value={project.name}>{project.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assigned To</label>
-                  <select
-                    required
-                    value={formData.assignedTo}
-                    onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading || (!formData.isInternal && !formData.project)}
-                  >
-                    <option value="">Select Team Member</option>
-                    {getAssignableMembers().map((member) => (
-                      <option key={member.id || member.email} value={member.email}>
-                        {member.full_name || member.username || member.email} ({member.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Start Date</label>
-                  <input
-                    required
-                    type="date"
-                    value={formData.startDate}
-                    min={minTaskDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                  />
-                </div>
-
-                <div className="col-span-1 md:col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Attachment (Optional)</label>
-                  <input
-                    type="file"
-                    onChange={(e) => setFormData({ ...formData, file: e.target.files?.[0] || null })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-xs font-bold outline-none focus:ring-2 ring-emerald-400 transition-all text-slate-700"
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
+                <input
+                  required
+                  value={formData.task}
+                  onChange={(e) => setFormData({ ...formData, task: e.target.value })}
+                  className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                  placeholder="Enter repeatable task name"
+                />
               </div>
 
               <div className="rounded-2xl border border-slate-200 overflow-hidden">
@@ -464,38 +379,42 @@ const RepeatableTaskPage = () => {
                           </td>
                           <td className="px-3 py-3">
                             {row.repeatFrequency === "Monthly" ? (
-                              <div className="grid grid-cols-2 gap-2">
-                                {MONTH_WEEKS.map((week) => (
-                                  <label key={week} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={row.repeatWeeks.includes(week)}
-                                      onChange={() => toggleRepeatRowListValue(row.id, "repeatWeeks", week)}
-                                      className="accent-slate-900"
-                                    />
-                                    <span>{week}</span>
-                                  </label>
+                              <select
+                                multiple
+                                size={2}
+                                value={row.repeatWeeks}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.target.selectedOptions, (option) => option.value);
+                                  updateRepeatRow(row.id, { repeatWeeks: selected });
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
+                              >
+                                {MONTH_WEEKS_WITH_DATES.map((week) => (
+                                  <option key={week.label} value={week.label}>
+                                    {week.label} ({week.dateRange})
+                                  </option>
                                 ))}
-                              </div>
+                              </select>
                             ) : (
                               <span className="text-xs text-slate-400">Not required</span>
                             )}
                           </td>
                           <td className="px-3 py-3">
                             {(row.repeatFrequency === "Daily" || row.repeatFrequency === "Weekly" || row.repeatFrequency === "Monthly") ? (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              <select
+                                multiple
+                                size={3}
+                                value={row.repeatDays}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.target.selectedOptions, (option) => option.value);
+                                  updateRepeatRow(row.id, { repeatDays: selected });
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
+                              >
                                 {WEEK_DAYS.map((day) => (
-                                  <label key={day} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={row.repeatDays.includes(day)}
-                                      onChange={() => toggleRepeatRowListValue(row.id, "repeatDays", day)}
-                                      className="accent-slate-900"
-                                    />
-                                    <span>{day}</span>
-                                  </label>
+                                  <option key={day} value={day}>{day}</option>
                                 ))}
-                              </div>
+                              </select>
                             ) : (
                               <span className="text-xs text-slate-400">Select frequency first</span>
                             )}
