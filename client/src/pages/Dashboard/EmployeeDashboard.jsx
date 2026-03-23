@@ -40,7 +40,6 @@ const EmployeeDashboard = () => {
 
   const [assignData, setAssignData] = useState({
     task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null,
-    isRepeatable: false, repeatFrequency: "", repeatEndDate: "", repeatDay: "", repeatWeek: "",
     isInternal: false
   });
 
@@ -958,13 +957,8 @@ const EmployeeDashboard = () => {
     e.preventDefault();
     try {
 
-      if (!assignData.isRepeatable && isPastDate(assignData.targetDate)) {
+      if (isPastDate(assignData.targetDate)) {
         alert("Past dates are not allowed for task target date.");
-        return;
-      }
-
-      if (assignData.isRepeatable && assignData.repeatEndDate && isPastDate(assignData.repeatEndDate)) {
-        alert("Past dates are not allowed for repeat end date.");
         return;
       }
 
@@ -995,14 +989,14 @@ const EmployeeDashboard = () => {
         project: selectedProjectObj ? selectedProjectObj.id : null, // Send ID or null
         client_org: selectedProjectObj ? selectedProjectObj.client : null, // Send ID or null
         assigned_to: selectedUser.id, // Send ID
-        target_date: assignData.isRepeatable ? minTaskDate : assignData.targetDate, // Default to today if hidden
+        target_date: assignData.targetDate,
         description: assignData.isInternal ? "Internal Task" : "Assigned via Dashboard",
         status: "In Progress",
-        is_repeatable: assignData.isRepeatable,
-        repeat_frequency: assignData.repeatFrequency,
-        repeat_end_date: assignData.repeatEndDate ? assignData.repeatEndDate : null,
-        repeat_day: assignData.repeatDay,
-        repeat_week: assignData.repeatWeek
+        is_repeatable: false,
+        repeat_frequency: null,
+        repeat_end_date: null,
+        repeat_day: null,
+        repeat_week: null
       };
 
       // Handle File upload if needed (would need FormData)
@@ -1033,7 +1027,7 @@ const EmployeeDashboard = () => {
       setShowAssignModal(false);
       setAssignData({
         task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null,
-        isRepeatable: false, repeatFrequency: "", repeatEndDate: "", repeatDay: "", repeatWeek: ""
+        isInternal: false
       });
 
     } catch (err) {
@@ -1749,15 +1743,25 @@ const EmployeeDashboard = () => {
 
         {/* ===== HEADER ===== */}
         <div className="max-w-7xl mx-auto mt-5 bg-slate-900 rounded-2xl px-4 md:px-6 py-4 flex flex-col md:grid md:grid-cols-3 items-center gap-4 md:gap-0 text-white shadow-xl">
-          {/* Back Button (Left) */}
-          <button
-            onClick={() => navigate("/sgm")}
-            className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors w-fit"
-            title="Back to Dashboard"
-          >
-            <ArrowLeft size={18} />
-            <span className="hidden sm:inline text-xs font-semibold">Back</span>
-          </button>
+          {/* Back + Repeatable Buttons (Left) */}
+          <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start">
+            <button
+              onClick={() => navigate("/sgm")}
+              className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors w-fit"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={18} />
+              <span className="hidden sm:inline text-xs font-semibold">Back</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/employeedashboard/repeatable-task")}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-slate-900 text-[11px] font-black uppercase tracking-wide hover:bg-slate-100 transition-all"
+            >
+              <Plus size={14} /> Repeatable Task
+            </button>
+          </div>
 
           {/* Username in the exact center (Middle) */}
           <h1 className="text-xl font-extrabold text-[#F58A4B] text-center">
@@ -2364,11 +2368,11 @@ const EmployeeDashboard = () => {
                                   >
                                     <option value="">Select...</option>
                                     {(() => {
-                                        let members = getAssignableMembers({
-                                          isInternal: task.isInternal,
-                                          clientName: task.client,
-                                          projectName: task.project,
-                                        });
+                                      let members = getAssignableMembers({
+                                        isInternal: task.isInternal,
+                                        clientName: task.client,
+                                        projectName: task.project,
+                                      });
                                       return members.map((m, i) => (
                                         <option key={i} value={m.email}>{m.email.split('@')[0]}</option>
                                       ));
@@ -2452,24 +2456,6 @@ const EmployeeDashboard = () => {
 
               <div className="overflow-y-auto custom-scrollbar flex-1">
                 <form onSubmit={handleAssignSubmit} className="p-8 md:p-10 space-y-6">
-                  {/* TOGGLE TASK TYPE */}
-                  <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
-                    <button
-                      type="button"
-                      onClick={() => setAssignData({ ...assignData, isRepeatable: false })}
-                      className={`flex-1 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!assignData.isRepeatable ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
-                    >
-                      Normal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAssignData({ ...assignData, isRepeatable: true })}
-                      className={`flex-1 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${assignData.isRepeatable ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:text-slate-600"}`}
-                    >
-                      Repeat Task
-                    </button>
-                  </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <div className="col-span-1 md:col-span-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Task Name</label>
@@ -2499,7 +2485,7 @@ const EmployeeDashboard = () => {
                     <div className="col-span-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
                       <select
-                        required={!assignData.isInternal && !assignData.isRepeatable}
+                        required={!assignData.isInternal}
                         value={assignData.project}
                         onChange={e => setAssignData({ ...assignData, project: e.target.value, assignedTo: "" })}
                         className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
@@ -2525,12 +2511,12 @@ const EmployeeDashboard = () => {
                           });
                           const selectedMember = members.find(m => m.email === e.target.value);
                           const isExternalUser = selectedMember?.role === "(EXTERNAL)";
-
                           if (isExternalUser) {
-                            setAssignData({ ...assignData, assignedTo: e.target.value, isRepeatable: false, isInternal: false });
-                          } else {
-                            setAssignData({ ...assignData, assignedTo: e.target.value });
+                            setAssignData({ ...assignData, assignedTo: e.target.value, isInternal: false });
+                            return;
                           }
+
+                          setAssignData({ ...assignData, assignedTo: e.target.value });
                         }}
                         className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
                         disabled={!assignData.isInternal && !assignData.project}
@@ -2550,95 +2536,17 @@ const EmployeeDashboard = () => {
                       </select>
                     </div>
 
-                    {!assignData.isRepeatable && (
-                      <div className="col-span-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Date</label>
-                        <input required={!assignData.isRepeatable} type="date" value={assignData.targetDate} min={minTaskDate} onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })} className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700" />
-                      </div>
-                    )}
-
-                    {/* REPEATABLE SETTINGS (CONDITIONAL) */}
-                    {assignData.isRepeatable && (
-                      <div className="col-span-1 md:col-span-2 bg-slate-50 p-5 rounded-2xl border border-dashed border-slate-300 grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                        <div className="col-span-2 text-[10px] font-black uppercase text-slate-400 -mb-2">Repeat Settings</div>
-
-                        <div className="col-span-1">
-                          <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Frequency</label>
-                          <select
-                            required={assignData.isRepeatable}
-                            value={assignData.repeatFrequency}
-                            onChange={(e) => setAssignData({ ...assignData, repeatFrequency: e.target.value })}
-                            className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
-                          >
-                            <option value="">Frequency</option>
-                            <option value="Weekly">Weekly</option>
-                            <option value="Monthly">Monthly</option>
-                          </select>
-                        </div>
-
-                        <div className="col-span-1">
-                          <label className="text-[10px] font-black uppercase text-slate-400 ml-1">End Date</label>
-                          <input
-                            required={assignData.isRepeatable}
-                            type="date"
-                            placeholder="End Date"
-                            value={assignData.repeatEndDate}
-                            min={minTaskDate}
-                            onChange={(e) => setAssignData({ ...assignData, repeatEndDate: e.target.value })}
-                            className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer text-slate-600"
-                          />
-                        </div>
-
-                        {/* WEEKLY: SHOW DAY */}
-                        {assignData.repeatFrequency === 'Weekly' && (
-                          <div className="col-span-2">
-                            <select
-                              required
-                              value={assignData.repeatDay}
-                              onChange={(e) => setAssignData({ ...assignData, repeatDay: e.target.value })}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
-                            >
-                              <option value="">Select Day</option>
-                              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
-                                <option key={d} value={d}>{d}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* MONTHLY: SHOW WEEK + DAY */}
-                        {assignData.repeatFrequency === 'Monthly' && (
-                          <>
-                            <div className="col-span-1">
-                              <select
-                                required
-                                value={assignData.repeatWeek}
-                                onChange={(e) => setAssignData({ ...assignData, repeatWeek: e.target.value })}
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
-                              >
-                                <option value="">Select Week</option>
-                                {['First', 'Second', 'Third', 'Fourth', 'Last'].map(w => (
-                                  <option key={w} value={w}>{w}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="col-span-1">
-                              <select
-                                required
-                                value={assignData.repeatDay}
-                                onChange={(e) => setAssignData({ ...assignData, repeatDay: e.target.value })}
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] font-bold outline-none focus:ring-2 ring-emerald-400 transition-all cursor-pointer"
-                              >
-                                <option value="">Select Day</option>
-                                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
-                                  <option key={d} value={d}>{d}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Date</label>
+                      <input
+                        required
+                        type="date"
+                        value={assignData.targetDate}
+                        min={minTaskDate}
+                        onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })}
+                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                      />
+                    </div>
 
                     <div className="col-span-1 md:col-span-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Attachment (Optional)</label>
@@ -2655,7 +2563,8 @@ const EmployeeDashboard = () => {
               </div>
             </div>
           </div>
-        )}      </main>
+        )}
+      </main>
     </div>
   );
 };
