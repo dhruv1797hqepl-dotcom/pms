@@ -27,6 +27,9 @@ const MONTH_WEEKS_WITH_DATES = [
 const createRepeatRow = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   task: "",
+  client: "",
+  project: "",
+  isInternalRow: false,
   repeatFrequency: "",
   repeatDays: [],
   repeatWeeks: [],
@@ -84,10 +87,6 @@ const RepeatableTaskPage = () => {
   });
 
   const [formData, setFormData] = useState({
-    client: "",
-    project: "",
-    assignedTo: "",
-    isInternal: false,
     startDate: "",
     file: null,
   });
@@ -220,6 +219,16 @@ const RepeatableTaskPage = () => {
         return;
       }
 
+      if (!row.client) {
+        alert(`${rowLabel}: Please select client.`);
+        return;
+      }
+
+      if (!row.isInternalRow && !row.project) {
+        alert(`${rowLabel}: Please select project.`);
+        return;
+      }
+
       if (!row.repeatFrequency) {
         alert(`${rowLabel}: Please select repeat frequency.`);
         return;
@@ -251,31 +260,31 @@ const RepeatableTaskPage = () => {
       }
     }
 
-    if (!formData.client || !formData.project || !formData.assignedTo) {
-      alert("Please select Client, Project, and Assigned To before creating tasks.");
-      return;
-    }
-
-    const selectedProjectObj = formData.isInternal
-      ? null
-      : clientProjectMap[formData.client]?.find((p) => p.name === formData.project);
-
-    const selectedUser = getAssignableMembers().find((member) => member.email === formData.assignedTo);
-
-    if ((!formData.isInternal && !selectedProjectObj) || !selectedUser) {
-      alert("Please select valid project and team member.");
-      return;
-    }
-
     try {
       for (const row of repeatRows) {
+        const isInternal = row.isInternalRow;
+        const selectedProjectObj = !isInternal
+          ? clientProjectMap[row.client]?.find((p) => p.name === row.project)
+          : null;
+        const selectedUser = currentUser;
+
+        if (!isInternal && !selectedProjectObj) {
+          alert(`Row: Invalid project selected.`);
+          return;
+        }
+
+        if (!selectedUser) {
+          alert("Current user not found.");
+          return;
+        }
+
         const payload = {
           title: row.task,
           project: selectedProjectObj ? selectedProjectObj.id : null,
           client_org: selectedProjectObj ? selectedProjectObj.client : null,
           assigned_to: selectedUser.id,
           target_date: formData.startDate || minTaskDate,
-          description: formData.isInternal ? "Internal Repeatable Task" : "Repeatable task via dashboard",
+          description: isInternal ? "Internal Repeatable Task" : "Repeatable task via dashboard",
           status: "In Progress",
           is_repeatable: true,
           repeat_frequency: row.repeatFrequency,
@@ -340,77 +349,7 @@ const RepeatableTaskPage = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Client</label>
-                  <select
-                    required
-                    value={formData.isInternal ? "Internal" : formData.client}
-                    onChange={(e) => {
-                      if (e.target.value === "Internal") {
-                        setFormData({
-                          ...formData,
-                          client: "",
-                          project: "",
-                          assignedTo: "",
-                          isInternal: true,
-                        });
-                        return;
-                      }
-
-                      setFormData({
-                        ...formData,
-                        client: e.target.value,
-                        project: "",
-                        assignedTo: "",
-                        isInternal: false,
-                      });
-                    }}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading}
-                  >
-                    <option value="">Select Client</option>
-                    <option value="Internal">Internal</option>
-                    {Object.keys(clientProjectMap).map((clientName) => (
-                      <option key={clientName} value={clientName}>{clientName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Project</label>
-                  <select
-                    required={!formData.isInternal}
-                    value={formData.project}
-                    onChange={(e) => setFormData({ ...formData, project: e.target.value, assignedTo: "" })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading || formData.isInternal || !formData.client}
-                  >
-                    <option value="">{formData.isInternal ? "N/A" : "Select Project"}</option>
-                    {!formData.isInternal && formData.client && clientProjectMap[formData.client]?.map((project) => (
-                      <option key={project.id} value={project.name}>{project.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assigned To</label>
-                  <select
-                    required
-                    value={formData.assignedTo}
-                    onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
-                    disabled={loading || (!formData.isInternal && !formData.project)}
-                  >
-                    <option value="">Select Team Member</option>
-                    {getAssignableMembers().map((member) => (
-                      <option key={member.id || member.email} value={member.email}>
-                        {member.full_name || member.username || member.email} ({member.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Start Date</label>
                   <input
@@ -442,6 +381,8 @@ const RepeatableTaskPage = () => {
                       <tr>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">#</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Task</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Client</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Project</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Frequency</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Weeks</th>
                         <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Days</th>
@@ -461,6 +402,46 @@ const RepeatableTaskPage = () => {
                               placeholder="Enter task name"
                               className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
                             />
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={row.client}
+                              onChange={(e) => {
+                                if (e.target.value === "Internal") {
+                                  updateRepeatRow(row.id, {
+                                    client: "",
+                                    project: "",
+                                    isInternalRow: true,
+                                  });
+                                } else {
+                                  updateRepeatRow(row.id, {
+                                    client: e.target.value,
+                                    project: "",
+                                    isInternalRow: false,
+                                  });
+                                }
+                              }}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300"
+                            >
+                              <option value="">Select Client</option>
+                              <option value="Internal">Internal</option>
+                              {Object.keys(clientProjectMap).map((clientName) => (
+                                <option key={clientName} value={clientName}>{clientName}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={row.project}
+                              onChange={(e) => updateRepeatRow(row.id, { project: e.target.value })}
+                              disabled={row.isInternalRow || !row.client}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <option value="">{row.isInternalRow ? "N/A" : "Select Project"}</option>
+                              {!row.isInternalRow && row.client && clientProjectMap[row.client]?.map((project) => (
+                                <option key={project.id} value={project.name}>{project.name}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="px-3 py-3">
                             <select
