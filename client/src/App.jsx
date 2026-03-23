@@ -32,6 +32,7 @@ import MandaysPlanning from "./pages/MandaysPlanning";
 import CompanyLevelDashboard from './pages/Dashboard/CompanyLevelDashboard';
 import RC7 from './pages/RC7';
 import { SidebarProvider } from './context/SidebarContext';
+import RepeatableTaskPage from "./pages/Dashboard/RepeatableTaskPage";
 
 const App = () => {
   return (
@@ -49,6 +50,8 @@ const App = () => {
 
         <Route path="/employee" element={<EmployeeProfile />} />
         <Route path="/employeedashboard" element={<EmployeeDashboard />} />
+        <Route path="/employeedashboard/repeatable-task" element={<RepeatableTaskPage />} />
+
 
         <Route path="/sgm" element={<SGMProfile />} />
         <Route path="/clients" element={<ClientManagement />} />
