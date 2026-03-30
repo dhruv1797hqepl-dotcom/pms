@@ -33,6 +33,19 @@ const nearestUpcoming = (today, targetDay) => {
   return d;
 };
 
+const formatDateTime = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
 // Saturday section shows Mon-Sat of the NEXT week (Mar 30 - Apr 4)
 const getSatWindow = (today) => {
   const d = new Date(today);
@@ -206,6 +219,7 @@ const PlanSheet = ({
   saved,
   showAutoSaveStatus,
   onSubmit,
+  submittedAt,
 }) => {
   const headers = dates.map((date) => ({
     key: toDateKey(date),
@@ -258,6 +272,11 @@ const PlanSheet = ({
                 <span className="text-xs md:text-sm font-semibold text-slate-500">Auto-save enabled</span>
               )}
             </div>
+            {submittedAt && (
+              <span className="text-[10px] md:text-xs font-semibold text-slate-500 italic">
+                Last submitted: {formatDateTime(submittedAt)}
+              </span>
+            )}
 
             {canEdit && onSubmit && (
               <button
@@ -481,6 +500,8 @@ const RC7 = () => {
   const [wedDirty, setWedDirty] = useState(false);
   const [satSubmitted, setSatSubmitted] = useState(false);
   const [wedSubmitted, setWedSubmitted] = useState(false);
+  const [satSubmittedAt, setSatSubmittedAt] = useState(null);
+  const [wedSubmittedAt, setWedSubmittedAt] = useState(null);
   const [mctcEntries, setMctcEntries] = useState([]);
   const [currentSatPlan, setCurrentSatPlan] = useState({});
   const [currentWedPlan, setCurrentWedPlan] = useState({});
@@ -576,9 +597,11 @@ const RC7 = () => {
           });
           setSatPlan(satRes.data?.plans || satRes.data || {});
           setSatSubmitted(satRes.data?.is_submitted || false);
+          setSatSubmittedAt(satRes.data?.submitted_at || null);
         } catch {
           setSatPlan({});
           setSatSubmitted(false);
+          setSatSubmittedAt(null);
         }
 
         // Fetch overlapping Saturday plan used to prefill Thu-Sat in Wednesday sheet.
@@ -629,9 +652,11 @@ const RC7 = () => {
           });
           setWedPlan(wedRes.data?.plans || wedRes.data || {});
           setWedSubmitted(wedRes.data?.is_submitted || false);
+          setWedSubmittedAt(wedRes.data?.submitted_at || null);
         } catch {
           setWedPlan({});
           setWedSubmitted(false);
+          setWedSubmittedAt(null);
         }
       } finally {
         setLoading(false);
@@ -1074,8 +1099,9 @@ const RC7 = () => {
     const setDirty = isSat ? setSatDirty : setWedDirty;
     const setSaved = isSat ? setSatSaved : setWedSaved;
     const setSubmitted = isSat ? setSatSubmitted : setWedSubmitted;
+    const setSubmittedAt = isSat ? setSatSubmittedAt : setWedSubmittedAt;
 
-    if (!window.confirm(`Are you sure you want to submit the ${isSat ? 'Saturday' : 'Wednesday'} plan? It cannot be edited after submission.`)) {
+    if (!window.confirm(`Are you sure you want to submit the ${isSat ? 'Saturday' : 'Wednesday'} plan?`)) {
       return;
     }
 
@@ -1094,6 +1120,7 @@ const RC7 = () => {
 
       setSaved(true);
       setSubmitted(true);
+      setSubmittedAt(new Date().toISOString());
       setDirty(false);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
@@ -1157,6 +1184,7 @@ const RC7 = () => {
                 const activeSaved = isSat ? satSaved : wedSaved;
                 const activeCycleActive = isSat ? isSatCycleActive : isWedCycleActive;
                 const activeSubmitted = isSat ? satSubmitted : wedSubmitted;
+                const activeSubmittedAt = isSat ? satSubmittedAt : wedSubmittedAt;
                 const activePrepDate = isSat ? satPreparationDate : wedPreparationDate;
 
                 return (
@@ -1170,15 +1198,16 @@ const RC7 = () => {
                     locationOptions={locationOptions}
                     employee={ownEmployee}
                     employeeId={effectiveEmployeeId}
-                    canEdit={!isMemberView && activeCycleActive && !activeSubmitted}
+                    canEdit={!isMemberView && activeCycleActive}
                     onLocationChange={activeHandlers.onLocationChange}
                     onDeliverableChange={activeHandlers.onDeliverableChange}
                     onAddDeliverable={activeHandlers.onAddDeliverable}
                     onRemoveDeliverable={activeHandlers.onRemoveDeliverable}
                     saving={activeSaving}
                     saved={activeSaved}
-                    showAutoSaveStatus={!isMemberView && activeCycleActive && Boolean(effectiveEmployeeId) && !activeSubmitted}
+                    showAutoSaveStatus={!isMemberView && activeCycleActive && Boolean(effectiveEmployeeId)}
                     onSubmit={() => handleSubmitCycle(type)}
+                    submittedAt={activeSubmittedAt}
                   />
                 );
               })}
