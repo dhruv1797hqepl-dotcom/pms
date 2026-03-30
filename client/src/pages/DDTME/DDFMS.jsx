@@ -983,6 +983,132 @@ const DDFMS = () => {
   }, [startDatesByDeliverable]);
 
   useEffect(() => {
+    const seniorSteps = new Set([1, 2, 4, 6, 7]);
+    const forceSgmSteps = new Set([1, 4]);
+
+    const toHierarchy = (option) => String(option?.hierarchy || 'HH').toUpperCase();
+    const byRole = (options, role) => options.filter((option) => toHierarchy(option) === role);
+
+    const pickHighestHours = (options, taskHoursMap) => {
+      if (!Array.isArray(options) || options.length === 0) return null;
+
+      const sorted = [...options].sort((a, b) => {
+        const hoursA = Number(taskHoursMap?.[a.value] || 0);
+        const hoursB = Number(taskHoursMap?.[b.value] || 0);
+        if (hoursA !== hoursB) return hoursB - hoursA;
+        return String(a?.label || '').localeCompare(String(b?.label || ''));
+      });
+
+      return sorted[0] || null;
+    };
+
+    const pickSeniorAndJunior = (taskHoursMap) => {
+      const membersWithHours = responsibleOptions.filter((option) => Number(taskHoursMap?.[option.value] || 0) > 0);
+      const pool = membersWithHours.length > 0 ? membersWithHours : responsibleOptions;
+
+      const allSgmPool = byRole(responsibleOptions, 'SGM');
+      const sgmWithHours = byRole(membersWithHours, 'SGM');
+      const scWithHours = byRole(membersWithHours, 'SC');
+      const hhWithHours = byRole(membersWithHours, 'HH');
+
+      const sgmPool = byRole(pool, 'SGM');
+      const scPool = byRole(pool, 'SC');
+      const hhPool = byRole(pool, 'HH');
+
+      const hasSgmHours = sgmWithHours.length > 0;
+      const hasScHours = scWithHours.length > 0;
+      const hasHhHours = hhWithHours.length > 0;
+
+      // Rule 1: SGM + SC + HH all have hours -> SGM senior, HH junior.
+      if (hasSgmHours && hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+        };
+      }
+
+      // Rule 2: SC + HH have hours (No SGM) -> SC senior, HH junior.
+      if (!hasSgmHours && hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+        };
+      }
+
+      // Rule 3: SGM + HH have hours (No SC) -> SGM senior, HH junior.
+      if (hasSgmHours && !hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+        };
+      }
+
+      // Rule 4: SGM + SC have hours (No HH) -> SGM senior, SC junior.
+      if (hasSgmHours && hasScHours && !hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+        };
+      }
+
+      // Rule 5: Only HH has hours -> step 1 and 4 to SGM, rest to HH.
+      if (!hasSgmHours && !hasScHours && hasHhHours && allSgmPool.length > 0) {
+        const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
+        const forcedHh = pickHighestHours(hhWithHours, taskHoursMap) || forcedSgm;
+        return {
+          senior: forcedSgm,
+          junior: forcedHh,
+          enforceStep14WithSgm: true,
+          nonStep14Owner: forcedHh,
+        };
+      }
+
+      // Rule 6: Only SC has hours -> step 1 and 4 to SGM, rest to SC.
+      if (!hasSgmHours && hasScHours && !hasHhHours && allSgmPool.length > 0) {
+        const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
+        const forcedSc = pickHighestHours(scWithHours, taskHoursMap) || forcedSgm;
+        return {
+          senior: forcedSgm,
+          junior: forcedSc,
+          enforceStep14WithSgm: true,
+          nonStep14Owner: forcedSc,
+        };
+      }
+
+      const senior = pickHighestHours(sgmPool, taskHoursMap)
+        || pickHighestHours(scPool, taskHoursMap)
+        || pickHighestHours(hhPool, taskHoursMap)
+        || pool[0]
+        || null;
+
+      if (!senior) return { senior: null, junior: null };
+
+      const seniorRole = toHierarchy(senior);
+      let junior = null;
+
+      if (seniorRole === 'SGM') {
+        junior = pickHighestHours(hhPool, taskHoursMap)
+          || pickHighestHours(scPool, taskHoursMap)
+          || senior;
+      } else if (seniorRole === 'SC') {
+        junior = pickHighestHours(hhPool, taskHoursMap)
+          || pickHighestHours(sgmPool, taskHoursMap)
+          || senior;
+      } else {
+        junior = senior;
+      }
+
+      return { senior, junior, enforceStep14WithSgm: false, nonStep14Owner: null };
+    };
+
     const initializeDdfmsData = async () => {
       if (!clientId || !approvedPeriod) {
         return;
@@ -1155,7 +1281,43 @@ const DDFMS = () => {
         stepIdMapRef.current = loadedStepIdMap;
         setCompletedStepRows(loadedCompletedStepMap);
 
+        // --- PREFILLING LOGIC (Integrated to avoid race condition flicker) ---
+        let prefillHappened = false;
+        deliverables.forEach((deliverable) => {
+          const isRowLocked = Boolean(frontendSubmittedMap[deliverable.id]);
+          if (isRowLocked) return;
+
+          const taskHoursMap = contributorHoursByDeliverable?.[deliverable.id] || {};
+          const { senior, junior, enforceStep14WithSgm, nonStep14Owner } = pickSeniorAndJunior(taskHoursMap);
+          if (!senior?.value || !junior?.value) return;
+
+          stepDefinitions.forEach((_, stepIndex) => {
+            const ownerKey = `${deliverable.id}-${stepIndex}-owner`;
+            const stepNumber = stepIndex + 1;
+            let desiredOwner = seniorSteps.has(stepNumber) ? senior.value : junior.value;
+
+            if (enforceStep14WithSgm) {
+              desiredOwner = forceSgmSteps.has(stepNumber)
+                ? senior.value
+                : (nonStep14Owner?.value || junior.value);
+            }
+
+            // Only prefill if the cell is truly empty (not just undefined)
+            const currentOwner = loadedTableData[ownerKey];
+            if ((currentOwner === undefined || currentOwner === '') && desiredOwner) {
+              loadedTableData[ownerKey] = desiredOwner;
+              pendingChangedKeysRef.current.add(ownerKey);
+              prefillHappened = true;
+            }
+          });
+        });
+
+        tableDataRef.current = loadedTableData;
         setTableData(loadedTableData);
+
+        if (prefillHappened) {
+          setSaveNonce((nonce) => nonce + 1);
+        }
 
         setIsBackendReady(true);
         setAutosaveState('saved');
@@ -1169,7 +1331,7 @@ const DDFMS = () => {
     };
 
     initializeDdfmsData();
-  }, [clientId, approvedPeriod, deliverables]);
+  }, [clientId, approvedPeriod, deliverables, responsibleOptions, contributorHoursByDeliverable]);
 
   useEffect(() => {
     if (!activePlanId || !monthStartWorkingDate) return;
@@ -1233,180 +1395,6 @@ const DDFMS = () => {
     setSaveNonce((prev) => prev + 1);
   }, [isBackendReady]);
 
-  useEffect(() => {
-    if (!isBackendReady) return;
-    if (!Array.isArray(deliverables) || deliverables.length === 0) return;
-    if (!Array.isArray(responsibleOptions) || responsibleOptions.length === 0) return;
-
-    const seniorSteps = new Set([1, 2, 4, 6, 7]);
-    const forceSgmSteps = new Set([1, 4]);
-
-    const toHierarchy = (option) => String(option?.hierarchy || 'HH').toUpperCase();
-    const byRole = (options, role) => options.filter((option) => toHierarchy(option) === role);
-
-    const pickHighestHours = (options, taskHoursMap) => {
-      if (!Array.isArray(options) || options.length === 0) return null;
-
-      const sorted = [...options].sort((a, b) => {
-        const hoursA = Number(taskHoursMap?.[a.value] || 0);
-        const hoursB = Number(taskHoursMap?.[b.value] || 0);
-        if (hoursA !== hoursB) return hoursB - hoursA;
-        return String(a?.label || '').localeCompare(String(b?.label || ''));
-      });
-
-      return sorted[0] || null;
-    };
-
-    const pickSeniorAndJunior = (taskHoursMap) => {
-      const membersWithHours = responsibleOptions.filter((option) => Number(taskHoursMap?.[option.value] || 0) > 0);
-      const pool = membersWithHours.length > 0 ? membersWithHours : responsibleOptions;
-
-      const allSgmPool = byRole(responsibleOptions, 'SGM');
-      const sgmWithHours = byRole(membersWithHours, 'SGM');
-      const scWithHours = byRole(membersWithHours, 'SC');
-      const hhWithHours = byRole(membersWithHours, 'HH');
-
-      const sgmPool = byRole(pool, 'SGM');
-      const scPool = byRole(pool, 'SC');
-      const hhPool = byRole(pool, 'HH');
-
-      const hasSgmHours = sgmWithHours.length > 0;
-      const hasScHours = scWithHours.length > 0;
-      const hasHhHours = hhWithHours.length > 0;
-
-      // Rule 1: SGM + SC + HH all have hours -> SGM senior, HH junior.
-      if (hasSgmHours && hasScHours && hasHhHours) {
-        return {
-          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
-          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
-          enforceStep14WithSgm: false,
-          nonStep14Owner: null,
-        };
-      }
-
-      // Rule 2: SC + HH have hours (No SGM) -> SC senior, HH junior.
-      if (!hasSgmHours && hasScHours && hasHhHours) {
-        return {
-          senior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
-          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
-          enforceStep14WithSgm: false,
-          nonStep14Owner: null,
-        };
-      }
-
-      // Rule 3: SGM + HH have hours (No SC) -> SGM senior, HH junior.
-      if (hasSgmHours && !hasScHours && hasHhHours) {
-        return {
-          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
-          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
-          enforceStep14WithSgm: false,
-          nonStep14Owner: null,
-        };
-      }
-
-      // Rule 4: SGM + SC have hours (No HH) -> SGM senior, SC junior.
-      if (hasSgmHours && hasScHours && !hasHhHours) {
-        return {
-          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
-          junior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
-          enforceStep14WithSgm: false,
-          nonStep14Owner: null,
-        };
-      }
-
-      // Rule 5: Only HH has hours -> step 1 and 4 to SGM, rest to HH.
-      if (!hasSgmHours && !hasScHours && hasHhHours && allSgmPool.length > 0) {
-        const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
-        const forcedHh = pickHighestHours(hhWithHours, taskHoursMap) || forcedSgm;
-        return {
-          senior: forcedSgm,
-          junior: forcedHh,
-          enforceStep14WithSgm: true,
-          nonStep14Owner: forcedHh,
-        };
-      }
-
-      // Rule 6: Only SC has hours -> step 1 and 4 to SGM, rest to SC.
-      if (!hasSgmHours && hasScHours && !hasHhHours && allSgmPool.length > 0) {
-        const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
-        const forcedSc = pickHighestHours(scWithHours, taskHoursMap) || forcedSgm;
-        return {
-          senior: forcedSgm,
-          junior: forcedSc,
-          enforceStep14WithSgm: true,
-          nonStep14Owner: forcedSc,
-        };
-      }
-
-      const senior = pickHighestHours(sgmPool, taskHoursMap)
-        || pickHighestHours(scPool, taskHoursMap)
-        || pickHighestHours(hhPool, taskHoursMap)
-        || pool[0]
-        || null;
-
-      if (!senior) return { senior: null, junior: null };
-
-      const seniorRole = toHierarchy(senior);
-      let junior = null;
-
-      if (seniorRole === 'SGM') {
-        junior = pickHighestHours(hhPool, taskHoursMap)
-          || pickHighestHours(scPool, taskHoursMap)
-          || senior;
-      } else if (seniorRole === 'SC') {
-        junior = pickHighestHours(hhPool, taskHoursMap)
-          || pickHighestHours(sgmPool, taskHoursMap)
-          || senior;
-      } else {
-        junior = senior;
-      }
-
-      return { senior, junior, enforceStep14WithSgm: false, nonStep14Owner: null };
-    };
-
-    setTableData((prev) => {
-      const next = { ...prev };
-      let changed = false;
-
-      deliverables.forEach((deliverable) => {
-        const isRowLocked = Boolean(submittedRows[deliverable.id]);
-        if (isRowLocked) return;
-
-        const taskHoursMap = contributorHoursByDeliverable?.[deliverable.id] || {};
-        const {
-          senior,
-          junior,
-          enforceStep14WithSgm,
-          nonStep14Owner,
-        } = pickSeniorAndJunior(taskHoursMap);
-        if (!senior?.value || !junior?.value) return;
-
-        stepDefinitions.forEach((_, stepIndex) => {
-          const ownerKey = `${deliverable.id}-${stepIndex}-owner`;
-          const stepNumber = stepIndex + 1;
-          let desiredOwner = seniorSteps.has(stepNumber) ? senior.value : junior.value;
-
-          if (enforceStep14WithSgm) {
-            desiredOwner = forceSgmSteps.has(stepNumber)
-              ? senior.value
-              : (nonStep14Owner?.value || junior.value);
-          }
-
-          if (!next[ownerKey] && desiredOwner) {
-            next[ownerKey] = desiredOwner;
-            pendingChangedKeysRef.current.add(ownerKey);
-            changed = true;
-          }
-        });
-      });
-
-      if (changed) {
-        setSaveNonce((nonce) => nonce + 1);
-      }
-
-      return changed ? next : prev;
-    });
-  }, [deliverables, responsibleOptions, contributorHoursByDeliverable, stepDefinitions, submittedRows, isBackendReady]);
 
   const currentPeriodIndex = periodOptions.findIndex((period) => period.key === selectedPeriodKey);
   const parsedSelectedPeriod = parsePeriodKey(selectedPeriodKey);
