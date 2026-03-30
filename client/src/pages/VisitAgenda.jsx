@@ -265,7 +265,7 @@ const VisitAgenda = () => {
             const headerX = 8;
             const headerY = 8;
             const headerWidth = pageWidth - 16;
-            const headerHeight = 48;
+            const headerHeight = 56;
 
             // Page and header card styling closer to on-screen design.
             doc.setFillColor(247, 250, 252);
@@ -286,7 +286,7 @@ const VisitAgenda = () => {
             const clientLogoData = clientLogoUrl ? await getImageDataUrl(resolveMediaUrl(clientLogoUrl)) : null;
             if (clientLogoData) {
                 try {
-                    addImageContain(doc, clientLogoData, pageWidth - 70, headerY + 7, 24, 24);
+                    addImageContain(doc, clientLogoData, pageWidth - 42, headerY + 8, 24, 20);
                 } catch (error) {
                     console.warn("Failed to add client logo to PDF", error);
                 }
@@ -309,9 +309,9 @@ const VisitAgenda = () => {
             doc.text("VISIT AGENDA", pageWidth / 2, badgeY + 6.7, { align: "center" });
 
             const dateBoxWidth = 56;
-            const dateBoxHeight = 16;
+            const dateBoxHeight = 14;
             const dateBoxX = pageWidth - dateBoxWidth - 12;
-            const dateBoxY = headerY + 12;
+            const dateBoxY = headerY + 34;
             doc.setFillColor(248, 250, 252);
             doc.setDrawColor(203, 213, 225);
             doc.roundedRect(dateBoxX, dateBoxY, dateBoxWidth, dateBoxHeight, 4, 4, "FD");
