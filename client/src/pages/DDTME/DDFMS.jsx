@@ -1234,6 +1234,7 @@ const DDFMS = () => {
   }, [isBackendReady]);
 
   useEffect(() => {
+    if (!isBackendReady) return;
     if (!Array.isArray(deliverables) || deliverables.length === 0) return;
     if (!Array.isArray(responsibleOptions) || responsibleOptions.length === 0) return;
 
@@ -1273,7 +1274,7 @@ const DDFMS = () => {
       const hasScHours = scWithHours.length > 0;
       const hasHhHours = hhWithHours.length > 0;
 
-      // Rule 1: if SGM + SC + HH all have hours -> SGM senior, HH junior.
+      // Rule 1: SGM + SC + HH all have hours -> SGM senior, HH junior.
       if (hasSgmHours && hasScHours && hasHhHours) {
         return {
           senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
@@ -1283,7 +1284,7 @@ const DDFMS = () => {
         };
       }
 
-      // Rule 2: if SC + HH have hours -> SC senior, HH junior.
+      // Rule 2: SC + HH have hours (No SGM) -> SC senior, HH junior.
       if (!hasSgmHours && hasScHours && hasHhHours) {
         return {
           senior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
@@ -1293,7 +1294,7 @@ const DDFMS = () => {
         };
       }
 
-      // Rule 3: if SGM + HH have hours -> SGM senior, HH junior.
+      // Rule 3: SGM + HH have hours (No SC) -> SGM senior, HH junior.
       if (hasSgmHours && !hasScHours && hasHhHours) {
         return {
           senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
@@ -1303,7 +1304,17 @@ const DDFMS = () => {
         };
       }
 
-      // Rule 4: if only HH has hours -> step 1 and 4 to SGM, rest to HH.
+      // Rule 4: SGM + SC have hours (No HH) -> SGM senior, SC junior.
+      if (hasSgmHours && hasScHours && !hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+        };
+      }
+
+      // Rule 5: Only HH has hours -> step 1 and 4 to SGM, rest to HH.
       if (!hasSgmHours && !hasScHours && hasHhHours && allSgmPool.length > 0) {
         const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
         const forcedHh = pickHighestHours(hhWithHours, taskHoursMap) || forcedSgm;
@@ -1312,6 +1323,18 @@ const DDFMS = () => {
           junior: forcedHh,
           enforceStep14WithSgm: true,
           nonStep14Owner: forcedHh,
+        };
+      }
+
+      // Rule 6: Only SC has hours -> step 1 and 4 to SGM, rest to SC.
+      if (!hasSgmHours && hasScHours && !hasHhHours && allSgmPool.length > 0) {
+        const forcedSgm = pickHighestHours(allSgmPool, taskHoursMap) || allSgmPool[0];
+        const forcedSc = pickHighestHours(scWithHours, taskHoursMap) || forcedSgm;
+        return {
+          senior: forcedSgm,
+          junior: forcedSc,
+          enforceStep14WithSgm: true,
+          nonStep14Owner: forcedSc,
         };
       }
 
@@ -1369,7 +1392,7 @@ const DDFMS = () => {
               : (nonStep14Owner?.value || junior.value);
           }
 
-          if (next[ownerKey] !== desiredOwner) {
+          if (!next[ownerKey] && desiredOwner) {
             next[ownerKey] = desiredOwner;
             pendingChangedKeysRef.current.add(ownerKey);
             changed = true;
@@ -1383,7 +1406,7 @@ const DDFMS = () => {
 
       return changed ? next : prev;
     });
-  }, [deliverables, responsibleOptions, contributorHoursByDeliverable, stepDefinitions, submittedRows]);
+  }, [deliverables, responsibleOptions, contributorHoursByDeliverable, stepDefinitions, submittedRows, isBackendReady]);
 
   const currentPeriodIndex = periodOptions.findIndex((period) => period.key === selectedPeriodKey);
   const parsedSelectedPeriod = parsePeriodKey(selectedPeriodKey);

@@ -198,7 +198,7 @@ const WeeklyScore = () => {
           key: `month-${idx}`,
           label: monthStart.toLocaleString('default', { month: 'short' }),
           isShort: false,
-          subLabel: idx === 0 ? 'Cumulative M1' : `Cumulative M1-M${idx + 1}`,
+          subLabel: `Score for ${monthStart.toLocaleString('default', { month: 'short' })}`,
           startDate: monthStart,
           endDate: monthEnd,
           monthIndex: idx,
@@ -341,7 +341,7 @@ const WeeklyScore = () => {
 
           return displayPeriods.map((period) => {
             const cumulativeWeekScores = weekScores
-              .filter((item) => item.monthIndex <= period.monthIndex)
+              .filter((item) => item.monthIndex === period.monthIndex)
               .map((item) => ({ ats: item.ats, otc: item.otc }));
             return computeOverallFromPeriodScores(cumulativeWeekScores);
           });
@@ -363,15 +363,29 @@ const WeeklyScore = () => {
       };
 
       const getNormalModeOverallFromWeeks = (tasks) => {
-        const cumulativeWeekScores = yearWeeks
-          .map((wk) => ({
-            ...computeAtsOtc(getTasksInRange(tasks, wk.startDate, wk.endDate)),
-            monthIndex: wk.startDate.getMonth(),
-          }))
-          .filter((item) => item.monthIndex <= month)
+        const allYearWeeksWithScores = yearWeeks.map((wk) => ({
+          ...computeAtsOtc(getTasksInRange(tasks, wk.startDate, wk.endDate)),
+          monthIndex: wk.startDate.getMonth(),
+        }));
+
+        const monthScoresBeforeCurrent = [];
+        for (let m = 0; m < month; m += 1) {
+          const weeksInPastMonth = allYearWeeksWithScores.filter(item => item.monthIndex === m);
+          if (weeksInPastMonth.length > 0) {
+            monthScoresBeforeCurrent.push(computeOverallFromPeriodScores(weeksInPastMonth));
+          }
+        }
+
+        const weeksInCurrentMonth = allYearWeeksWithScores
+          .filter((item) => item.monthIndex === month)
           .map((item) => ({ ats: item.ats, otc: item.otc }));
 
-        return computeOverallFromPeriodScores(cumulativeWeekScores);
+        const finalAveragesToCombine = [
+          ...monthScoresBeforeCurrent,
+          ...weeksInCurrentMonth,
+        ];
+
+        return computeOverallFromPeriodScores(finalAveragesToCombine);
       };
 
       const getPrevMonthRef = (targetYear, targetMonth) => {
