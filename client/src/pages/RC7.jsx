@@ -434,8 +434,8 @@ const RC7 = () => {
   const currentRole = (localStorage.getItem('role') || '').toUpperCase();
   const today = useMemo(() => new Date(), []);
   const todayDay = today.getDay();
-  const isSatCycleActive = todayDay >= 4 && todayDay <= 6; // Thursday to Saturday
-  const isWedCycleActive = todayDay >= 1 && todayDay <= 3; // Monday to Wednesday
+  const isSatCycleActive = todayDay === 5 || todayDay === 6 || todayDay === 1; // Friday, Saturday, Monday
+  const isWedCycleActive = todayDay >= 3 && todayDay <= 5; // Wednesday to Friday
 
   const memberViewContext = useMemo(() => {
     const params = new URLSearchParams(location.search);

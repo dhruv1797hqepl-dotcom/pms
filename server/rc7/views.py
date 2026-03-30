@@ -132,10 +132,12 @@ class RC7PlanningView(APIView):
             end_date=end_date
         ).first()
         is_submitted = submission.is_submitted if submission else False
+        submitted_at = submission.submitted_at.isoformat() if submission and submission.submitted_at else None
             
         return Response({
             "plans": response_data,
-            "is_submitted": is_submitted
+            "is_submitted": is_submitted,
+            "submitted_at": submitted_at
         })
 
     def post(self, request):
