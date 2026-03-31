@@ -424,8 +424,8 @@ const VisitAgenda = () => {
                 },
                 didParseCell: (data) => {
                     if (data.section === "body") {
-                        const isEven = data.row.index % 2 === 0;
-                        data.cell.styles.fillColor = isEven ? [255, 255, 255] : [238, 244, 251];
+                        const isSecondPatternRow = data.row.index % 2 === 1;
+                        data.cell.styles.fillColor = isSecondPatternRow ? [255, 255, 255] : [238, 244, 251];
                     }
                 },
             });
