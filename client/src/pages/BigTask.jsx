@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload } from 'lucide-react';
+import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload, Download } from 'lucide-react';
 import api from '../api';
 
 const BigTask = ({ projectId, onProgressUpdate }) => {
@@ -702,6 +702,75 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
         return update ? update.update_value : '';
     };
 
+    const handleDownload4TWithKpi = async () => {
+        try {
+            const { utils, writeFile } = await import('xlsx');
+
+            const workbook = utils.book_new();
+
+            const summaryRows = [
+                { Field: 'Project', Value: project?.name || project?.title || 'N/A' },
+                { Field: 'Start Date', Value: project?.start_date || 'N/A' },
+                { Field: 'End Date', Value: project?.end_date || 'N/A' },
+                { Field: 'Download Timestamp', Value: new Date().toLocaleString('en-GB') },
+                { Field: 'View Mode', Value: viewMode },
+            ];
+
+            const taskRows = processedTasks.length
+                ? processedTasks.map((task, index) => {
+                    const row = {
+                        'Sr.': index + 1,
+                        'Task Description': task.title || '',
+                        'Type': task.type || '',
+                        'Start Date': task.startDate || task.start_date || '',
+                        'Target Date': task.targetDate || task.target_date || '',
+                        'Status': task.status || '',
+                    };
+
+                    timelineColumns.forEach((col, colIndex) => {
+                        const label = col?.label || `Timeline ${colIndex + 1}`;
+                        row[label] = isTaskActiveInColumn(task, col)
+                            ? (task.status === 'Completed' ? 'Completed' : 'Planned')
+                            : '';
+                    });
+
+                    return row;
+                })
+                : [{ Message: 'No tasks available' }];
+
+            const kpiRows = kpis.length
+                ? kpis.map((kpi, index) => {
+                    const row = {
+                        'Sr. No.': index + 1,
+                        'KPI Description': kpi.name || '',
+                        'Base-line': kpi.baseline || '',
+                        'Target': kpi.target || '',
+                    };
+
+                    months.forEach((monthLabel) => {
+                        row[monthLabel] = getKpiValueForMonth(kpi, monthLabel) || '';
+                    });
+
+                    return row;
+                })
+                : [{ Message: 'No KPI data available' }];
+
+            const summarySheet = utils.json_to_sheet(summaryRows);
+            const tasksSheet = utils.json_to_sheet(taskRows);
+            const kpiSheet = utils.json_to_sheet(kpiRows);
+
+            utils.book_append_sheet(workbook, summarySheet, 'Summary');
+            utils.book_append_sheet(workbook, tasksSheet, '4T Tasks');
+            utils.book_append_sheet(workbook, kpiSheet, 'KPIs');
+
+            const safeProjectName = String(project?.name || project?.title || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+            writeFile(workbook, `4T_KPI_${safeProjectName}_${todayKey}.xlsx`);
+        } catch (error) {
+            console.error('Failed to download 4T + KPI report', error);
+            alert('Failed to download report. Please try again.');
+        }
+    };
+
 
     const role = (localStorage.getItem('role') || '').toUpperCase();
     const canEdit = ['ADMIN', 'HQEPL', 'SGM'].includes(role);
@@ -718,6 +787,15 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 </div>
 
                 <div className="flex items-center gap-2 md:gap-4 flex-wrap">
+                    <button
+                        onClick={handleDownload4TWithKpi}
+                        className="flex items-center gap-1 md:gap-2 bg-emerald-100 border border-emerald-300 text-emerald-700 hover:bg-emerald-200 px-2 py-1.5 md:px-3 md:py-2 rounded text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors"
+                    >
+                        <Download size={14} />
+                        <span className="hidden sm:inline">Download 4T + KPI</span>
+                        <span className="sm:hidden">Download</span>
+                    </button>
+
                     <div className="flex bg-slate-100 p-0.5 md:p-1 rounded-lg">
                         {['Day', 'Week', 'Month', 'Year'].map(mode => (
                             <button
