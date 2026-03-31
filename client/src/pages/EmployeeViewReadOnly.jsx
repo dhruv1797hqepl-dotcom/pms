@@ -4,7 +4,7 @@ import {
   ChevronLeft, Mail, Phone, Calendar, Clock,
   CheckCircle2, AlertCircle, TrendingUp, Briefcase
 } from 'lucide-react';
-import Navbar from '../components/Navbar';
+import Sidebar from '../components/Sidebar';
 import api from '../api';
 
 export default function EmployeeViewReadOnly() {
@@ -63,22 +63,22 @@ export default function EmployeeViewReadOnly() {
 
   if (loading) {
     return (
-      <div className="bg-slate-50 min-h-screen antialiased">
-        <Navbar hideLogin />
-        <div className="flex items-center justify-center h-96">
+      <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto flex items-center justify-center">
           <p className="text-slate-400 font-bold uppercase">Loading...</p>
-        </div>
+        </main>
       </div>
     );
   }
 
   if (!employee) {
     return (
-      <div className="bg-slate-50 min-h-screen antialiased">
-        <Navbar hideLogin />
-        <div className="flex items-center justify-center h-96">
+      <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto flex items-center justify-center">
           <p className="text-slate-400 font-bold uppercase">Employee not found</p>
-        </div>
+        </main>
       </div>
     );
   }
@@ -88,56 +88,57 @@ export default function EmployeeViewReadOnly() {
     : 0;
 
   return (
-    <div className="bg-slate-50 min-h-screen antialiased pb-20">
-      <Navbar hideLogin />
+    <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
+      <Sidebar />
 
-      <div className="max-w-[1200px] mx-auto px-6 md:px-10 py-6">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-slate-400 font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:text-[#F58A4B] mb-4 md:mb-6"
-        >
-          <ChevronLeft size={14} /> Back
-        </button>
+      <main className="flex-1 overflow-y-auto transition-all duration-300 py-4 animate-in fade-in duration-700">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 lg:px-10 space-y-6">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-slate-400 font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:text-[#F58A4B] mb-4 md:mb-6"
+          >
+            <ChevronLeft size={14} /> Back
+          </button>
 
-        {/* Employee Header */}
-        <div className="bg-white rounded-[1.5rem] md:rounded-[2rem] border border-slate-200 p-5 md:p-8 mb-6 md:mb-8">
-          <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-6">
-            <div className="space-y-1">
-              <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
-                {employee.full_name || employee.username}
-              </h1>
-              <p className="text-[9px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 md:mt-2">
-                Performance Overview (Read-Only)
-              </p>
+          {/* Employee Header */}
+          <div className="bg-white rounded-[1.5rem] md:rounded-[2rem] border border-slate-200 p-5 md:p-8 mb-6 md:mb-8">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-6">
+              <div className="space-y-1">
+                <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
+                  {employee.full_name || employee.username}
+                </h1>
+                <p className="text-[9px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 md:mt-2">
+                  Performance Overview (Read-Only)
+                </p>
+              </div>
+              <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border shrink-0 ${employee.is_active
+                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                : 'bg-red-50 text-red-600 border-red-200'
+                }`}>
+                {employee.is_active ? 'Active' : 'Inactive'}
+              </div>
             </div>
-            <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border shrink-0 ${employee.is_active
-              ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-              : 'bg-red-50 text-red-600 border-red-200'
-              }`}>
-              {employee.is_active ? 'Active' : 'Inactive'}
+
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
+                <Mail size={14} className="text-[#F58A4B]" /> {employee.email}
+              </p>
+              {employee.phone && (
+                <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
+                  <Phone size={14} className="text-[#F58A4B]" /> {employee.phone}
+                </p>
+              )}
+              {employee.date_joined && (
+                <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
+                  <Calendar size={14} className="text-[#F58A4B]" />
+                  Joined {new Date(employee.date_joined).toLocaleDateString()}
+                </p>
+              )}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
-              <Mail size={14} className="text-[#F58A4B]" /> {employee.email}
-            </p>
-            {employee.phone && (
-              <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
-                <Phone size={14} className="text-[#F58A4B]" /> {employee.phone}
-              </p>
-            )}
-            {employee.date_joined && (
-              <p className="text-[11px] text-slate-600 font-bold flex items-center gap-2 uppercase tracking-wider">
-                <Calendar size={14} className="text-[#F58A4B]" />
-                Joined {new Date(employee.date_joined).toLocaleDateString()}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
           <div className="bg-white rounded-[1.5rem] md:rounded-[2rem] border border-slate-200 p-4 md:p-6">
             <p className="text-[9px] md:text-[11px] text-slate-500 font-black uppercase tracking-wider mb-1 md:mb-2">Active Tasks</p>
             <p className="text-2xl md:text-4xl font-black text-[#F58A4B]">{tasks.active.length}</p>
@@ -196,14 +197,13 @@ export default function EmployeeViewReadOnly() {
                         <Briefcase size={12} /> {task.client_name}
                       </p>
                     )}
-                    <p className="text-[10px] text-slate-600 font-bold mt-2">
-                      Status: <span className={task.status === 'Completed' ? 'text-emerald-600' : 'text-[#F58A4B]'}>
-                        {task.status || 'Pending'}
-                      </span>
-                    </p>
-                  </div>
-                );
-              })}
+                  <p className="text-[10px] text-slate-600 font-bold mt-2">
+                    Status: <span className={task.status === 'Completed' ? 'text-emerald-600' : 'text-[#F58A4B]'}>
+                      {task.status || 'Pending'}
+                    </span>
+                  </p>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -238,7 +238,8 @@ export default function EmployeeViewReadOnly() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

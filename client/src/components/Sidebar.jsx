@@ -297,7 +297,8 @@ const Sidebar = () => {
       {/* Mobile Hamburger Button */}
       <button
         type="button"
-        className="fixed top-3 left-3 z-[200] md:hidden flex items-center justify-center w-10 h-10 rounded-xl bg-[#1e293b] text-white shadow-lg"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="fixed top-3 left-3 z-[200] md:hidden flex items-center justify-center w-10 h-10 rounded-xl bg-[#1e293b] text-white shadow-lg hover:bg-slate-700 transition-colors"
         aria-label="Open navigation menu"
       >
         <Menu size={22} />
