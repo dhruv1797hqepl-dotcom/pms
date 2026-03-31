@@ -409,10 +409,8 @@ const Sidebar = () => {
                       <div
                         className="flex-1 flex items-center gap-4 cursor-pointer"
                         onClick={() => {
-                          setActionPlanExpanded((prev) => !prev);
-                          if (clientsExpanded) {
-                            setClientsExpanded(false);
-                          }
+                          navigate('/clients');
+                          setClientsExpanded(!clientsExpanded);
                         }}
                       >
                         <span className={`flex-shrink-0 ${item.color}`}>
