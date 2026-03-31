@@ -5,6 +5,38 @@ import { Plus, Trash2, Download, X, ArrowLeft, Loader2 } from "lucide-react";
 import api from "../api";
 import { resolveMediaUrl } from "../utils/media";
 
+const TimeSelector = ({ value, onChange }) => {
+    const time = value || "09:00";
+    const [hours, minutes] = time.includes(":") ? time.split(":") : ["09", "00"];
+    
+    const hourOptions = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
+    const minuteOptions = ["00", "15", "30", "45"];
+
+    return (
+        <div className="flex items-center gap-1 bg-white/80 px-2 py-1.5 rounded-lg border border-slate-200 focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-400/10 transition-all shadow-sm">
+            <select
+                value={hours}
+                onChange={(e) => onChange(`${e.target.value}:${minutes}`)}
+                className="bg-transparent text-xs font-black text-slate-700 outline-none cursor-pointer appearance-none px-1"
+            >
+                {hourOptions.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                ))}
+            </select>
+            <span className="text-[#4f7fb3] font-black animate-pulse">:</span>
+            <select
+                value={minutes}
+                onChange={(e) => onChange(`${hours}:${e.target.value}`)}
+                className="bg-transparent text-xs font-black text-slate-700 outline-none cursor-pointer appearance-none px-1"
+            >
+                {minuteOptions.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                ))}
+            </select>
+        </div>
+    );
+};
+
 const VisitAgenda = () => {
     const { clientId } = useParams();
     const navigate = useNavigate();
@@ -336,8 +368,8 @@ const VisitAgenda = () => {
                     row.activity || "Activity details...",
                     timeDisplay,
                     row.output || "Expected output...",
-                    row.teamMembers || "Names...",
                     reps || "-",
+                    row.teamMembers || "Names...",
                     row.priorTasks || "Pre-requisites..."
                 ];
             });
@@ -351,8 +383,8 @@ const VisitAgenda = () => {
                         "ACTIVITY",
                         "TENTATIVE\nTIME",
                         "OUTPUT",
+                        "HQEPL\nREPRESENTATIVE",
                         "REQUIRED TEAM\nMEMBERS",
-                        "HQEPL REPRESENTATIVE",
                         "TASKS TO BE COMPLETED\nBY TEAM PRIOR TO\nVISIT"
                     ]
                 ],
@@ -381,8 +413,8 @@ const VisitAgenda = () => {
                     1: { cellWidth: 52 },
                     2: { cellWidth: 24 },
                     3: { cellWidth: 50 },
-                    4: { cellWidth: 32 },
-                    5: { cellWidth: 52 },
+                    4: { cellWidth: 52 },
+                    5: { cellWidth: 32 },
                     6: { cellWidth: 40 },
                 },
                 didParseCell: (data) => {
@@ -413,75 +445,80 @@ const VisitAgenda = () => {
 
             <main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative">
-                    {/* Navigation & Actions Row */}
-                    <div className="flex items-center justify-between mb-8">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 text-slate-500 hover:text-slate-900"
-                        >
-                            <ArrowLeft size={18} />
-                            <span className="text-xs font-bold">Back</span>
-                        </button>
-
-                        <button
-                            onClick={handleDownloadPDF}
-                            disabled={isFinalizing}
-                            className="px-5 py-2.5 bg-[#4f7fb3] text-white rounded-xl shadow-lg hover:shadow-blue-200 hover:bg-blue-600 transition-all flex items-center gap-2 group disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                            {isFinalizing ? (
-                                <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                                <Download size={18} className="group-hover:scale-110 transition-transform" />
-                            )}
-                            <span className="text-xs font-black uppercase tracking-wider">
-                                {isFinalizing ? "Saving & Downloading..." : "Download PDF"}
-                            </span>
-                        </button>
-                    </div>
-
-                    {/* Main Header Content */}
-                    <div className="flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-8 border-t border-slate-50 pt-8">
-                        {/* Left: HQEPL Logo */}
-                        <div className="w-full lg:w-48 flex justify-center lg:justify-start">
-                            <img src="/HqeplLOGO.png" alt="HQEPL Logo" className="h-16 md:h-20 object-contain" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 items-start gap-8">
+                        {/* Left Column: Navigation & HQEPL Logo */}
+                        <div className="flex flex-col items-center md:items-start gap-6">
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg transition-all border border-slate-200 group"
+                            >
+                                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Back</span>
+                            </button>
+                            
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center w-40 h-24 shadow-inner">
+                                <img src="/HqeplLOGO.png" alt="HQEPL Logo" className="max-h-full max-w-full object-contain" />
+                            </div>
                         </div>
 
-                        {/* Center: Client Info */}
-                        <div className="flex-1 flex flex-col items-center text-center gap-4">
-                            <input
-                                type="text"
-                                value={companyName}
-                                onChange={(e) => setCompanyName(e.target.value)}
-                                className="text-4xl md:text-5xl font-black text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-100 focus:border-blue-400 focus:outline-none transition-all text-center w-full px-2"
-                                placeholder="Company Name"
-                            />
-                            <span className="bg-[#4f7fb3]/10 text-[#4f7fb3] border border-[#4f7fb3]/20 px-6 py-1.5 rounded-full text-sm font-black uppercase tracking-[0.2em] shadow-sm">
-                                Visit Agenda
-                            </span>
-                        </div>
-
-                        {/* Right: Client Logo & Date */}
-                        <div className="w-full lg:w-64 flex flex-col items-center lg:items-end gap-5 mt-4 lg:mt-0">
-                            {clientLogoUrl ? (
-                                <img
-                                    src={resolveMediaUrl(clientLogoUrl)}
-                                    alt="Client Logo"
-                                    className="h-14 md:h-16 object-contain"
-                                    onError={(e) => { e.target.style.display = 'none'; }}
+                        {/* Center Column: Core Info */}
+                        <div className="flex flex-col items-center text-center gap-6">
+                            <div className="w-full">
+                                <span className="text-[10px] font-black text-[#4f7fb3] uppercase tracking-[0.3em] mb-1 block">Company Name 🏢</span>
+                                <input
+                                    type="text"
+                                    value={companyName}
+                                    onChange={(e) => setCompanyName(e.target.value)}
+                                    className="text-3xl md:text-4xl font-black text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-100 focus:border-blue-400 focus:outline-none transition-all text-center w-full px-2"
+                                    placeholder="Enter Company Name"
                                 />
-                            ) : (
-                                <div className="h-14 w-32 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[10px] text-slate-300 font-bold uppercase">
-                                    No Logo
-                                </div>
-                            )}
-                            <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 shadow-sm w-fit">
-                                <span className="text-[10px] font-black text-slate-400 uppercase">Visit Date</span>
+                            </div>
+
+                            <div className="bg-[#4f7fb3]/10 text-[#4f7fb3] border border-[#4f7fb3]/20 px-8 py-2 rounded-full shadow-sm">
+                                <span className="text-base font-black uppercase tracking-[0.25em]">📋 Visit Agenda</span>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-2">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visit Date 📅</span>
                                 <input
                                     type="date"
                                     value={visitDate}
                                     onChange={(e) => setVisitDate(e.target.value)}
-                                    className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none"
+                                    className="bg-slate-50 px-6 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all cursor-pointer"
                                 />
+                            </div>
+                        </div>
+
+                        {/* Right Column: Actions & Client Logo */}
+                        <div className="flex flex-col items-center md:items-end gap-6">
+                            <button
+                                onClick={handleDownloadPDF}
+                                disabled={isFinalizing}
+                                className="w-full md:w-auto px-6 py-3 bg-[#4f7fb3] text-white rounded-xl shadow-lg shadow-blue-900/10 hover:shadow-blue-900/20 hover:bg-blue-600 transition-all flex items-center justify-center gap-3 group disabled:opacity-60"
+                            >
+                                {isFinalizing ? (
+                                    <Loader2 size={20} className="animate-spin" />
+                                ) : (
+                                    <Download size={20} className="group-hover:scale-110 transition-transform" />
+                                )}
+                                <span className="text-xs font-black uppercase tracking-widest">
+                                    {isFinalizing ? "Processing..." : "Download PDF 📥"}
+                                </span>
+                            </button>
+
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center w-40 h-24 shadow-inner overflow-hidden">
+                                {clientLogoUrl ? (
+                                    <img
+                                        src={resolveMediaUrl(clientLogoUrl)}
+                                        alt="Client Logo"
+                                        className="max-h-full max-w-full object-contain"
+                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                    />
+                                ) : (
+                                    <div className="text-[10px] text-slate-300 font-bold uppercase text-center p-2">
+                                        Client Logo Placeholder
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -491,15 +528,15 @@ const VisitAgenda = () => {
                     <div className="overflow-x-auto pb-2">
                         <table className="w-full min-w-[1000px] lg:min-w-full">
                             <thead>
-                                <tr className="bg-[#4f7fb3] text-white text-xs uppercase tracking-wider text-left">
-                                    <th className="p-4 w-16 text-center font-bold border-r border-white/30">Sr. No.</th>
-                                    <th className="p-4 w-1/5 font-bold border-r border-white/30">Activity</th>
-                                    <th className="p-4 w-32 font-bold border-r border-white/30">Tentative Time</th>
-                                    <th className="p-4 w-1/5 font-bold border-r border-white/30">Output</th>
-                                    <th className="p-4 w-40 font-bold border-r border-white/30">Required Team Members</th>
-                                    <th className="p-4 w-1/5 font-bold border-r border-white/30">HQEPL Representative</th>
-                                    <th className="p-4 font-bold">Tasks to be completed by Team Prior to Visit</th>
-                                    <th className="p-4 w-12"></th>
+                                <tr className="bg-[#4f7fb3] text-white text-[10px] md:text-xs uppercase tracking-widest text-left">
+                                    <th className="p-5 w-16 text-center font-black border-r border-white/20">Sr. No.</th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Activity 📝</th>
+                                    <th className="p-5 w-40 font-black border-r border-white/20">Tentative Time ⏰</th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Output 📤</th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">HQEPL Representative 👤</th>
+                                    <th className="p-5 w-48 font-black border-r border-white/20">Required Team Members 👥</th>
+                                    <th className="p-5 font-black">Tasks to be completed by Team Prior to Visit ✅</th>
+                                    <th className="p-5 w-12"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -519,66 +556,66 @@ const VisitAgenda = () => {
                                                 placeholder="Activity details..."
                                             />
                                         </td>
-                                        <td className="p-0 border-r border-slate-100">
-                                            <div className="flex flex-col gap-1 p-2">
-                                                <input
-                                                    type="time"
-                                                    value={row.startTime}
-                                                    onChange={(e) => updateRow(index, "startTime", e.target.value)}
-                                                    className="w-full p-2 bg-transparent focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm font-medium rounded"
-                                                    placeholder="Start"
-                                                />
-                                                <input
-                                                    type="time"
-                                                    value={row.endTime}
-                                                    onChange={(e) => updateRow(index, "endTime", e.target.value)}
-                                                    className="w-full p-2 bg-transparent focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm font-medium rounded"
-                                                    placeholder="End"
-                                                />
+                                        <td className="p-3 border-r border-slate-100">
+                                            <div className="flex flex-col gap-2 p-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase">Start</span>
+                                                    <TimeSelector
+                                                        value={row.startTime || "09:00"}
+                                                        onChange={(val) => updateRow(index, "startTime", val)}
+                                                    />
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase">End</span>
+                                                    <TimeSelector
+                                                        value={row.endTime || "10:00"}
+                                                        onChange={(val) => updateRow(index, "endTime", val)}
+                                                    />
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="p-0 border-r border-slate-100">
                                             <textarea
                                                 value={row.output}
                                                 onChange={(e) => updateRow(index, "output", e.target.value)}
-                                                className="w-full h-full p-3 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm min-h-[80px]"
+                                                className="w-full h-full p-4 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm font-medium min-h-[100px]"
                                                 placeholder="Expected output..."
-                                            />
-                                        </td>
-                                        <td className="p-0 border-r border-slate-100">
-                                            <textarea
-                                                value={row.teamMembers}
-                                                onChange={(e) => updateRow(index, "teamMembers", e.target.value)}
-                                                className="w-full h-full p-3 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm min-h-[80px]"
-                                                placeholder="Names..."
                                             />
                                         </td>
                                         <td className="p-0 border-r border-slate-100">
                                             <button
                                                 type="button"
                                                 onClick={() => setModalRowIndex(index)}
-                                                className="w-full h-full p-3 text-left bg-transparent hover:bg-slate-50 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm min-h-[80px] flex flex-col justify-center"
+                                                className="w-full h-full p-4 text-left bg-transparent hover:bg-white/50 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm min-h-[100px] flex flex-col justify-center transition-all"
                                             >
                                                 {Array.isArray(row.hqeplReps) && row.hqeplReps.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-1">
+                                                    <div className="flex flex-wrap gap-1.5">
                                                         {hqeplOptions
                                                             .filter(opt => row.hqeplReps.includes(opt.id))
                                                             .map(opt => (
-                                                                <span key={opt.id} className="bg-white/50 px-2 py-0.5 rounded border border-blue-200 text-[11px] font-medium text-blue-700">
+                                                                <span key={opt.id} className="bg-white shadow-sm px-2.5 py-1 rounded-lg border border-blue-100 text-[10px] font-black text-[#4f7fb3] uppercase tracking-tighter">
                                                                     {opt.full_name}
                                                                 </span>
                                                             ))}
                                                     </div>
                                                 ) : (
-                                                    <span className="text-slate-400 italic">Select HQEPL Rep</span>
+                                                    <span className="text-slate-400 italic text-xs font-medium">Select Rep...</span>
                                                 )}
                                             </button>
+                                        </td>
+                                        <td className="p-0 border-r border-slate-100">
+                                            <textarea
+                                                value={row.teamMembers}
+                                                onChange={(e) => updateRow(index, "teamMembers", e.target.value)}
+                                                className="w-full h-full p-4 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm font-medium min-h-[100px]"
+                                                placeholder="Names..."
+                                            />
                                         </td>
                                         <td className="p-0">
                                             <textarea
                                                 value={row.priorTasks}
                                                 onChange={(e) => updateRow(index, "priorTasks", e.target.value)}
-                                                className="w-full h-full p-3 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm min-h-[80px]"
+                                                className="w-full h-full p-4 bg-transparent resize-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500/50 focus:outline-none text-sm font-medium min-h-[100px]"
                                                 placeholder="Pre-requisites..."
                                             />
                                         </td>
