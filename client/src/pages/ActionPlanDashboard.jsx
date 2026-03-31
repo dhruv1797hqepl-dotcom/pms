@@ -45,6 +45,7 @@ const ActionPlanDashboard = () => {
   const [activeFilter, setActiveFilter] = useState("ALL"); // ALL, MY, HQEPL, CLIENT
   const [selectedProjects, setSelectedProjects] = useState([]); // Array of selected project IDs
   const [includeAllProjects, setIncludeAllProjects] = useState(true); // All projects selected
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [internalIds, setInternalIds] = useState([]);
   const [externalIds, setExternalIds] = useState([]);
 
@@ -223,6 +224,14 @@ const ActionPlanDashboard = () => {
   const handleProjectSelect = (e) => {
     setSelectedProjectId(e.target.value);
     fetchVisitAgendas(e.target.value);
+  };
+
+  const toggleTaskSelection = (taskId) => {
+    setSelectedTaskIds((prev) => (
+      prev.includes(taskId)
+        ? prev.filter((id) => id !== taskId)
+        : [...prev, taskId]
+    ));
   };
 
   const fetchVisitAgendas = async (projectId) => {
@@ -424,6 +433,11 @@ const ActionPlanDashboard = () => {
     { name: "Overdue", value: overDue, color: "#ef4444" },
   ];
 
+  useEffect(() => {
+    const visibleTaskIds = new Set(filteredTasks.map((task) => task.id));
+    setSelectedTaskIds((prev) => prev.filter((id) => visibleTaskIds.has(id)));
+  }, [filteredTasks]);
+
 
   if (loading) return <div className="p-10 text-center">Loading Action Plan...</div>;
 
@@ -579,11 +593,20 @@ const ActionPlanDashboard = () => {
                       <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Task Doc</th>
                       <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Completion Doc</th>
                       <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                      <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Select</th>
+                      <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Complete</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filteredTasks.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-slate-50/30 transition-all group">
+                    {filteredTasks.map((item, idx) => {
+                      const normalizedStatus = String(item.status || '').toLowerCase();
+                      const isCompleted = Boolean(item.completion_date) || ['on_time', 'delay_completion', 'completed'].includes(normalizedStatus);
+                      const isMyTask = Number(item.assigned_to) === Number(currentUser?.id);
+                      const canComplete = isMyTask && !isCompleted;
+                      const isSelected = selectedTaskIds.includes(item.id);
+
+                      return (
+                      <tr key={item.id} className={`transition-all group ${isSelected ? 'bg-emerald-50/50' : 'hover:bg-slate-50/30'}`}>
                         <td className="px-6 py-4 text-center">
                           <span className="text-[10px] font-black text-slate-300">{idx + 1}</span>
                         </td>
@@ -639,23 +662,49 @@ const ActionPlanDashboard = () => {
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <span className={`inline-block px-2 py-1 rounded-md text-[10px] font-black uppercase ${activeFilter === 'MY'
-                              ? (['on_time', 'delay_completion'].includes(item.status) ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600')
+                              ? (isCompleted ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600')
                               : (item.status === 'on_time' ? 'bg-green-100 text-green-600' :
                                 item.status === 'delay_completion' ? 'bg-yellow-100 text-yellow-600' :
                                   item.status === 'over_due' ? 'bg-red-100 text-red-600' :
                                     'bg-blue-100 text-blue-600')
                               }`}>
                               {activeFilter === 'MY'
-                                ? (['on_time', 'delay_completion'].includes(item.status) ? 'COMPLETED' : 'IN PROGRESS')
+                                ? (isCompleted ? 'COMPLETED' : 'IN PROGRESS')
                                 : item.status.replace('_', ' ')}
                             </span>
                           </div>
                         </td>
+
+                        <td className="px-6 py-4 text-center">
+                          {canComplete ? (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleTaskSelection(item.id)}
+                              className="cursor-pointer accent-emerald-500 scale-105"
+                            />
+                          ) : (
+                            <span className="text-slate-300 text-[10px]">-</span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-center">
+                          {canComplete ? (
+                            <button
+                              onClick={() => initiateCompleteTask(item)}
+                              className="px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-900 text-white shadow-md hover:bg-black transition-all"
+                            >
+                              COMPLETE
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 text-[10px]">-</span>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                    )})}
                     {filteredTasks.length === 0 && (
                       <tr>
-                        <td colSpan="8" className="text-center py-6 text-slate-400 font-bold text-xs">No tasks found.</td>
+                        <td colSpan="10" className="text-center py-6 text-slate-400 font-bold text-xs">No tasks found.</td>
                       </tr>
                     )}
                   </tbody>

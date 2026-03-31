@@ -1034,18 +1034,33 @@ const EmployeeDashboard = () => {
 
       const isActionPlanTask = String(completionData.sourceModule || '').trim().toUpperCase() === 'ACTION_PLAN';
       const completionDate = new Date().toISOString().split('T')[0];
+      const getActionPlanCompletionStatus = (targetDateValue) => {
+        if (!targetDateValue) return 'on_time';
+
+        const targetDate = new Date(targetDateValue);
+        const doneDate = new Date(completionDate);
+        targetDate.setHours(0, 0, 0, 0);
+        doneDate.setHours(0, 0, 0, 0);
+
+        return doneDate > targetDate ? 'delay_completion' : 'on_time';
+      };
 
       if (isActionPlanTask) {
         const actionTaskId = completionData.sourceRef || String(completionData.id).replace('ap-', '');
+        const actionTaskStatus = getActionPlanCompletionStatus(completionData.targetDate);
         if (completionData.file) {
           const formData = new FormData();
           formData.append('completion_date', completionDate);
+          formData.append('status', actionTaskStatus);
           formData.append('completion_file', completionData.file);
           await api.patch(`action-tasks/${actionTaskId}/`, formData, {
             headers: { "Content-Type": "multipart/form-data" },
           });
         } else {
-          await api.patch(`action-tasks/${actionTaskId}/`, { completion_date: completionDate });
+          await api.patch(`action-tasks/${actionTaskId}/`, {
+            completion_date: completionDate,
+            status: actionTaskStatus,
+          });
         }
       } else {
         const payload = {
@@ -1097,10 +1112,23 @@ const EmployeeDashboard = () => {
 
       const isActionPlanTask = String(task?.source_module || '').trim().toUpperCase() === 'ACTION_PLAN';
       const completionDate = new Date().toISOString().split('T')[0];
+      const getActionPlanCompletionStatus = (targetDateValue) => {
+        if (!targetDateValue) return 'on_time';
+
+        const targetDate = new Date(targetDateValue);
+        const doneDate = new Date(completionDate);
+        targetDate.setHours(0, 0, 0, 0);
+        doneDate.setHours(0, 0, 0, 0);
+
+        return doneDate > targetDate ? 'delay_completion' : 'on_time';
+      };
 
       if (isActionPlanTask) {
         const actionTaskId = task.source_ref_id || String(task.id).replace('ap-', '');
-        await api.patch(`action-tasks/${actionTaskId}/`, { completion_date: completionDate });
+        await api.patch(`action-tasks/${actionTaskId}/`, {
+          completion_date: completionDate,
+          status: getActionPlanCompletionStatus(task.target_date || task.targetDate),
+        });
       } else {
         const payload = {
           status: "Completed",
@@ -1140,6 +1168,7 @@ const EmployeeDashboard = () => {
       task: task.title,
       project: task.project_name,
       client: task.client_name,
+      targetDate: task.target_date || task.targetDate || "",
       sourceModule: task.source_module || "DIRECT",
       sourceRef: task.source_ref_id || null,
       remarks: "",
@@ -1415,9 +1444,23 @@ const EmployeeDashboard = () => {
         const task = allKnownTasks.find((t) => String(t.id) === String(id));
         const isActionPlanTask = String(task?.source_module || '').trim().toUpperCase() === 'ACTION_PLAN';
 
+        const getActionPlanCompletionStatus = (targetDateValue) => {
+          if (!targetDateValue) return 'on_time';
+
+          const targetDate = new Date(targetDateValue);
+          const doneDate = new Date(completionDate);
+          targetDate.setHours(0, 0, 0, 0);
+          doneDate.setHours(0, 0, 0, 0);
+
+          return doneDate > targetDate ? 'delay_completion' : 'on_time';
+        };
+
         if (isActionPlanTask) {
           const actionTaskId = task?.source_ref_id || String(id).replace('ap-', '');
-          return api.patch(`action-tasks/${actionTaskId}/`, { completion_date: completionDate });
+          return api.patch(`action-tasks/${actionTaskId}/`, {
+            completion_date: completionDate,
+            status: getActionPlanCompletionStatus(task?.target_date || task?.targetDate),
+          });
         }
 
         const payload = {

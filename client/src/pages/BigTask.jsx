@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload, Download } from 'lucide-react';
 import api from '../api';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const BigTask = ({ projectId, onProgressUpdate }) => {
     const formatDateKey = (dateObj) => {
@@ -702,17 +704,71 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
         return update ? update.update_value : '';
     };
 
+    const fetchAllPaginated = async (endpoint, mapItem = (item) => item) => {
+        let nextUrl = endpoint;
+        const records = [];
+
+        while (nextUrl) {
+            const response = await api.get(nextUrl);
+            const payload = response.data;
+
+            if (Array.isArray(payload)) {
+                return payload.map(mapItem);
+            }
+
+            const pageResults = Array.isArray(payload?.results) ? payload.results : [];
+            records.push(...pageResults.map(mapItem));
+            nextUrl = payload?.next || null;
+        }
+
+        return records;
+    };
+
     const handleDownload4TWithKpi = async () => {
         try {
-            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
-                import('jspdf'),
-                import('jspdf-autotable'),
-            ]);
+            const sanitizePdfText = (value) => {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .normalize('NFKD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+                    .replace(/\s{2,}/g, ' ')
+                    .trim();
+            };
+
+            const sanitizePdfHeader = (value, fallback) => {
+                const safe = sanitizePdfText(value);
+                return safe || fallback;
+            };
+
+            const sanitizePdfMultiline = (value) => {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .normalize('NFKD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+                    .replace(/\r\n/g, '\n')
+                    .split('\n')
+                    .map((line) => line.replace(/\s{2,}/g, ' ').trim())
+                    .join('\n')
+                    .trim();
+            };
+
+            const allTasksForPdf = await fetchAllPaginated(
+                `ddtme/big-tasks/?project_id=${projectId}`,
+                (task) => ({
+                    ...task,
+                    startDate: task.startDate || task.start_date,
+                    targetDate: task.targetDate || task.target_date,
+                })
+            );
+
+            const allKpisForPdf = await fetchAllPaginated(`ddtme/kpis/?project_id=${projectId}`);
 
             const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
             const pageWidth = doc.internal.pageSize.getWidth();
             const generatedAt = new Date().toLocaleString('en-GB');
-            const projectName = project?.name || project?.title || 'Project';
+            const projectName = sanitizePdfText(project?.name || project?.title || 'Project') || 'Project';
 
             const brandOrange = [245, 138, 75];
             const slate900 = [15, 23, 42];
@@ -720,6 +776,54 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             const slate600 = [71, 85, 105];
             const slate100 = [241, 245, 249];
             const border = [203, 213, 225];
+            const allPdfTasks = allTasksForPdf.length
+                ? [
+                    ...allTasksForPdf.filter((task) => task.status !== 'Completed'),
+                    ...allTasksForPdf.filter((task) => task.status === 'Completed'),
+                ]
+                : processedTasks;
+            const allPdfKpis = allKpisForPdf.length ? allKpisForPdf : kpis;
+            const safeTimelineColumns = timelineColumns.map((col, index) => ({
+                ...col,
+                label: sanitizePdfHeader(col?.label, `Timeline ${index + 1}`),
+            }));
+            const safeMonths = months.map((monthLabel, index) => sanitizePdfHeader(monthLabel, `Month ${index + 1}`));
+
+            const internalTeamMembers = [
+                project?.assigned_sgm_name ? `${project.assigned_sgm_name} (SGM)` : null,
+                ...(project?.team_members_details || []).map((member) => member?.full_name || member?.username || member?.email || ''),
+            ].filter(Boolean);
+
+            const externalTeamMembers = [
+                project?.external_lead_email ? `${project.external_lead_email} (Lead)` : null,
+                ...(project?.external_team_details || []).map((member) => member?.username || member?.full_name || member?.email || ''),
+            ].filter(Boolean);
+
+            const timelineText = sanitizePdfText(`${project?.start_date || 'TBD'} - ${project?.end_date || 'Ongoing'}`) || 'TBD - Ongoing';
+            const targetText = sanitizePdfMultiline(project?.target || project?.description || 'No target available.') || 'No target available.';
+
+            const drawSummaryBlock = (x, y, width, height, title, bodyText) => {
+                const titleY = y + 18;
+                const bodyY = y + 34;
+                const safeTitle = sanitizePdfText(title) || '-';
+                const safeBody = sanitizePdfMultiline(bodyText) || '-';
+                const wrapped = doc.splitTextToSize(safeBody, width - 16);
+                const maxLines = Math.max(1, Math.floor((height - 40) / 12));
+
+                doc.setDrawColor(...border);
+                doc.setFillColor(255, 255, 255);
+                doc.roundedRect(x, y, width, height, 8, 8, 'FD');
+
+                doc.setFontSize(10);
+                doc.setTextColor(...slate600);
+                doc.setFont(undefined, 'bold');
+                doc.text(safeTitle, x + 8, titleY);
+
+                doc.setFontSize(9);
+                doc.setTextColor(...slate700);
+                doc.setFont(undefined, 'normal');
+                doc.text(wrapped.slice(0, maxLines), x + 8, bodyY);
+            };
 
             doc.setFontSize(16);
             doc.setTextColor(...slate900);
@@ -730,38 +834,75 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             doc.text(`Timeline: ${project?.start_date || '-'} to ${project?.end_date || '-'}`, 40, 72);
             doc.text(`Generated: ${generatedAt}`, 40, 88);
 
+            const summaryBoxX = 40;
+            const summaryBoxY = 102;
+            const summaryBoxWidth = pageWidth - 80;
+            const summaryBoxHeight = 94;
+            const innerGap = 10;
+            const sectionWidth = (summaryBoxWidth - (innerGap * 4)) / 3;
+
+            doc.setFillColor(...slate100);
+            doc.roundedRect(summaryBoxX, summaryBoxY, summaryBoxWidth, summaryBoxHeight, 10, 10, 'F');
+
+            drawSummaryBlock(
+                summaryBoxX + innerGap,
+                summaryBoxY + 10,
+                sectionWidth,
+                summaryBoxHeight - 20,
+                'TEAM',
+                `HQEPL: ${internalTeamMembers.join(', ') || 'No internal members'}\nClient: ${externalTeamMembers.join(', ') || 'No external members'}`
+            );
+
+            drawSummaryBlock(
+                summaryBoxX + (innerGap * 2) + sectionWidth,
+                summaryBoxY + 10,
+                sectionWidth,
+                summaryBoxHeight - 20,
+                'TIMELINE',
+                timelineText
+            );
+
+            drawSummaryBlock(
+                summaryBoxX + (innerGap * 3) + (sectionWidth * 2),
+                summaryBoxY + 10,
+                sectionWidth,
+                summaryBoxHeight - 20,
+                'TARGET',
+                targetText
+            );
+
             doc.setFillColor(...brandOrange);
-            doc.roundedRect(40, 102, 26, 18, 4, 4, 'F');
+            doc.roundedRect(40, 212, 26, 18, 4, 4, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(11);
-            doc.text('⚡', 53, 115, { align: 'center' });
+            doc.text('T', 53, 225, { align: 'center' });
             doc.setTextColor(...slate900);
             doc.setFontSize(14);
-            doc.text('TASKS', 74, 116);
+            doc.text('TASKS', 74, 226);
 
             const taskHead = [
                 'Sr.',
                 'Task Description',
                 'Type',
                 'Target',
-                ...timelineColumns.map((col, i) => col?.label || `Timeline ${i + 1}`),
+                ...safeTimelineColumns.map((col, i) => col?.label || `Timeline ${i + 1}`),
                 'Status',
             ];
 
-            const taskBody = processedTasks.length
-                ? processedTasks.map((task, index) => [
+            const taskBody = allPdfTasks.length
+                ? allPdfTasks.map((task, index) => [
                     String(index + 1),
-                    task.title || '',
-                    task.type || '',
-                    task.targetDate || task.target_date || '',
-                    ...timelineColumns.map((col) => (
+                    sanitizePdfText(task.title || ''),
+                    sanitizePdfText(task.type || ''),
+                    sanitizePdfText(task.targetDate || task.target_date || ''),
+                    ...safeTimelineColumns.map((col) => (
                         isTaskActiveInColumn(task, col)
                             ? (task.status === 'Completed' ? 'Completed' : 'Planned')
                             : ''
                     )),
-                    task.status || '',
+                    sanitizePdfText(task.status || ''),
                 ])
-                : [['-', 'No tasks available', '-', '-', ...timelineColumns.map(() => ''), '-']];
+                : [['-', 'No tasks available', '-', '-', ...safeTimelineColumns.map(() => ''), '-']];
 
             const timelineStartIndex = 4;
             const statusColIndex = taskHead.length - 1;
@@ -770,7 +911,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             autoTable(doc, {
                 head: [taskHead],
                 body: taskBody,
-                startY: 124,
+                startY: 236,
                 theme: 'grid',
                 styles: {
                     fontSize: 7,
@@ -824,7 +965,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             doc.roundedRect(40, 26, 26, 18, 4, 4, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(10);
-            doc.text('◎', 53, 39, { align: 'center' });
+            doc.text('K', 53, 39, { align: 'center' });
             doc.setTextColor(...slate900);
             doc.setFontSize(14);
             doc.text('KEY PERFORMANCE INDICATORS (KPIS)', 74, 40);
@@ -838,18 +979,18 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 'KPI Description',
                 'Base-line',
                 'Target',
-                ...months,
+                ...safeMonths,
             ];
 
-            const kpiBody = kpis.length
-                ? kpis.map((kpi, index) => [
+            const kpiBody = allPdfKpis.length
+                ? allPdfKpis.map((kpi, index) => [
                     String(index + 1),
-                    kpi.name || '',
-                    kpi.baseline || '',
-                    kpi.target || '',
-                    ...months.map((m) => getKpiValueForMonth(kpi, m) || ''),
+                    sanitizePdfText(kpi.name || ''),
+                    sanitizePdfText(kpi.baseline || ''),
+                    sanitizePdfText(kpi.target || ''),
+                    ...safeMonths.map((m) => sanitizePdfText(getKpiValueForMonth(kpi, m) || '')),
                 ])
-                : [['-', 'No KPI data available', '-', '-', ...months.map(() => '')]];
+                : [['-', 'No KPI data available', '-', '-', ...safeMonths.map(() => '')]];
 
             autoTable(doc, {
                 head: [kpiHead],
@@ -895,6 +1036,51 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             doc.save(`4T_KPI_${safeProjectName}_${todayKey}.pdf`);
         } catch (error) {
             console.error('Failed to download 4T + KPI report', error);
+            try {
+                const fallbackSanitize = (value) => {
+                    if (value === null || value === undefined) return '';
+                    return String(value)
+                        .normalize('NFKD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                };
+
+                const fallbackDoc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+                const fallbackProjectName = fallbackSanitize(project?.name || project?.title || 'Project') || 'Project';
+                const safeProjectName = String(fallbackProjectName).replace(/[^a-zA-Z0-9_-]/g, '_');
+                const fallbackTasks = processedTasks.slice(0, 120);
+
+                fallbackDoc.setFontSize(14);
+                fallbackDoc.text('4T + KPI Report (Compatibility Mode)', 40, 40);
+                fallbackDoc.setFontSize(10);
+                fallbackDoc.text(`Project: ${fallbackProjectName}`, 40, 60);
+                fallbackDoc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, 40, 74);
+
+                let y = 96;
+                fallbackDoc.setFontSize(11);
+                fallbackDoc.text('Tasks', 40, y);
+                y += 16;
+
+                fallbackDoc.setFontSize(9);
+                fallbackTasks.forEach((task, index) => {
+                    if (y > 790) {
+                        fallbackDoc.addPage();
+                        y = 40;
+                    }
+                    const row = `${index + 1}. ${fallbackSanitize(task?.title || '')} | ${fallbackSanitize(task?.status || '')} | ${fallbackSanitize(task?.targetDate || task?.target_date || '')}`;
+                    const lines = fallbackDoc.splitTextToSize(row || '-', 520);
+                    fallbackDoc.text(lines, 40, y);
+                    y += (lines.length * 11) + 3;
+                });
+
+                fallbackDoc.save(`4T_KPI_${safeProjectName}_${todayKey}.pdf`);
+                alert('Downloaded a compatibility PDF after a rendering issue.');
+                return;
+            } catch (fallbackError) {
+                console.error('Compatibility PDF fallback also failed', fallbackError);
+            }
             alert('Failed to download report. Please try again.');
         }
     };
