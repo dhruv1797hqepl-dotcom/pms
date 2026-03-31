@@ -43,6 +43,7 @@ const ActionPlanDashboard = () => {
 
   // Filter State
   const [activeFilter, setActiveFilter] = useState("ALL"); // ALL, MY, HQEPL, CLIENT
+  const [activeProjectFilter, setActiveProjectFilter] = useState("ALL"); // ALL or specific project ID
   const [internalIds, setInternalIds] = useState([]);
   const [externalIds, setExternalIds] = useState([]);
 
@@ -290,10 +291,22 @@ const ActionPlanDashboard = () => {
 
   // Filtered Tasks Logic
   const filteredTasks = actionTasks.filter(task => {
-    if (activeFilter === "MY") return task.assigned_to === currentUser?.id;
-    if (activeFilter === "HQEPL") return internalIds.includes(task.assigned_to);
-    if (activeFilter === "CLIENT") return externalIds.includes(task.assigned_to);
-    return true; // ALL
+    // Apply client filter (ALL, MY, HQEPL, CLIENT)
+    if (activeFilter === "MY") {
+      if (task.assigned_to !== currentUser?.id) return false;
+    } else if (activeFilter === "HQEPL") {
+      if (!internalIds.includes(task.assigned_to)) return false;
+    } else if (activeFilter === "CLIENT") {
+      if (!externalIds.includes(task.assigned_to)) return false;
+    }
+    // ALL filter shows all tasks regardless of assignment
+    
+    // Apply project filter
+    if (activeProjectFilter !== "ALL") {
+      if (String(task.project_id) !== String(activeProjectFilter)) return false;
+    }
+    
+    return true;
   }).sort((a, b) => {
     // Sort Completed tasks to the bottom
     const isCompleteA = ['on_time', 'delay_completion'].includes(a.status);
@@ -428,6 +441,36 @@ const ActionPlanDashboard = () => {
               })}
             </div>
           </div>
+
+          {/* PROJECT FILTER */}
+          {projectOptions.length > 0 && (
+            <div className="col-span-12 flex flex-col sm:flex-row gap-4 mb-2 items-start sm:items-center">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Project Filter:</span>
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setActiveProjectFilter("ALL")}
+                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 sm:flex-none ${activeProjectFilter === "ALL"
+                    ? 'bg-[#F58A4B] text-white shadow-lg scale-105'
+                    : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300 hover:text-slate-600'
+                    }`}
+                >
+                  All Projects
+                </button>
+                {projectOptions.map((proj) => (
+                  <button
+                    key={proj.id}
+                    onClick={() => setActiveProjectFilter(proj.id)}
+                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 sm:flex-none ${activeProjectFilter === proj.id
+                      ? 'bg-[#F58A4B] text-white shadow-lg scale-105'
+                      : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300 hover:text-slate-600'
+                      }`}
+                  >
+                    {proj.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* PIE CHART CARD */}
           <div className="col-span-12 lg:col-span-5 bg-white rounded-[2rem] border border-slate-100 shadow-sm p-5 flex flex-col justify-between">

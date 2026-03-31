@@ -365,6 +365,7 @@ class ActionPlanSerializer(serializers.ModelSerializer):
 
 class ActionTaskSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()
+    project_id = serializers.SerializerMethodField()
 
     class Meta:
         model = ActionTask
@@ -397,3 +398,8 @@ class ActionTaskSerializer(serializers.ModelSerializer):
         if obj.assigned_to:
             return obj.assigned_to.get_full_name() or obj.assigned_to.username
         return "Unassigned"
+
+    def get_project_id(self, obj):
+        if obj.action_plan and obj.action_plan.project:
+            return obj.action_plan.project.id
+        return None
