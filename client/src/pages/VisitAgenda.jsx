@@ -294,22 +294,22 @@ const VisitAgenda = () => {
             const doc = jsPDF({ orientation: "landscape" });
 
             const pageWidth = doc.internal.pageSize.width;
-            const headerX = 8;
-            const headerY = 8;
-            const headerWidth = pageWidth - 16;
-            const headerHeight = 56;
+            const frameX = 8;
+            const frameY = 8;
+            const frameWidth = pageWidth - 16;
+            const headerHeight = 44;
 
-            // Page and header card styling closer to on-screen design.
+            // Light page background with a table-like header block.
             doc.setFillColor(247, 250, 252);
             doc.rect(0, 0, pageWidth, doc.internal.pageSize.height, "F");
             doc.setFillColor(255, 255, 255);
-            doc.setDrawColor(226, 232, 240);
-            doc.roundedRect(headerX, headerY, headerWidth, headerHeight, 5, 5, "FD");
+            doc.setDrawColor(191, 219, 254);
+            doc.rect(frameX, frameY, frameWidth, headerHeight, "FD");
 
             const hqeplLogoData = await getImageDataUrl("/HqeplLOGO.png");
             if (hqeplLogoData) {
                 try {
-                    addImageContain(doc, hqeplLogoData, headerX + 6, headerY + 6, 46, 30);
+                    addImageContain(doc, hqeplLogoData, frameX + 5, frameY + 5, 36, 22);
                 } catch (error) {
                     console.warn("Failed to add HQEPL logo to PDF", error);
                 }
@@ -318,41 +318,46 @@ const VisitAgenda = () => {
             const clientLogoData = clientLogoUrl ? await getImageDataUrl(resolveMediaUrl(clientLogoUrl)) : null;
             if (clientLogoData) {
                 try {
-                    addImageContain(doc, clientLogoData, pageWidth - 42, headerY + 8, 24, 20);
+                    addImageContain(doc, clientLogoData, frameX + frameWidth - 41, frameY + 5, 36, 22);
                 } catch (error) {
                     console.warn("Failed to add client logo to PDF", error);
                 }
             }
 
-            doc.setTextColor(15, 23, 42);
-            doc.setFontSize(22);
-            doc.setFont("helvetica", "bold");
-            doc.text(companyName || "Client Name", pageWidth / 2, headerY + 18, { align: "center" });
+            // Equal-sized logo boxes to keep both logos visually aligned.
+            doc.setDrawColor(191, 219, 254);
+            doc.rect(frameX + 4, frameY + 4, 38, 24);
+            doc.rect(frameX + frameWidth - 42, frameY + 4, 38, 24);
 
-            const badgeWidth = 46;
-            const badgeHeight = 10;
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(20);
+            doc.setFont("helvetica", "bold");
+            doc.text(companyName || "Client Name", pageWidth / 2, frameY + 13, { align: "center" });
+
+            const badgeWidth = 50;
+            const badgeHeight = 9;
             const badgeX = (pageWidth - badgeWidth) / 2;
-            const badgeY = headerY + 26;
+            const badgeY = frameY + 19;
             doc.setFillColor(224, 236, 248);
             doc.setDrawColor(191, 219, 254);
             doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 4, 4, "FD");
             doc.setTextColor(79, 127, 179);
-            doc.setFontSize(10);
+            doc.setFontSize(9.5);
             doc.text("VISIT AGENDA", pageWidth / 2, badgeY + 6.7, { align: "center" });
 
-            const dateBoxWidth = 56;
-            const dateBoxHeight = 14;
-            const dateBoxX = pageWidth - dateBoxWidth - 12;
-            const dateBoxY = headerY + 34;
+            const dateBoxWidth = 58;
+            const dateBoxHeight = 10;
+            const dateBoxX = frameX + frameWidth - dateBoxWidth - 8;
+            const dateBoxY = frameY + 31;
             doc.setFillColor(248, 250, 252);
             doc.setDrawColor(203, 213, 225);
-            doc.roundedRect(dateBoxX, dateBoxY, dateBoxWidth, dateBoxHeight, 4, 4, "FD");
+            doc.rect(dateBoxX, dateBoxY, dateBoxWidth, dateBoxHeight, "FD");
             doc.setTextColor(148, 163, 184);
-            doc.setFontSize(8.5);
-            doc.text("VISIT DATE", dateBoxX + 5, dateBoxY + 6.5);
+            doc.setFontSize(8);
+            doc.text("VISIT DATE", dateBoxX + 4, dateBoxY + 6.5);
             doc.setTextColor(51, 65, 85);
-            doc.setFontSize(10.5);
-            doc.text(formatDateForDisplay(visitDate), dateBoxX + dateBoxWidth - 5, dateBoxY + 6.5, { align: "right" });
+            doc.setFontSize(9.5);
+            doc.text(formatDateForDisplay(visitDate), dateBoxX + dateBoxWidth - 4, dateBoxY + 6.5, { align: "right" });
 
             // Table content mirrors visible Visit Agenda columns and labels.
             const tableData = rows.map((row, index) => {
@@ -375,8 +380,8 @@ const VisitAgenda = () => {
             });
 
             autoTable(doc, {
-                startY: headerY + headerHeight + 10,
-                margin: { left: 8, right: 8 },
+                startY: frameY + headerHeight,
+                margin: { left: frameX, right: frameX },
                 head: [
                     [
                         "SR NO",
@@ -424,6 +429,12 @@ const VisitAgenda = () => {
                     }
                 },
             });
+
+            // Draw one outer border so header and table appear as a single block.
+            const finalY = doc.lastAutoTable?.finalY || frameY + headerHeight + 20;
+            doc.setDrawColor(147, 197, 253);
+            doc.setLineWidth(0.4);
+            doc.rect(frameX, frameY, frameWidth, finalY - frameY);
 
             doc.save(`Visit_Agenda_${companyName.replace(/\s+/g, "_")}_${visitDate}.pdf`);
 
