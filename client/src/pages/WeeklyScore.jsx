@@ -530,13 +530,13 @@ const WeeklyScore = () => {
       // Role-based data organization
       const userRole = (currentUser.role || '').toUpperCase();
 
-      if (userRole === 'EMPLOYEE') {
-        // EMPLOYEE: Show only self (employee view, not grouped)
+      if (userRole === 'EMPLOYEE' || userRole === 'EXTERNAL') {
+        // EMPLOYEE & EXTERNAL: Show only self (employee view, not grouped)
         if (currentUser.id && employeeTaskMap[currentUser.id] !== undefined) {
           const member = getMemberById(currentUser.id);
           return [computeEmployeeRow(
             currentUser.id,
-            member?.name || `Employee ${currentUser.id}`,
+            member?.name || `User ${currentUser.id}`,
             employeeTaskMap[currentUser.id]
           )];
         }
@@ -586,6 +586,48 @@ const WeeklyScore = () => {
           if (b.id === currentUser.id) return 1;
           return a.name.localeCompare(b.name);
         });
+      } else if (userRole === 'SENIOR') {
+        // SENIOR: Show team members from same external clients with client filter support
+        if (selectedClient !== 'all') {
+          // Show all projects for selected client
+          const allProjects = getAllProjectsForSelection();
+          return allProjects
+            .map(project => {
+              const projectTasks = projectTaskMap[project.projectId]?.tasks || [];
+              return computeProjectRow(project.projectId, project.projectName, projectTasks);
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        // Show external team members
+        const result = [];
+        const externalRoles = { SENIOR: 0, EXTERNAL: 1 };
+        const uniqueMembers = new Map();
+
+        members.forEach((member) => {
+          const role = (member.role || '').toUpperCase();
+          if (role !== 'SENIOR' && role !== 'EXTERNAL') return;
+          if (!uniqueMembers.has(member.id)) {
+            uniqueMembers.set(member.id, member);
+          }
+        });
+
+        const rows = Array.from(uniqueMembers.values())
+          .map((member) => {
+            const tasks = employeeTaskMap[member.id] || [];
+            return {
+              ...computeEmployeeRow(member.id, member.name, tasks),
+              role: (member.role || '').toUpperCase(),
+            };
+          })
+          .sort((a, b) => {
+            const prA = externalRoles[a.role] ?? 99;
+            const prB = externalRoles[b.role] ?? 99;
+            if (prA !== prB) return prA - prB;
+            return a.name.localeCompare(b.name);
+          });
+
+        return rows;
       } else {
         // HQEPL/ADMIN: Show projects when client selected, employees otherwise
         if (selectedClient !== 'all') {
@@ -711,7 +753,7 @@ const WeeklyScore = () => {
           </div>
 
           {/* FILTERS */}
-          {currentUser?.role !== 'EMPLOYEE' && (
+          {currentUser?.role !== 'EMPLOYEE' && currentUser?.role !== 'EXTERNAL' && (
             <div className="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
                 <div className="w-full lg:max-w-sm">
