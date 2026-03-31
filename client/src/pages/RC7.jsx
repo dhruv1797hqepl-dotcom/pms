@@ -1166,7 +1166,6 @@ const RC7 = () => {
                 const activeCycleActive = isSat ? isSatCycleActive : isWedCycleActive;
                 const activeSubmitted = isSat ? satSubmitted : wedSubmitted;
                 const activeSubmittedAt = isSat ? satSubmittedAt : wedSubmittedAt;
-                const activePrepDate = isSat ? satPreparationDate : wedPreparationDate;
 
                 return (
                   <PlanSheet
