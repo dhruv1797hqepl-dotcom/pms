@@ -122,6 +122,8 @@ class RC7PlanningView(APIView):
                 "location": plan.location,
                 "deliverables": [d.strip() for d in plan.deliverable.split('\n') if d.strip()],
                 "deliverable": plan.deliverable,
+                "deliverable_hours": plan.deliverable_hours or [],
+                "estimated_hours": float(plan.estimated_hours or 0),
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None
             }
             
@@ -198,6 +200,8 @@ class RC7PlanningView(APIView):
                             if not isinstance(cell_data, dict):
                                 location = ""
                                 deliverable = str(cell_data or "").strip()
+                                deliverable_hours = []
+                                estimated_hours = 0
                             else:
                                 location = str(cell_data.get('location', '') or '').strip()
                                 raw_deliverables = cell_data.get('deliverables')
@@ -206,8 +210,39 @@ class RC7PlanningView(APIView):
                                 else:
                                     deliverable = str(cell_data.get('deliverable', '') or '').strip()
 
+                                raw_hours = cell_data.get('deliverable_hours')
+                                if isinstance(raw_hours, list):
+                                    deliverable_hours = []
+                                    for value in raw_hours:
+                                        try:
+                                            parsed_value = float(value)
+                                        except (TypeError, ValueError):
+                                            parsed_value = 0
+                                        deliverable_hours.append(max(0.0, round(parsed_value, 2)))
+                                else:
+                                    deliverable_hours = []
+
+                                # Legacy fallback: older clients send one overall estimated_hours value.
+                                if not deliverable_hours:
+                                    try:
+                                        legacy_hours = float(cell_data.get('estimated_hours', 0) or 0)
+                                    except (TypeError, ValueError):
+                                        legacy_hours = 0
+                                    if legacy_hours > 0:
+                                        deliverable_hours = [round(legacy_hours, 2)]
+
+                                deliverable_lines = [d.strip() for d in deliverable.split('\n') if d.strip()]
+                                if len(deliverable_hours) < len(deliverable_lines):
+                                    deliverable_hours.extend([0.0] * (len(deliverable_lines) - len(deliverable_hours)))
+                                elif len(deliverable_hours) > len(deliverable_lines):
+                                    deliverable_hours = deliverable_hours[:len(deliverable_lines)]
+
+                                estimated_hours = round(sum(deliverable_hours), 2)
+
                             if location.lower() == 'holiday':
                                 deliverable = ''
+                                deliverable_hours = []
+                                estimated_hours = 0
 
                             if not location and not deliverable:
                                 # Persist an explicit empty row as a tombstone so MCTC prefill
@@ -220,6 +255,8 @@ class RC7PlanningView(APIView):
                                 if plan_obj:
                                     plan_obj.location = ''
                                     plan_obj.deliverable = ''
+                                    plan_obj.deliverable_hours = []
+                                    plan_obj.estimated_hours = 0
                                     plan_obj.save()
                                 else:
                                     RC7Plan.objects.create(
@@ -228,6 +265,8 @@ class RC7PlanningView(APIView):
                                         plan_type=plan_type,
                                         location='',
                                         deliverable='',
+                                        deliverable_hours=[],
+                                        estimated_hours=0,
                                     )
                                 updated_count += 1
                             else:
@@ -240,6 +279,8 @@ class RC7PlanningView(APIView):
                                 if plan_obj:
                                     plan_obj.location = location
                                     plan_obj.deliverable = deliverable
+                                    plan_obj.deliverable_hours = deliverable_hours
+                                    plan_obj.estimated_hours = estimated_hours
                                     plan_obj.save()
                                 else:
                                     RC7Plan.objects.create(
@@ -247,7 +288,9 @@ class RC7PlanningView(APIView):
                                         date=date_val,
                                         plan_type=plan_type,
                                         location=location,
-                                        deliverable=deliverable
+                                        deliverable=deliverable,
+                                        deliverable_hours=deliverable_hours,
+                                        estimated_hours=estimated_hours,
                                     )
                                 updated_count += 1
                 

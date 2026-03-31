@@ -5,6 +5,7 @@ import api from '../api';
 const CreateTeamMemberModal = ({ isOpen, onClose, onMemberAdded, clientId }) => {
     const [formData, setFormData] = useState({
         username: '',
+        shortform: '',
         email: '',
         password: '',
         role: 'EXTERNAL'
@@ -28,7 +29,7 @@ const CreateTeamMemberModal = ({ isOpen, onClose, onMemberAdded, clientId }) => 
             });
             onMemberAdded();
             onClose();
-            setFormData({ username: '', email: '', password: '', role: 'EXTERNAL' });
+            setFormData({ username: '', shortform: '', email: '', password: '', role: 'EXTERNAL' });
         } catch (error) {
             console.error("Error creating team member:", error);
             alert(error.response?.data?.error || "Failed to add member.");
@@ -57,6 +58,21 @@ const CreateTeamMemberModal = ({ isOpen, onClose, onMemberAdded, clientId }) => 
                             <div className="relative group">
                                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#F58A4B]" size={16} />
                                 <input required className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="e.g. Michael Chen" value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value })} />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 ml-1">Shortform</label>
+                            <div className="relative group">
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#F58A4B]" size={16} />
+                                <input
+                                    required
+                                    maxLength={50}
+                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm uppercase"
+                                    placeholder="e.g. MC"
+                                    value={formData.shortform}
+                                    onChange={(e) => setFormData({ ...formData, shortform: e.target.value.toUpperCase() })}
+                                />
                             </div>
                         </div>
 

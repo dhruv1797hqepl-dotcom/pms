@@ -231,6 +231,7 @@ class ClientExternalMemberView(APIView):
                 "id": m.user.id, # User ID
                 "member_id": m.id, # ExternalTeam ID for updates
                 "username": m.user.username,
+                "shortform": m.user.shortform,
                 "email": m.user.email,
                 "role": f"{m.user.role} (EXTERNAL)",
                 "status": m.status,
@@ -263,6 +264,7 @@ class ClientExternalMemberView(APIView):
                 "id": user.id,
                 "member_id": external_member.id,
                 "username": user.username,
+                "shortform": user.shortform,
                 "email": user.email,
                 "role": user.role,
                 "status": external_member.status,

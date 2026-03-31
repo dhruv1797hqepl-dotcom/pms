@@ -11,6 +11,7 @@ class RC7Plan(models.Model):
     date = models.DateField()
     location = models.CharField(max_length=255, blank=True)
     deliverable = models.TextField(blank=True)
+    deliverable_hours = models.JSONField(default=list, blank=True)
     estimated_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
     plan_type = models.CharField(max_length=3, choices=PLAN_TYPES)
     

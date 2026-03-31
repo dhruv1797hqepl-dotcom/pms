@@ -879,7 +879,7 @@ const DDTMETable = () => {
   const visibleAdditionalTasks = canViewSubmittedPlan ? additionalTasks : [];
 
   // Permissions
-  const canEdit = !isReadOnly && (userRole === 'EMPLOYEE' || userRole === 'ADMIN');
+  const canEdit = !isReadOnly && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || userRole === 'SGM');
   const canEditHoursForPerson = (personId) => {
     if (planStatus === 'APPROVED') {
       return false;
@@ -889,7 +889,11 @@ const DDTMETable = () => {
       return planStatus !== 'SUBMITTED';
     }
 
-    if (userRole === 'SGM' || userRole === 'HQEPL') {
+    if (userRole === 'SGM') {
+      return planStatus !== 'SUBMITTED';
+    }
+
+    if (userRole === 'HQEPL') {
       return false;
     }
 

@@ -105,7 +105,9 @@ User = get_user_model()
 
 def _reviewer_can_view_ddtme_payload(request, client_id, month, year):
     role = str(getattr(request.user, 'role', '') or '').upper()
-    if role not in {'SGM', 'HQEPL'}:
+    # SGM can access draft payloads to collaborate on editing.
+    # Keep HQEPL gated to submitted/approved/rejected periods.
+    if role != 'HQEPL':
         return True
 
     # Allow base listing requests (used by DDFMS to discover approved periods).

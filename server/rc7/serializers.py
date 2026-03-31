@@ -15,5 +15,5 @@ class RC7PlanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RC7Plan
-        fields = ['id', 'employee', 'date', 'location', 'deliverable', 'estimated_hours', 'plan_type', 'created_at', 'updated_at']
+        fields = ['id', 'employee', 'date', 'location', 'deliverable', 'deliverable_hours', 'estimated_hours', 'plan_type', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']

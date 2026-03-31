@@ -264,6 +264,7 @@ class ClientListSerializer(serializers.ModelSerializer):
 class ExternalMemberCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     username = serializers.CharField()
+    shortform = serializers.CharField(max_length=50)
     password = serializers.CharField(write_only=True)
     role = serializers.ChoiceField(
         choices=["EXTERNAL", "SENIOR"],
@@ -275,6 +276,7 @@ class ExternalMemberCreateSerializer(serializers.Serializer):
         client = self.context["client"]
         email = validated_data["email"].lower().strip()
         raw_username = validated_data["username"]
+        shortform = str(validated_data["shortform"] or "").strip().upper()
         password = validated_data["password"]
         role = validated_data.get("role", "EXTERNAL")
 
@@ -302,8 +304,12 @@ class ExternalMemberCreateSerializer(serializers.Serializer):
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
+                shortform=shortform,
                 role=role
             )
+        elif shortform and user.shortform != shortform:
+            user.shortform = shortform
+            user.save(update_fields=["shortform"])
 
         if ExternalTeam.objects.filter(user=user, client_org=client).exists():
             raise ValidationError("User already added to this client")
@@ -325,6 +331,7 @@ class ExternalMemberCreateSerializer(serializers.Serializer):
 
 class ExternalTeamSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
+    shortform = serializers.CharField(write_only=True, max_length=50)
     email = serializers.EmailField(write_only=True)
     password = serializers.CharField(write_only=True)
     role = serializers.ChoiceField(
@@ -339,13 +346,14 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExternalTeam
-        fields = ["id", "client_org", "role", "username", "email", "password", "status", "credential_access"]
+        fields = ["id", "client_org", "role", "username", "shortform", "email", "password", "status", "credential_access"]
         extra_kwargs = {
             "client_org": {"read_only": True}
         }
 
     def create(self, validated_data):
         username = validated_data.pop("username")
+        shortform = str(validated_data.pop("shortform", "") or "").strip().upper()
         email = validated_data.pop("email").lower().strip()
         password = validated_data.pop("password")
         role = validated_data.pop("role", "EXTERNAL")
@@ -364,6 +372,7 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
             email=email,
             defaults={
                 "username": username, 
+                "shortform": shortform,
                 "role": role,
                 "is_active": is_active
             }
@@ -373,6 +382,12 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
             user.set_password(password)
             user.save()
         else:
+            updated_fields = []
+            if shortform and user.shortform != shortform:
+                user.shortform = shortform
+                updated_fields.append("shortform")
+            if updated_fields:
+                user.save(update_fields=updated_fields)
             # If user exists, we might need to update their active status based on this new team adding them?
             # Plan says: "Newly created users are inactive... until SGM explicitly grants..."
             # If user already exists, we probably shouldn't deactivate them if they are active elsewhere.

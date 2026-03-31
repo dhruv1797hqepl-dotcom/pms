@@ -130,7 +130,13 @@ const splitDeliverableText = (value) =>
 const normalizeCell = (cell) => {
   if (typeof cell === 'string') {
     const list = splitDeliverableText(cell);
-    return { location: '', deliverables: list.length ? list : [''], estimated_hours: 0, updatedAt: null };
+    return {
+      location: '',
+      deliverables: list.length ? list : [''],
+      deliverable_hours: new Array(list.length ? list.length : 1).fill(0),
+      estimated_hours: 0,
+      updatedAt: null,
+    };
   }
 
   if (cell && typeof cell === 'object') {
@@ -143,20 +149,35 @@ const normalizeCell = (cell) => {
       return {
         location,
         deliverables: [''],
+        deliverable_hours: [0],
         estimated_hours: 0,
         updatedAt: cell.updated_at || null,
       };
     }
 
+    const deliverableHours = Array.isArray(cell.deliverable_hours)
+      ? cell.deliverable_hours.map((value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      })
+      : [];
+
+    const normalizedHours = list.length
+      ? list.map((_, index) => deliverableHours[index] || 0)
+      : [0];
+
+    const totalEstimated = normalizedHours.reduce((sum, item) => sum + item, 0);
+
     return {
       location,
       deliverables: list.length ? list : [''],
-      estimated_hours: Number(cell.estimated_hours || 0),
+      deliverable_hours: normalizedHours,
+      estimated_hours: Number(cell.estimated_hours || totalEstimated || 0),
       updatedAt: cell.updated_at || null,
     };
   }
 
-  return { location: '', deliverables: [''], estimated_hours: 0, updatedAt: null };
+  return { location: '', deliverables: [''], deliverable_hours: [0], estimated_hours: 0, updatedAt: null };
 };
 
 const normalizeClientsPayload = (payload, role) => {
@@ -204,7 +225,14 @@ const serializeEmployeePlan = (employeePlan) => {
       location: cell.location || '',
       deliverable: joinedDeliverable,
       deliverables,
-      estimated_hours: Number(cell.estimated_hours || 0),
+      deliverable_hours: (cell.deliverable_hours || []).slice(0, deliverables.length).map((item) => {
+        const parsed = Number(item);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      }),
+      estimated_hours: (cell.deliverable_hours || []).slice(0, deliverables.length).reduce((sum, item) => {
+        const parsed = Number(item);
+        return sum + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+      }, 0),
     };
   });
 
@@ -222,7 +250,7 @@ const PlanSheet = ({
   canEdit,
   onLocationChange,
   onDeliverableChange,
-  onHoursChange,
+  onStepHoursChange,
   onAddDeliverable,
   onRemoveDeliverable,
   saving,
@@ -394,24 +422,38 @@ const PlanSheet = ({
                             </div>
                           ) : (
                             cell.deliverables.map((item, index) => (
-                              <div key={`${head.key}-${index}`} className="flex items-start gap-1.5">
-                                <textarea
-                                  value={item}
-                                  onChange={(event) => onDeliverableChange(employeeId, head.key, index, event.target.value)}
-                                  placeholder="Enter deliverable"
-                                  rows={2}
-                                  className="w-full resize-none rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs leading-relaxed text-slate-700 outline-none focus:border-slate-500"
-                                />
+                              <div key={`${head.key}-${index}`} className="rounded-md border border-slate-200 bg-slate-50 p-1.5">
+                                <div className="flex items-start gap-1.5">
+                                  <textarea
+                                    value={item}
+                                    onChange={(event) => onDeliverableChange(employeeId, head.key, index, event.target.value)}
+                                    placeholder="Enter deliverable"
+                                    rows={2}
+                                    className="w-full resize-none rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs leading-relaxed text-slate-700 outline-none focus:border-slate-500"
+                                  />
 
-                                <button
-                                  type="button"
-                                  onClick={() => onRemoveDeliverable(employeeId, head.key, index)}
-                                  disabled={cell.deliverables.length === 1}
-                                  className="inline-flex items-center justify-center rounded-md border border-slate-300 p-1.5 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label="Remove deliverable line"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onRemoveDeliverable(employeeId, head.key, index)}
+                                    disabled={cell.deliverables.length === 1}
+                                    className="inline-flex items-center justify-center rounded-md border border-slate-300 p-1.5 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                    aria-label="Remove deliverable line"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                                <div className="mt-1.5 flex items-center gap-2">
+                                  <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Est. Hrs</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    value={cell.deliverable_hours?.[index] ?? ''}
+                                    onChange={(event) => onStepHoursChange(employeeId, head.key, index, event.target.value)}
+                                    placeholder="0"
+                                    className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-slate-500"
+                                  />
+                                </div>
                               </div>
                             ))
                           )}
@@ -425,41 +467,15 @@ const PlanSheet = ({
                                 title={item}
                                 className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 leading-relaxed text-slate-700"
                               >
-                                {item}
+                                <div>{item}</div>
+                                <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                  Est. Hrs: {cell.deliverable_hours?.[index] || 0}
+                                </div>
                               </div>
                             ))
                           ) : (
                             <div className="rounded-md px-2 py-1.5 text-slate-400">-</div>
                           )}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-
-              <tr>
-                <th className="border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">
-                  Estimated Hours
-                </th>
-                {headers.map((head) => {
-                  const cell = normalizeCell(planData?.[employeeId]?.[head.key]);
-
-                  return (
-                    <td key={`hrs-${head.key}`} className="border-2 border-slate-300 px-2 py-2 align-top">
-                      {canEdit ? (
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          value={cell.estimated_hours || ''}
-                          onChange={(event) => onHoursChange(employeeId, head.key, event.target.value)}
-                          placeholder="0"
-                          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-500"
-                        />
-                      ) : (
-                        <div className="rounded-md border border-transparent px-2 py-1.5 text-xs font-semibold text-slate-700">
-                          {cell.estimated_hours || '-'}
                         </div>
                       )}
                     </td>
@@ -716,6 +732,7 @@ const RC7 = () => {
     return {
       location: normalized.location || '',
       deliverables: [...normalized.deliverables],
+      deliverable_hours: [...normalized.deliverable_hours],
     };
   };
 
@@ -775,6 +792,10 @@ const RC7 = () => {
         empPlan[dateKey] = {
           ...currentCell,
           deliverables: [...existingGroup, ...newToSync],
+          deliverable_hours: [
+            ...(currentCell.deliverable_hours || []),
+            ...new Array(newToSync.length).fill(0),
+          ],
         };
         changed = true;
       }
@@ -843,6 +864,10 @@ const RC7 = () => {
       empPlan[dateKey] = {
         ...currentCell,
         deliverables: [...existingGroup, ...newToSync],
+        deliverable_hours: [
+          ...(currentCell.deliverable_hours || []),
+          ...new Array(newToSync.length).fill(0),
+        ],
       };
       changed = true;
     });
@@ -878,6 +903,11 @@ const RC7 = () => {
           ...cell,
           location: value,
           deliverables: isHoliday ? [''] : (cell.deliverables.length ? cell.deliverables : ['']),
+          deliverable_hours: isHoliday
+            ? [0]
+            : ((cell.deliverable_hours && cell.deliverable_hours.length)
+              ? cell.deliverable_hours
+              : new Array(cell.deliverables.length ? cell.deliverables.length : 1).fill(0)),
         };
       });
       markDirty(true);
@@ -893,10 +923,12 @@ const RC7 = () => {
       });
       markDirty(true);
     },
-    onHoursChange: (employeeId, dateKey, value) => {
+    onStepHoursChange: (employeeId, dateKey, index, value) => {
       updatePlanCell(setter, employeeId, dateKey, (cell) => {
-        const hours = parseFloat(value) || 0;
-        return { ...cell, estimated_hours: Math.max(0, hours) };
+        const nextHours = [...(cell.deliverable_hours || new Array(cell.deliverables.length || 1).fill(0))];
+        const hours = parseFloat(value);
+        nextHours[index] = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+        return { ...cell, deliverable_hours: nextHours };
       });
       markDirty(true);
     },
@@ -908,6 +940,7 @@ const RC7 = () => {
         return {
           ...cell,
           deliverables: [...cell.deliverables, ''],
+          deliverable_hours: [...(cell.deliverable_hours || []), 0],
         };
       });
       markDirty(true);
@@ -919,7 +952,12 @@ const RC7 = () => {
         }
         if (cell.deliverables.length <= 1) return cell;
         const nextDeliverables = cell.deliverables.filter((_, itemIndex) => itemIndex !== index);
-        return { ...cell, deliverables: nextDeliverables.length ? nextDeliverables : [''] };
+        const nextHours = (cell.deliverable_hours || []).filter((_, itemIndex) => itemIndex !== index);
+        return {
+          ...cell,
+          deliverables: nextDeliverables.length ? nextDeliverables : [''],
+          deliverable_hours: nextHours.length ? nextHours : [0],
+        };
       });
       markDirty(true);
     },
@@ -1231,7 +1269,7 @@ const RC7 = () => {
                     canEdit={!isMemberView && activeCycleActive}
                     onLocationChange={activeHandlers.onLocationChange}
                     onDeliverableChange={activeHandlers.onDeliverableChange}
-                    onHoursChange={activeHandlers.onHoursChange}
+                    onStepHoursChange={activeHandlers.onStepHoursChange}
                     onAddDeliverable={activeHandlers.onAddDeliverable}
                     onRemoveDeliverable={activeHandlers.onRemoveDeliverable}
                     saving={activeSaving}
