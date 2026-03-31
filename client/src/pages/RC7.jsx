@@ -208,7 +208,6 @@ const serializeEmployeePlan = (employeePlan) => {
 const PlanSheet = ({
   title,
   fillDayLabel,
-  preparationDate,
   dates,
   planData,
   locationOptions,
@@ -299,28 +298,11 @@ const PlanSheet = ({
       <div className="overflow-hidden rounded-xl md:rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
         <div className="flex flex-col gap-1.5 md:gap-2 border-b-2 border-slate-300 bg-slate-100 px-3 md:px-4 py-1.5 md:py-2 text-[10px] md:text-xs font-semibold text-slate-700 md:flex-row md:items-center md:justify-between">
           <span>To be filled on {fillDayLabel}</span>
-          <span>Date of Preparation: {preparationDate}</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-255 border-collapse text-sm">
             <tbody>
-              <tr>
-                <th className="w-60 border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">
-                  Name of Consultant
-                </th>
-                <td colSpan={headers.length} className="border-2 border-slate-300 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    {consultantShortform && (
-                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-slate-200 text-[10px] font-bold uppercase text-slate-700">
-                        {consultantShortform}
-                      </span>
-                    )}
-                    <span className="font-semibold text-slate-800">{consultantName}</span>
-                  </div>
-                </td>
-              </tr>
-
               <tr>
                 <th className="border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">Day</th>
                 {headers.map((head) => (
@@ -457,8 +439,8 @@ const RC7 = () => {
   const currentRole = (localStorage.getItem('role') || '').toUpperCase();
   const today = useMemo(() => new Date(), []);
   const todayDay = today.getDay();
-  const isSatCycleActive = todayDay === 5 || todayDay === 6 || todayDay === 1; // Friday, Saturday, Monday
-  const isWedCycleActive = todayDay >= 3 && todayDay <= 5; // Wednesday to Friday
+  const isSatCycleActive = true; // Always editable
+  const isWedCycleActive = true; // Always editable
 
   const memberViewContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -1138,8 +1120,7 @@ const RC7 = () => {
     }
   };
 
-  const satPreparationDate = useMemo(() => formatDate(nearestUpcoming(today, 6)), [today]);
-  const wedPreparationDate = useMemo(() => formatDate(nearestUpcoming(today, 3)), [today]);
+
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f7f7f7] antialiased">
@@ -1196,7 +1177,6 @@ const RC7 = () => {
                     key={type}
                     title={`To be filled on ${isSat ? 'Saturday' : 'Wednesday'}`}
                     fillDayLabel={isSat ? 'Saturday' : 'Wednesday'}
-                    preparationDate={activePrepDate}
                     dates={activeDates}
                     planData={activePlan}
                     locationOptions={locationOptions}
