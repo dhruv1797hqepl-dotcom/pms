@@ -130,7 +130,7 @@ const splitDeliverableText = (value) =>
 const normalizeCell = (cell) => {
   if (typeof cell === 'string') {
     const list = splitDeliverableText(cell);
-    return { location: '', deliverables: list.length ? list : [''], updatedAt: null };
+    return { location: '', deliverables: list.length ? list : [''], estimated_hours: 0, updatedAt: null };
   }
 
   if (cell && typeof cell === 'object') {
@@ -143,6 +143,7 @@ const normalizeCell = (cell) => {
       return {
         location,
         deliverables: [''],
+        estimated_hours: 0,
         updatedAt: cell.updated_at || null,
       };
     }
@@ -150,11 +151,12 @@ const normalizeCell = (cell) => {
     return {
       location,
       deliverables: list.length ? list : [''],
+      estimated_hours: Number(cell.estimated_hours || 0),
       updatedAt: cell.updated_at || null,
     };
   }
 
-  return { location: '', deliverables: [''], updatedAt: null };
+  return { location: '', deliverables: [''], estimated_hours: 0, updatedAt: null };
 };
 
 const normalizeClientsPayload = (payload, role) => {
@@ -202,6 +204,7 @@ const serializeEmployeePlan = (employeePlan) => {
       location: cell.location || '',
       deliverable: joinedDeliverable,
       deliverables,
+      estimated_hours: Number(cell.estimated_hours || 0),
     };
   });
 
@@ -219,6 +222,7 @@ const PlanSheet = ({
   canEdit,
   onLocationChange,
   onDeliverableChange,
+  onHoursChange,
   onAddDeliverable,
   onRemoveDeliverable,
   saving,
@@ -427,6 +431,35 @@ const PlanSheet = ({
                           ) : (
                             <div className="rounded-md px-2 py-1.5 text-slate-400">-</div>
                           )}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              <tr>
+                <th className="border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">
+                  Estimated Hours
+                </th>
+                {headers.map((head) => {
+                  const cell = normalizeCell(planData?.[employeeId]?.[head.key]);
+
+                  return (
+                    <td key={`hrs-${head.key}`} className="border-2 border-slate-300 px-2 py-2 align-top">
+                      {canEdit ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={cell.estimated_hours || ''}
+                          onChange={(event) => onHoursChange(employeeId, head.key, event.target.value)}
+                          placeholder="0"
+                          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-500"
+                        />
+                      ) : (
+                        <div className="rounded-md border border-transparent px-2 py-1.5 text-xs font-semibold text-slate-700">
+                          {cell.estimated_hours || '-'}
                         </div>
                       )}
                     </td>
@@ -860,6 +893,13 @@ const RC7 = () => {
       });
       markDirty(true);
     },
+    onHoursChange: (employeeId, dateKey, value) => {
+      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+        const hours = parseFloat(value) || 0;
+        return { ...cell, estimated_hours: Math.max(0, hours) };
+      });
+      markDirty(true);
+    },
     onAddDeliverable: (employeeId, dateKey) => {
       updatePlanCell(setter, employeeId, dateKey, (cell) => {
         if (String(cell.location || '').toLowerCase() === 'holiday') {
@@ -1191,6 +1231,7 @@ const RC7 = () => {
                     canEdit={!isMemberView && activeCycleActive}
                     onLocationChange={activeHandlers.onLocationChange}
                     onDeliverableChange={activeHandlers.onDeliverableChange}
+                    onHoursChange={activeHandlers.onHoursChange}
                     onAddDeliverable={activeHandlers.onAddDeliverable}
                     onRemoveDeliverable={activeHandlers.onRemoveDeliverable}
                     saving={activeSaving}
