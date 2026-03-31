@@ -355,7 +355,7 @@ const VisitAgenda = () => {
             doc.text(formatDateForDisplay(visitDate), dateBoxX + dateBoxWidth - 5, dateBoxY + 6.5, { align: "right" });
 
             // Table content mirrors visible Visit Agenda columns and labels.
-            const tableData = rows.map(row => {
+            const tableData = rows.map((row, index) => {
                 const reps = hqeplOptions
                     .filter(opt => Array.isArray(row.hqeplReps) && row.hqeplReps.includes(opt.id))
                     .map(opt => opt.full_name)
@@ -364,7 +364,7 @@ const VisitAgenda = () => {
                 const timeDisplay = [row.startTime || "--:--", row.endTime || "--:--"].join("\n");
 
                 return [
-                    row.id,
+                    index + 1,
                     row.activity || "Activity details...",
                     timeDisplay,
                     row.output || "Expected output...",
@@ -379,13 +379,13 @@ const VisitAgenda = () => {
                 margin: { left: 8, right: 8 },
                 head: [
                     [
-                        "SR.\nNO.",
+                        "SR NO",
                         "ACTIVITY",
-                        "TENTATIVE\nTIME",
+                        "TENTATIVE TIME",
                         "OUTPUT",
                         "HQEPL\nREPRESENTATIVE",
                         "REQUIRED TEAM\nMEMBERS",
-                        "TASKS TO BE COMPLETED\nBY TEAM PRIOR TO\nVISIT"
+                        "TASKS TO BE COMPLETED\nBY TEAM PRIOR TO VISIT"
                     ]
                 ],
                 body: tableData,
@@ -393,11 +393,11 @@ const VisitAgenda = () => {
                 headStyles: {
                     fillColor: [79, 127, 179],
                     textColor: [255, 255, 255],
-                    fontSize: 9,
+                    fontSize: 8.25,
                     halign: "left",
                     valign: "middle",
                     cellPadding: 4,
-                    minCellHeight: 16,
+                    minCellHeight: 14,
                     lineColor: [147, 197, 253],
                 },
                 bodyStyles: {
@@ -411,11 +411,11 @@ const VisitAgenda = () => {
                 columnStyles: {
                     0: { halign: "center", cellWidth: 14, fontStyle: "bold" },
                     1: { cellWidth: 52 },
-                    2: { cellWidth: 24 },
-                    3: { cellWidth: 50 },
+                    2: { cellWidth: 26 },
+                    3: { cellWidth: 44 },
                     4: { cellWidth: 52 },
-                    5: { cellWidth: 32 },
-                    6: { cellWidth: 40 },
+                    5: { cellWidth: 38 },
+                    6: { cellWidth: 48 },
                 },
                 didParseCell: (data) => {
                     if (data.section === "body") {
