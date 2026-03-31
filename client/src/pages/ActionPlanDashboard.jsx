@@ -43,7 +43,8 @@ const ActionPlanDashboard = () => {
 
   // Filter State
   const [activeFilter, setActiveFilter] = useState("ALL"); // ALL, MY, HQEPL, CLIENT
-  const [activeProjectFilter, setActiveProjectFilter] = useState("ALL"); // ALL or specific project ID
+  const [selectedProjects, setSelectedProjects] = useState([]); // Array of selected project IDs
+  const [includeAllProjects, setIncludeAllProjects] = useState(true); // All projects selected
   const [internalIds, setInternalIds] = useState([]);
   const [externalIds, setExternalIds] = useState([]);
 
@@ -101,6 +102,12 @@ const ActionPlanDashboard = () => {
         name: proj.name || `Project ${proj.id}`
       }));
       setProjectOptions(options);
+      
+      // Initialize project filter with all projects selected
+      if (options.length > 0) {
+        setSelectedProjects(options.map(o => o.id));
+        setIncludeAllProjects(true);
+      }
 
       if (options.length > 0 && !selectedProjectId) {
         const firstProjectId = options[0].id;
@@ -204,6 +211,15 @@ const ActionPlanDashboard = () => {
     setCompletionFile(e.target.files[0]);
   };
 
+  const handleProjectSelection = (projectId) => {
+    setSelectedProjects(prev => {
+      const updated = prev.includes(projectId)
+        ? prev.filter(id => id !== projectId)
+        : [...prev, projectId];
+      return updated;
+    });
+  };
+
   const handleProjectSelect = (e) => {
     setSelectedProjectId(e.target.value);
     fetchVisitAgendas(e.target.value);
@@ -302,8 +318,8 @@ const ActionPlanDashboard = () => {
     // ALL filter shows all tasks regardless of assignment
     
     // Apply project filter
-    if (activeProjectFilter !== "ALL") {
-      if (String(task.project_id) !== String(activeProjectFilter)) return false;
+    if (!includeAllProjects && selectedProjects.length > 0) {
+      if (!selectedProjects.includes(String(task.project_id))) return false;
     }
     
     return true;
@@ -442,33 +458,36 @@ const ActionPlanDashboard = () => {
             </div>
           </div>
 
-          {/* PROJECT FILTER */}
+          {/* PROJECT FILTER CARD */}
           {projectOptions.length > 0 && (
-            <div className="col-span-12 flex flex-col sm:flex-row gap-4 mb-2 items-start sm:items-center">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Project Filter:</span>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => setActiveProjectFilter("ALL")}
-                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 sm:flex-none ${activeProjectFilter === "ALL"
-                    ? 'bg-[#F58A4B] text-white shadow-lg scale-105'
-                    : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300 hover:text-slate-600'
-                    }`}
-                >
-                  All Projects
-                </button>
-                {projectOptions.map((proj) => (
-                  <button
-                    key={proj.id}
-                    onClick={() => setActiveProjectFilter(proj.id)}
-                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 sm:flex-none ${activeProjectFilter === proj.id
-                      ? 'bg-[#F58A4B] text-white shadow-lg scale-105'
-                      : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300 hover:text-slate-600'
-                      }`}
-                  >
-                    {proj.name}
-                  </button>
-                ))}
-              </div>
+            <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <h3 className="font-black text-slate-900 uppercase text-xs mb-3 tracking-widest">Project Filter</h3>
+              <label className="flex items-center gap-2 text-[12px] text-slate-700 mb-2 cursor-pointer font-semibold">
+                <input
+                  type="checkbox"
+                  checked={includeAllProjects}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIncludeAllProjects(checked);
+                    if (checked) {
+                      setSelectedProjects(projectOptions.map(p => p.id));
+                    }
+                  }}
+                  className="accent-slate-900"
+                />
+                All Projects
+              </label>
+              {projectOptions.map((proj) => (
+                <label key={proj.id} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeAllProjects || selectedProjects.includes(proj.id)}
+                    onChange={() => handleProjectSelection(proj.id)}
+                    className="accent-slate-900"
+                  />
+                  {proj.name}
+                </label>
+              ))}
             </div>
           )}
 
