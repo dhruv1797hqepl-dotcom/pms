@@ -303,7 +303,7 @@ const VisitAgenda = () => {
             doc.setFillColor(247, 250, 252);
             doc.rect(0, 0, pageWidth, doc.internal.pageSize.height, "F");
             doc.setFillColor(255, 255, 255);
-            doc.setDrawColor(191, 219, 254);
+            doc.setDrawColor(0, 0, 0);
             doc.rect(frameX, frameY, frameWidth, headerHeight, "FD");
 
             const hqeplLogoData = await getImageDataUrl("/HqeplLOGO.png");
@@ -325,7 +325,7 @@ const VisitAgenda = () => {
             }
 
             // Equal-sized logo boxes to keep both logos visually aligned.
-            doc.setDrawColor(191, 219, 254);
+            doc.setDrawColor(0, 0, 0);
             doc.rect(frameX + 4, frameY + 4, 38, 24);
             doc.rect(frameX + frameWidth - 42, frameY + 4, 38, 24);
 
@@ -339,7 +339,7 @@ const VisitAgenda = () => {
             const badgeX = (pageWidth - badgeWidth) / 2;
             const badgeY = frameY + 19;
             doc.setFillColor(224, 236, 248);
-            doc.setDrawColor(191, 219, 254);
+            doc.setDrawColor(0, 0, 0);
             doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 4, 4, "FD");
             doc.setTextColor(79, 127, 179);
             doc.setFontSize(9.5);
@@ -350,7 +350,7 @@ const VisitAgenda = () => {
             const dateBoxX = frameX + frameWidth - dateBoxWidth - 8;
             const dateBoxY = frameY + 31;
             doc.setFillColor(248, 250, 252);
-            doc.setDrawColor(203, 213, 225);
+            doc.setDrawColor(0, 0, 0);
             doc.rect(dateBoxX, dateBoxY, dateBoxWidth, dateBoxHeight, "FD");
             doc.setTextColor(148, 163, 184);
             doc.setFontSize(8);
@@ -403,12 +403,12 @@ const VisitAgenda = () => {
                     valign: "middle",
                     cellPadding: 4,
                     minCellHeight: 14,
-                    lineColor: [147, 197, 253],
+                    lineColor: [0, 0, 0],
                 },
                 bodyStyles: {
                     textColor: [71, 85, 105],
                     valign: "middle",
-                    lineColor: [226, 232, 240],
+                    lineColor: [0, 0, 0],
                     cellPadding: 3.5,
                     minCellHeight: 18,
                 },
@@ -425,14 +425,14 @@ const VisitAgenda = () => {
                 didParseCell: (data) => {
                     if (data.section === "body") {
                         const isEven = data.row.index % 2 === 0;
-                        data.cell.styles.fillColor = isEven ? [219, 231, 244] : [238, 244, 251];
+                        data.cell.styles.fillColor = isEven ? [255, 255, 255] : [238, 244, 251];
                     }
                 },
             });
 
             // Draw one outer border so header and table appear as a single block.
             const finalY = doc.lastAutoTable?.finalY || frameY + headerHeight + 20;
-            doc.setDrawColor(147, 197, 253);
+            doc.setDrawColor(0, 0, 0);
             doc.setLineWidth(0.4);
             doc.rect(frameX, frameY, frameWidth, finalY - frameY);
 
