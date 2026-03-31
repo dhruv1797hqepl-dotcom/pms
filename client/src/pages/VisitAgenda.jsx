@@ -464,7 +464,6 @@ const VisitAgenda = () => {
                         {/* Center Column: Core Info */}
                         <div className="flex flex-col items-center text-center gap-6">
                             <div className="w-full">
-                                <span className="text-[10px] font-black text-[#4f7fb3] uppercase tracking-[0.3em] mb-1 block">Company Name 🏢</span>
                                 <input
                                     type="text"
                                     value={companyName}
@@ -530,13 +529,13 @@ const VisitAgenda = () => {
                             <thead>
                                 <tr className="bg-[#4f7fb3] text-white text-[10px] md:text-xs uppercase tracking-widest text-left">
                                     <th className="p-5 w-16 text-center font-black border-r border-white/20">Sr. No.</th>
-                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Activity 📝</th>
-                                    <th className="p-5 w-40 font-black border-r border-white/20">Tentative Time ⏰</th>
-                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Output 📤</th>
-                                    <th className="p-5 w-1/5 font-black border-r border-white/20">HQEPL Representative 👤</th>
-                                    <th className="p-5 w-48 font-black border-r border-white/20">Required Team Members 👥</th>
-                                    <th className="p-5 font-black">Tasks to be completed by Team Prior to Visit ✅</th>
-                                    <th className="p-5 w-12"></th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Activity</th>
+                                    <th className="p-5 w-40 font-black border-r border-white/20">Tentative Time</th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">Output</th>
+                                    <th className="p-5 w-1/5 font-black border-r border-white/20">HQEPL Representative</th>
+                                    <th className="p-5 w-48 font-black border-r border-white/20">Required Team Members</th>
+                                    <th className="p-5 font-black border-none">Tasks to be completed by Team Prior to Visit</th>
+                                    <th className="p-5 w-12 border-none"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -558,20 +557,14 @@ const VisitAgenda = () => {
                                         </td>
                                         <td className="p-3 border-r border-slate-100">
                                             <div className="flex flex-col gap-2 p-1">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase">Start</span>
-                                                    <TimeSelector
-                                                        value={row.startTime || "09:00"}
-                                                        onChange={(val) => updateRow(index, "startTime", val)}
-                                                    />
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase">End</span>
-                                                    <TimeSelector
-                                                        value={row.endTime || "10:00"}
-                                                        onChange={(val) => updateRow(index, "endTime", val)}
-                                                    />
-                                                </div>
+                                                <TimeSelector
+                                                    value={row.startTime || "09:00"}
+                                                    onChange={(val) => updateRow(index, "startTime", val)}
+                                                />
+                                                <TimeSelector
+                                                    value={row.endTime || "10:00"}
+                                                    onChange={(val) => updateRow(index, "endTime", val)}
+                                                />
                                             </div>
                                         </td>
                                         <td className="p-0 border-r border-slate-100">
