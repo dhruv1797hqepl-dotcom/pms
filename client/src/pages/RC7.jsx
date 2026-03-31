@@ -46,23 +46,19 @@ const formatDateTime = (isoString) => {
   });
 };
 
-// Saturday section shows Mon-Sat (e.g. Mar 30 - Apr 4 if today is Mon Mar 30)
+// Saturday section shows Mon-Sat of the current week (e.g. if today is Tuesday, shows Monday-Saturday)
 const getSatWindow = (today) => {
   const d = new Date(today);
   const dayOfWeek = d.getDay();
 
-  // If today is Tuesday, Wednesday, or Thursday, we plan for NEXT week's Monday.
-  // If today is Friday, Saturday, Sunday, or Monday, we plan for THIS/Upcoming window's Monday.
-  let mon;
-  if (dayOfWeek >= 2 && dayOfWeek <= 4) {
-    const diff = (8 - dayOfWeek) % 7 || 7;
-    mon = new Date(d);
-    mon.setDate(d.getDate() + diff);
-  } else {
-    const diff = (dayOfWeek === 1) ? 0 : (8 - dayOfWeek) % 7;
-    mon = new Date(d);
-    mon.setDate(d.getDate() + diff);
-  }
+  // Calculate days back to Monday of current week
+  // If today is Sunday (0), go back 6 days to Monday
+  // If today is Monday (1), go back 0 days (today is Monday)
+  // If today is Tuesday (2), go back 1 day to Monday
+  // etc.
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - daysToMonday);
 
   return Array.from({ length: 6 }, (_, i) => {
     const date = new Date(mon);
@@ -762,8 +758,8 @@ const RC7 = () => {
       const currentCell = normalizeCell(empPlan[dateKey]);
       const isHoliday = String(currentCell.location || '').toLowerCase() === 'holiday';
 
-      // Wednesday cell in Saturday sheet should start from Wednesday sheet overlap.
-      if (dayNum === 3) {
+      // Monday-Tuesday-Wednesday cells in Saturday sheet should prefill from previous Wednesday sheet overlap (Mon-Tue-Wed section).
+      if (dayNum >= 1 && dayNum <= 3) {
         const wedCell = normalizeCell(overlapWedPlan?.[effectiveEmployeeId]?.[dateKey]);
         if (hasCellData(wedCell) && !hasCellData(currentCell)) {
           empPlan[dateKey] = clonePrefillCell(wedCell);
@@ -772,7 +768,7 @@ const RC7 = () => {
         }
       }
 
-      // Remaining Saturday sheet days (and Wednesday fallback) prefill from MCTC automatically.
+      // Remaining Saturday sheet days (Thursday-Friday-Saturday) prefill from MCTC automatically.
       if (isHoliday) {
         return;
       }
