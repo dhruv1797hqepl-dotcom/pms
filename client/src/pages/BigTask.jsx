@@ -714,12 +714,30 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             const generatedAt = new Date().toLocaleString('en-GB');
             const projectName = project?.name || project?.title || 'Project';
 
+            const brandOrange = [245, 138, 75];
+            const slate900 = [15, 23, 42];
+            const slate700 = [51, 65, 85];
+            const slate600 = [71, 85, 105];
+            const slate100 = [241, 245, 249];
+            const border = [203, 213, 225];
+
             doc.setFontSize(16);
-            doc.text('4T + KPI Report', 40, 36);
+            doc.setTextColor(...slate900);
+            doc.text('4T + KPI Report', pageWidth / 2, 34, { align: 'center' });
             doc.setFontSize(11);
+            doc.setTextColor(...slate700);
             doc.text(`Project: ${projectName}`, 40, 56);
             doc.text(`Timeline: ${project?.start_date || '-'} to ${project?.end_date || '-'}`, 40, 72);
             doc.text(`Generated: ${generatedAt}`, 40, 88);
+
+            doc.setFillColor(...brandOrange);
+            doc.roundedRect(40, 102, 26, 18, 4, 4, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(11);
+            doc.text('⚡', 53, 115, { align: 'center' });
+            doc.setTextColor(...slate900);
+            doc.setFontSize(14);
+            doc.text('TASKS', 74, 116);
 
             const taskHead = [
                 'Sr.',
@@ -745,21 +763,75 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 ])
                 : [['-', 'No tasks available', '-', '-', ...timelineColumns.map(() => ''), '-']];
 
+            const timelineStartIndex = 4;
+            const statusColIndex = taskHead.length - 1;
+            const timelineEndIndex = statusColIndex - 1;
+
             autoTable(doc, {
                 head: [taskHead],
                 body: taskBody,
-                startY: 108,
+                startY: 124,
                 theme: 'grid',
-                styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
-                headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85] },
+                styles: {
+                    fontSize: 7,
+                    cellPadding: 3,
+                    overflow: 'linebreak',
+                    textColor: slate700,
+                    lineColor: border,
+                    lineWidth: 0.5,
+                },
+                headStyles: {
+                    fillColor: slate100,
+                    textColor: slate600,
+                    fontStyle: 'bold',
+                    halign: 'center',
+                    valign: 'middle',
+                },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                bodyStyles: { valign: 'middle' },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 28 },
+                    1: { halign: 'left', cellWidth: 170 },
+                    2: { halign: 'center', cellWidth: 34 },
+                    3: { halign: 'center', cellWidth: 58 },
+                    [statusColIndex]: { halign: 'center', cellWidth: 62 },
+                },
+                didParseCell: (hookData) => {
+                    const { section, column, cell } = hookData;
+                    if (section !== 'body') return;
+
+                    if (column.index >= timelineStartIndex && column.index <= timelineEndIndex && cell.raw) {
+                        const isCompleted = String(cell.raw).toLowerCase() === 'completed';
+                        cell.styles.fillColor = isCompleted ? [16, 185, 129] : [59, 130, 246];
+                        cell.styles.textColor = [255, 255, 255];
+                        cell.styles.halign = 'center';
+                        cell.styles.fontStyle = 'bold';
+                    }
+
+                    if (column.index === statusColIndex && cell.raw) {
+                        const isCompleted = String(cell.raw).toLowerCase() === 'completed';
+                        cell.styles.fillColor = isCompleted ? [220, 252, 231] : [219, 234, 254];
+                        cell.styles.textColor = isCompleted ? [6, 95, 70] : [30, 64, 175];
+                        cell.styles.fontStyle = 'bold';
+                        cell.styles.halign = 'center';
+                    }
+                },
                 margin: { left: 24, right: 24 },
             });
 
             doc.addPage('a4', 'landscape');
-            doc.setFontSize(15);
-            doc.text('Key Performance Indicators (KPIs)', 40, 36);
+            doc.setFillColor(...slate900);
+            doc.roundedRect(40, 26, 26, 18, 4, 4, 'F');
+            doc.setTextColor(255, 255, 255);
             doc.setFontSize(10);
-            doc.text(`Project: ${projectName}`, 40, 52);
+            doc.text('◎', 53, 39, { align: 'center' });
+            doc.setTextColor(...slate900);
+            doc.setFontSize(14);
+            doc.text('KEY PERFORMANCE INDICATORS (KPIS)', 74, 40);
+            doc.setFontSize(10);
+            doc.setTextColor(...slate700);
+            doc.text(`Project: ${projectName}`, 40, 56);
+            doc.text(`Generated: ${generatedAt}`, 40, 70);
 
             const kpiHead = [
                 'Sr. No.',
@@ -782,10 +854,40 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             autoTable(doc, {
                 head: [kpiHead],
                 body: kpiBody,
-                startY: 68,
+                startY: 82,
                 theme: 'grid',
-                styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
-                headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85] },
+                styles: {
+                    fontSize: 7,
+                    cellPadding: 3,
+                    overflow: 'linebreak',
+                    textColor: slate700,
+                    lineColor: border,
+                    lineWidth: 0.5,
+                },
+                headStyles: {
+                    fillColor: slate100,
+                    textColor: slate600,
+                    fontStyle: 'bold',
+                    halign: 'center',
+                    valign: 'middle',
+                },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 36 },
+                    1: { halign: 'left', cellWidth: 180 },
+                    2: { halign: 'center', cellWidth: 58 },
+                    3: { halign: 'center', cellWidth: 58 },
+                },
+                didParseCell: (hookData) => {
+                    const { section, column, cell } = hookData;
+                    if (section !== 'body') return;
+
+                    if (column.index === 3 && cell.raw) {
+                        cell.styles.fillColor = [220, 252, 231];
+                        cell.styles.textColor = [6, 95, 70];
+                        cell.styles.fontStyle = 'bold';
+                    }
+                },
                 margin: { left: 24, right: 24 },
             });
 
