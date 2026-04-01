@@ -88,6 +88,7 @@ const DDTMETable = () => {
   const [clientEmployees, setClientEmployees] = useState([]);
   const [sgmName, setSgmName] = useState(null); // SGM name from project
   const [sgmId, setSgmId] = useState(null); // SGM user ID for hours mapping
+  const [mlsLabel, setMlsLabel] = useState('MLS'); // MLS role shortform label
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
   const [userRole, setUserRole] = useState(null); // To determine if SGM or Employee
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -176,6 +177,19 @@ const DDTMETable = () => {
           // Reset per-client derived SGM so stale values don't leak across clients/months.
           setSgmName(null);
           setSgmId(null);
+          setMlsLabel('MLS');
+
+          // Fetch MLS user shortform from HQEPL list
+          try {
+            const hqeplRes = await api.get('hqepl/');
+            const hqeplUsers = Array.isArray(hqeplRes.data) ? hqeplRes.data : (hqeplRes.data?.results || []);
+            const mlsUser = hqeplUsers.find((u) => String(u.role || '').toUpperCase() === 'MLS');
+            if (mlsUser) {
+              setMlsLabel(mlsUser.shortform || mlsUser.username || mlsUser.full_name || 'MLS');
+            }
+          } catch (mlsErr) {
+            console.warn('Failed to fetch MLS shortform:', mlsErr);
+          }
 
           let resolvedSgmName = null;
           let resolvedSgmId = null;
@@ -431,7 +445,7 @@ const DDTMETable = () => {
     : [];
 
   const tablePeople = [
-    { id: mlsPersonKey, label: 'MLS' },
+    { id: mlsPersonKey, label: mlsLabel },
     ...(sgmName ? [{ id: sgmPersonKey, label: sgmName }] : []),
     ...employeePeople
   ];

@@ -165,7 +165,7 @@ class HQEPLListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ('id', 'full_name', 'email')
+        fields = ('id', 'full_name', 'email', 'shortform', 'role', 'first_name', 'last_name', 'username')
 
     def get_full_name(self, obj):
         name = f"{obj.first_name} {obj.last_name}".strip()

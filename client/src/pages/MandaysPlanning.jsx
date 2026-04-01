@@ -17,7 +17,11 @@ const unwrapList = (payload) => {
 
 const getEmployeeDisplayName = (employee) => {
   if (employee?.is_mls) {
-    return 'MLS';
+    return employee.shortform || employee.username || employee.full_name || 'MLS';
+  }
+
+  if (employee.shortform) {
+    return employee.shortform;
   }
 
   if (employee.username) {
@@ -73,6 +77,9 @@ const isMlsIdentity = (person) => {
   if (!person) return false;
 
   if (person.is_mls) return true;
+
+  // Check role field directly for MLS role
+  if (String(person.role || '').toUpperCase() === 'MLS') return true;
 
   const candidates = [
     person.shortform,
@@ -131,7 +138,7 @@ const MandaysPlanning = () => {
   useEffect(() => {
     const fetchCurrentProfile = async () => {
       const role = (localStorage.getItem('role') || '').toUpperCase();
-      if (!['SGM', 'EMPLOYEE'].includes(role)) return;
+      if (!['SGM', 'EMPLOYEE', 'MLS'].includes(role)) return;
 
       let profileData = null;
       let lastError = null;
@@ -169,6 +176,7 @@ const MandaysPlanning = () => {
     if (!currentUser) return '';
     const fullName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim();
     return (
+      currentUser.shortform ||
       currentUser.username ||
       fullName ||
       currentUser.full_name ||
@@ -271,6 +279,7 @@ const MandaysPlanning = () => {
 
                 employeeMap.set(key, {
                   ...existing,
+                  is_mls: true,
                   role: normalizeRole(mlsUser.role) || 'HQEPL',
                   first_name: existing.first_name || mlsUser.first_name || '',
                   last_name: existing.last_name || mlsUser.last_name || '',

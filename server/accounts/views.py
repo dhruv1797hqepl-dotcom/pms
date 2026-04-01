@@ -114,7 +114,7 @@ class HQEPLUserListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return CustomUser.objects.filter(role=CustomUser.HQEPL, is_active=True).order_by('first_name', 'last_name')
+        return CustomUser.objects.filter(role__in=[CustomUser.HQEPL, CustomUser.MLS], is_active=True).order_by('first_name', 'last_name')
 
 
 class AssignableUserListView(generics.ListAPIView):
