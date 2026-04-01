@@ -562,7 +562,7 @@ const RC7 = () => {
   const wedDirtyRef = useRef(wedDirty);
   const satSubmittedRef = useRef(satSubmitted);
   const wedSubmittedRef = useRef(wedSubmitted);
-  const effectiveEmployeeIdRef = useRef(effectiveEmployeeId);
+  const effectiveEmployeeIdRef = useRef('');
   const isMemberViewRef = useRef(isMemberView);
   const satDatesRef = useRef(satDates);
   const wedDatesRef = useRef(wedDates);
