@@ -177,7 +177,7 @@ const Sidebar = () => {
       icon: <Building2 size={20} />,
       path: "/company-dashboard",
       color: "hover:text-blue-400",
-      roles: ['HQEPL']
+      roles: ['HQEPL', 'MLS']
     },
     {
       label: "Dashboard",
