@@ -114,15 +114,37 @@ class RC7PlanningView(APIView):
         for plan in plans:
             emp_id = str(plan.employee_id)
             date_key = str(plan.date)
+            deliverable_items = [d.strip() for d in plan.deliverable.split('\n') if d.strip()]
+            raw_step_hours = plan.deliverable_hours or []
+
+            if isinstance(raw_step_hours, list):
+                step_hours = []
+                for value in raw_step_hours:
+                    try:
+                        parsed_value = float(value)
+                    except (TypeError, ValueError):
+                        parsed_value = 0
+                    step_hours.append(max(0.0, round(parsed_value, 2)))
+            else:
+                step_hours = []
+
+            # Backward compatibility: old rows may only have one aggregated estimated_hours value.
+            if not step_hours and float(plan.estimated_hours or 0) > 0 and deliverable_items:
+                step_hours = [round(float(plan.estimated_hours), 2)]
+
+            if len(step_hours) < len(deliverable_items):
+                step_hours.extend([0.0] * (len(deliverable_items) - len(step_hours)))
+            elif len(step_hours) > len(deliverable_items):
+                step_hours = step_hours[:len(deliverable_items)]
             
             if emp_id not in response_data:
                 response_data[emp_id] = {}
                 
             response_data[emp_id][date_key] = {
                 "location": plan.location,
-                "deliverables": [d.strip() for d in plan.deliverable.split('\n') if d.strip()],
+                "deliverables": deliverable_items,
                 "deliverable": plan.deliverable,
-                "deliverable_hours": plan.deliverable_hours or [],
+                "deliverable_hours": step_hours,
                 "estimated_hours": float(plan.estimated_hours or 0),
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None
             }
