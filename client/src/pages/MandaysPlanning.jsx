@@ -20,21 +20,21 @@ const getEmployeeDisplayName = (employee) => {
     return employee.shortform || employee.username || employee.full_name || 'MLS';
   }
 
-  if (employee.shortform) {
-    return employee.shortform;
-  }
-
-  if (employee.username) {
-    return employee.username;
-  }
-
   const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
   if (fullName) {
     return fullName;
   }
 
+  if (employee.full_name) {
+    return employee.full_name;
+  }
+
   if (employee.employee_name) {
     return employee.employee_name;
+  }
+
+  if (employee.username) {
+    return employee.username;
   }
 
   if (employee.email) {
