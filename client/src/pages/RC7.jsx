@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { CalendarRange, Loader2, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -556,6 +556,57 @@ const RC7 = () => {
   const [satPrefillDone, setSatPrefillDone] = useState(false);
   const [wedPrefillDone, setWedPrefillDone] = useState(false);
 
+  const satPlanRef = useRef(satPlan);
+  const wedPlanRef = useRef(wedPlan);
+  const satDirtyRef = useRef(satDirty);
+  const wedDirtyRef = useRef(wedDirty);
+  const satSubmittedRef = useRef(satSubmitted);
+  const wedSubmittedRef = useRef(wedSubmitted);
+  const effectiveEmployeeIdRef = useRef(effectiveEmployeeId);
+  const isMemberViewRef = useRef(isMemberView);
+  const satDatesRef = useRef(satDates);
+  const wedDatesRef = useRef(wedDates);
+
+  useEffect(() => {
+    satPlanRef.current = satPlan;
+  }, [satPlan]);
+
+  useEffect(() => {
+    wedPlanRef.current = wedPlan;
+  }, [wedPlan]);
+
+  useEffect(() => {
+    satDirtyRef.current = satDirty;
+  }, [satDirty]);
+
+  useEffect(() => {
+    wedDirtyRef.current = wedDirty;
+  }, [wedDirty]);
+
+  useEffect(() => {
+    satSubmittedRef.current = satSubmitted;
+  }, [satSubmitted]);
+
+  useEffect(() => {
+    wedSubmittedRef.current = wedSubmitted;
+  }, [wedSubmitted]);
+
+  useEffect(() => {
+    effectiveEmployeeIdRef.current = effectiveEmployeeId;
+  }, [effectiveEmployeeId]);
+
+  useEffect(() => {
+    isMemberViewRef.current = isMemberView;
+  }, [isMemberView]);
+
+  useEffect(() => {
+    satDatesRef.current = satDates;
+  }, [satDates]);
+
+  useEffect(() => {
+    wedDatesRef.current = wedDates;
+  }, [wedDates]);
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -978,6 +1029,56 @@ const RC7 = () => {
   const satHandlers = createHandlers(setSatPlan, setSatDirty);
   const wedHandlers = createHandlers(setWedPlan, setWedDirty);
 
+  const flushPendingChanges = () => {
+    const userId = effectiveEmployeeIdRef.current;
+    if (!userId || isMemberViewRef.current) {
+      return;
+    }
+
+    if (satDirtyRef.current && !satSubmittedRef.current) {
+      const keys = satDatesRef.current.map(toDateKey);
+      const satEmployeePlan = serializeEmployeePlan((satPlanRef.current || {})[userId] || {});
+      api.post('rc7/planning/', {
+        type: 'sat',
+        start: keys[0],
+        end: keys[keys.length - 1],
+        plan: { [userId]: satEmployeePlan },
+      }).catch((error) => {
+        console.error('Failed to flush Saturday RC7 changes:', error);
+      });
+    }
+
+    if (wedDirtyRef.current && !wedSubmittedRef.current) {
+      const keys = wedDatesRef.current.map(toDateKey);
+      const wedEmployeePlan = serializeEmployeePlan((wedPlanRef.current || {})[userId] || {});
+      api.post('rc7/planning/', {
+        type: 'wed',
+        start: keys[0],
+        end: keys[keys.length - 1],
+        plan: { [userId]: wedEmployeePlan },
+      }).catch((error) => {
+        console.error('Failed to flush Wednesday RC7 changes:', error);
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingChanges();
+      }
+    };
+
+    window.addEventListener('beforeunload', flushPendingChanges);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', flushPendingChanges);
+      flushPendingChanges();
+    };
+  }, []);
+
   useEffect(() => {
     if (
       loading
@@ -1061,12 +1162,12 @@ const RC7 = () => {
         });
 
         setSatSaved(true);
+        setSatDirty(false);
         setTimeout(() => setSatSaved(false), 2000);
       } catch (error) {
         console.error('Failed to autosave Saturday plan:', error);
       } finally {
         setSavingSat(false);
-        setSatDirty(false);
       }
     }, AUTOSAVE_DELAY_MS);
 
@@ -1157,6 +1258,7 @@ const RC7 = () => {
         });
 
         setWedSaved(true);
+        setWedDirty(false);
         setTimeout(() => setWedSaved(false), 2000);
       } catch (error) {
         console.error('Failed to autosave Wednesday plan:', error);
@@ -1165,7 +1267,6 @@ const RC7 = () => {
         }
       } finally {
         setSavingWed(false);
-        setWedDirty(false);
       }
     }, AUTOSAVE_DELAY_MS);
 

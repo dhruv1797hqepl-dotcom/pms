@@ -10,6 +10,64 @@ import {
   ChevronLeft, ChevronRight
 } from "lucide-react";
 
+const parseDateOnly = (value) => {
+  if (!value) return null;
+  const raw = String(value).slice(0, 10);
+  const [y, m, d] = raw.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+const normalizeStatusValue = (value) => String(value || "").trim().toLowerCase();
+
+const getEffectiveTaskStatus = (task) => {
+  const status = normalizeStatusValue(task?.status);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const target = parseDateOnly(task?.target_date || task?.targetDate);
+  const completion = parseDateOnly(task?.completion_date || task?.completionDate);
+
+  if (completion) {
+    if (target && completion > target) return "delay_completion";
+    return "on_time";
+  }
+
+  if (status.includes("overdue") || status === "over_due") return "over_due";
+  if (target && target < today) return "over_due";
+  if (status.includes("delay") || status.includes("late")) return "delay_completion";
+  if (status.includes("on time") || status === "on_time" || status.includes("completed")) return "on_time";
+  return "in_progress";
+};
+
+const calculateTaskATS = (task) => {
+  const status = getEffectiveTaskStatus(task);
+
+  if (status === "in_progress") return null;
+  if (status === "over_due") return 0;
+
+  const start = parseDateOnly(task?.start_date || task?.startDate);
+  const target = parseDateOnly(task?.target_date || task?.targetDate);
+  const completion = parseDateOnly(task?.completion_date || task?.completionDate);
+
+  if (!start || !target || !completion) {
+    return status === "on_time" ? 100 : 0;
+  }
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const planned = Math.round((target.getTime() - start.getTime()) / dayMs);
+  const actual = Math.round((completion.getTime() - start.getTime()) / dayMs);
+  const round2 = (value) => Math.round(Math.max(0, value) * 100) / 100;
+
+  if (completion <= target) return 100;
+  if (actual === 0) return 100;
+  if (start.getTime() === target.getTime()) {
+    return round2((1 / (actual + 1)) * 100);
+  }
+  return round2((planned / actual) * 100);
+};
+
 const EmployeeDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -899,22 +957,15 @@ const EmployeeDashboard = () => {
   };
 
   const isDelayedTask = (task) => {
-    const normalizeText = (value) => String(value || "").trim().toLowerCase();
-    const status = normalizeText(task.status);
-    return status.includes("delay") || status.includes("late");
+    return getEffectiveTaskStatus(task) === "delay_completion";
   };
 
   const isOverdueTask = (task) => {
-    if (!task.target_date || task.completion_date) return false;
-    const targetDate = new Date(task.target_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    targetDate.setHours(0, 0, 0, 0);
-    return targetDate < today;
+    return getEffectiveTaskStatus(task) === "over_due";
   };
 
   const isInProgressTask = (task) => {
-    return !task.completion_date && !isOverdueTask(task) && !isDelayedTask(task);
+    return getEffectiveTaskStatus(task) === "in_progress";
   };
 
   const isTodaysTask = (task) => {
@@ -955,35 +1006,22 @@ const EmployeeDashboard = () => {
     const activeTasks = filterTasksByClient(myTasks.filter(isTaskInDateRange));
     const doneTasks = filterTasksByClient(completedTasks.filter(isTaskInDateRange));
 
-    const isDelayedStatus = (task) => {
-      const status = normalizeText(task.status);
-      return status.includes("delay") || status.includes("late");
-    };
+    const allTasks = [...activeTasks, ...doneTasks];
+    const delayedCount = allTasks.filter((task) => getEffectiveTaskStatus(task) === "delay_completion").length;
+    const overdueCount = allTasks.filter((task) => getEffectiveTaskStatus(task) === "over_due").length;
+    const inProgressCount = allTasks.filter((task) => getEffectiveTaskStatus(task) === "in_progress").length;
+    const onTimeCount = allTasks.filter((task) => getEffectiveTaskStatus(task) === "on_time").length;
 
-    const isOverdueTask = (task) => {
-      if (!task.target_date) return false;
-      const targetDate = new Date(task.target_date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      targetDate.setHours(0, 0, 0, 0);
-      return targetDate < today;
-    };
+    const totalTasks = allTasks.length;
+    const atsDenominator = totalTasks - inProgressCount;
+    const delayedAtsSum = allTasks
+      .filter((task) => getEffectiveTaskStatus(task) === "delay_completion")
+      .reduce((sum, task) => sum + (calculateTaskATS(task) ?? 0), 0);
 
-    const delayedCount = [...activeTasks, ...doneTasks].filter(isDelayedStatus).length;
-    const overdueCount = activeTasks.filter((task) => !isDelayedStatus(task) && isOverdueTask(task)).length;
-    const inProgressCount = activeTasks.filter((task) => !isDelayedStatus(task) && !isOverdueTask(task)).length;
+    const atsScore = atsDenominator > 0
+      ? `${Math.round(((onTimeCount * 100) + delayedAtsSum) / atsDenominator)}%`
+      : "0%";
 
-    const onTimeCount = doneTasks.filter((task) => {
-      if (!task.target_date || !task.completion_date) return false;
-      const targetDate = new Date(task.target_date);
-      const completedDate = new Date(task.completion_date);
-      targetDate.setHours(0, 0, 0, 0);
-      completedDate.setHours(0, 0, 0, 0);
-      return completedDate <= targetDate;
-    }).length;
-
-    const totalTasks = activeTasks.length + doneTasks.length;
-    const atsScore = totalTasks > 0 ? `${Math.round((doneTasks.length / totalTasks) * 100)}%` : "0%";
     const otcDenominator = totalTasks - inProgressCount;
     const otcScore = otcDenominator > 0 ? `${((onTimeCount / otcDenominator) * 100).toFixed(1)}%` : "0%";
 
@@ -3093,33 +3131,11 @@ const Table = ({
   };
 
   const getTaskDisplayStatus = (task) => {
-    const normalizedStatus = String(task?.status || '').trim().toLowerCase();
+    const effectiveStatus = getEffectiveTaskStatus(task);
 
-    if (task?.completion_date || normalizedStatus.includes('completed')) {
-      return 'Completed';
-    }
-
-    if (normalizedStatus.includes('delay') || normalizedStatus.includes('late')) {
-      return 'Delayed';
-    }
-
-    if (task?.target_date) {
-      const targetDate = new Date(task.target_date);
-      if (!Number.isNaN(targetDate.getTime())) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        targetDate.setHours(0, 0, 0, 0);
-
-        if (targetDate < today) {
-          return 'Overdue';
-        }
-      }
-    }
-
-    if (normalizedStatus.includes('on time')) {
-      return 'On Time';
-    }
-
+    if (effectiveStatus === 'delay_completion') return 'Delayed';
+    if (effectiveStatus === 'over_due') return 'Overdue';
+    if (effectiveStatus === 'on_time') return 'Completed';
     return 'In Progress';
   };
 

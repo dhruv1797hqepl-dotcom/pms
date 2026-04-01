@@ -49,6 +49,37 @@ const ActionPlanDashboard = () => {
   const [internalIds, setInternalIds] = useState([]);
   const [externalIds, setExternalIds] = useState([]);
 
+  const parseDateOnly = (dateValue) => {
+    if (!dateValue) return null;
+    const raw = String(dateValue).slice(0, 10);
+    const [y, m, d] = raw.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const localDate = new Date(y, m - 1, d);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  };
+
+  const normalizeStatus = (status) => String(status || '').trim().toLowerCase();
+
+  const getEffectiveStatus = (task) => {
+    const rawStatus = normalizeStatus(task?.status);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const target = parseDateOnly(task?.target_date);
+    const completion = parseDateOnly(task?.completion_date);
+
+    if (completion) {
+      if (target && completion > target) return 'delay_completion';
+      return 'on_time';
+    }
+
+    if (rawStatus === 'over_due' || rawStatus === 'overdue') return 'over_due';
+    if (target && target < today) return 'over_due';
+    if (rawStatus === 'delay_completion' || rawStatus === 'delayed') return 'delay_completion';
+    if (rawStatus === 'on_time' || rawStatus === 'completed') return 'on_time';
+    return 'in_progress';
+  };
+
   const fetchCurrentUser = async () => {
     try {
       const { data } = await api.get('/me/');
@@ -281,11 +312,13 @@ const ActionPlanDashboard = () => {
     try {
       const formData = new FormData();
 
-      const today = new Date().toISOString().split('T')[0];
-      const target = selectedTask.target_date;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const todayDate = parseDateOnly(today);
+      const targetDate = parseDateOnly(selectedTask.target_date);
 
       let status = "on_time";
-      if (today > target) status = "delay_completion";
+      if (todayDate && targetDate && todayDate > targetDate) status = "delay_completion";
 
       formData.append("status", status);
       formData.append("completion_date", today);
@@ -332,24 +365,25 @@ const ActionPlanDashboard = () => {
     }
     
     return true;
-  }).sort((a, b) => {
+  }).map((task) => ({ ...task, effective_status: getEffectiveStatus(task) }))
+  .sort((a, b) => {
     // Sort Completed tasks to the bottom
-    const isCompleteA = ['on_time', 'delay_completion'].includes(a.status);
-    const isCompleteB = ['on_time', 'delay_completion'].includes(b.status);
+    const isCompleteA = ['on_time', 'delay_completion'].includes(a.effective_status);
+    const isCompleteB = ['on_time', 'delay_completion'].includes(b.effective_status);
 
     if (isCompleteA !== isCompleteB) {
       return isCompleteA ? 1 : -1;
     }
 
     // Sort Overdue to the top
-    if (a.status === 'over_due' && b.status !== 'over_due') return -1;
-    if (a.status !== 'over_due' && b.status === 'over_due') return 1;
+    if (a.effective_status === 'over_due' && b.effective_status !== 'over_due') return -1;
+    if (a.effective_status !== 'over_due' && b.effective_status === 'over_due') return 1;
 
     return 0;
   });
 
   // Derived Chart Data
-  const getStatusCount = (status) => filteredTasks.filter(t => t.status === status).length;
+  const getStatusCount = (status) => filteredTasks.filter(t => t.effective_status === status).length;
 
   // KPIs
   const totalTasks = filteredTasks.length;
@@ -360,7 +394,7 @@ const ActionPlanDashboard = () => {
 
   // Percentage ATS Score Logic
   const calculateTaskATS = (task) => {
-    const status = String(task?.status || '').trim().toLowerCase();
+    const status = getEffectiveStatus(task);
 
     // 1) In Progress => ignored in aggregate
     if (status === 'in_progress') return null;
@@ -412,7 +446,7 @@ const ActionPlanDashboard = () => {
   // Efficiency now follows the exact ATS aggregation rule:
   // (on_time * 100 + delayed ATS sum + overdue 0) / (total - in_progress)
   const delayedAtsSum = filteredTasks
-    .filter((task) => task.status === 'delay_completion')
+    .filter((task) => task.effective_status === 'delay_completion')
     .reduce((sum, task) => {
       const value = calculateTaskATS(task);
       return sum + (value ?? 0);
@@ -605,7 +639,7 @@ const ActionPlanDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {filteredTasks.map((item, idx) => {
-                      const normalizedStatus = String(item.status || '').toLowerCase();
+                      const normalizedStatus = item.effective_status;
                       const isCompleted = Boolean(item.completion_date) || ['on_time', 'delay_completion', 'completed'].includes(normalizedStatus);
                       const isMyTask = Number(item.assigned_to) === Number(currentUser?.id);
                       const canComplete = isMyTask && !isCompleted;
@@ -669,14 +703,14 @@ const ActionPlanDashboard = () => {
                           <div className="flex items-center justify-center gap-2">
                             <span className={`inline-block px-2 py-1 rounded-md text-[10px] font-black uppercase ${activeFilter === 'MY'
                               ? (isCompleted ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600')
-                              : (item.status === 'on_time' ? 'bg-green-100 text-green-600' :
-                                item.status === 'delay_completion' ? 'bg-yellow-100 text-yellow-600' :
-                                  item.status === 'over_due' ? 'bg-red-100 text-red-600' :
+                              : (normalizedStatus === 'on_time' ? 'bg-green-100 text-green-600' :
+                                normalizedStatus === 'delay_completion' ? 'bg-yellow-100 text-yellow-600' :
+                                  normalizedStatus === 'over_due' ? 'bg-red-100 text-red-600' :
                                     'bg-blue-100 text-blue-600')
                               }`}>
                               {activeFilter === 'MY'
                                 ? (isCompleted ? 'COMPLETED' : 'IN PROGRESS')
-                                : item.status.replace('_', ' ')}
+                                : normalizedStatus.replace('_', ' ')}
                             </span>
                           </div>
                         </td>
