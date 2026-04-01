@@ -16,10 +16,6 @@ const unwrapList = (payload) => {
 };
 
 const getEmployeeDisplayName = (employee) => {
-  if (employee?.is_mls) {
-    return employee.shortform || employee.username || employee.full_name || 'MLS';
-  }
-
   const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
   if (fullName) {
     return fullName;
@@ -29,8 +25,16 @@ const getEmployeeDisplayName = (employee) => {
     return employee.full_name;
   }
 
+  if (employee?.is_mls) {
+    return employee.shortform || employee.username || 'MLS';
+  }
+
   if (employee.employee_name) {
     return employee.employee_name;
+  }
+
+  if (employee.shortform) {
+    return employee.shortform;
   }
 
   if (employee.username) {
@@ -97,10 +101,11 @@ const getRowPriority = (person) => {
   if (isMlsIdentity(person)) return 0;
 
   const role = normalizeRole(person?.role);
-  if (role === 'SGM') return 1;
-  if (role === 'EMPLOYEE') return 2;
+  if (role === 'HQEPL') return 1;
+  if (role === 'SGM') return 2;
+  if (role === 'EMPLOYEE') return 3;
 
-  return 3;
+  return 4;
 };
 
 const MandaysPlanning = () => {
@@ -176,10 +181,10 @@ const MandaysPlanning = () => {
     if (!currentUser) return '';
     const fullName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim();
     return (
-      currentUser.shortform ||
-      currentUser.username ||
       fullName ||
       currentUser.full_name ||
+      currentUser.shortform ||
+      currentUser.username ||
       currentUser.employee_name ||
       currentUser.email ||
       ''
@@ -534,6 +539,13 @@ const MandaysPlanning = () => {
           });
         };
 
+        const hasAnyActivity = (employeeId) => {
+          return normalizedClients.some((client) => {
+            const matrix = nextHoursMatrix[`${employeeId}_${client.id}`];
+            return matrix && (parseHours(matrix.on) > 0 || parseHours(matrix.off) > 0);
+          });
+        };
+
         let mergedEmployees = [];
         let finalClients = normalizedClients;
 
@@ -566,8 +578,6 @@ const MandaysPlanning = () => {
             mergedEmployees = [selfRow];
           }
 
-          // Security rule: employee view must never fall back to another employee row.
-          // If self identity cannot be resolved, show no rows rather than another person's data.
           if (!currentUser) {
             mergedEmployees = [];
           }
@@ -596,32 +606,35 @@ const MandaysPlanning = () => {
             if (workedClientIds.size > 0) {
               finalClients = normalizedClients.filter((client) => workedClientIds.has(String(client.id)));
             } else {
-              // Employee has no worked clients, show all clients with empty matrix
               finalClients = normalizedClients;
             }
           }
         } else if (isSgm) {
           const selfId = String(currentUser?.id || '');
-          const mlsRows = baseEmployees
-            .filter((employee) => isMlsIdentity(employee))
-            .sort(byDisplayName);
-          const selfRows = baseEmployees.filter((employee) => String(employee.id || employee.user_id) === selfId);
+          const mlsRows = baseEmployees.filter((emp) => isMlsIdentity(emp)).sort(byDisplayName);
+          const selfRows = baseEmployees.filter((emp) => String(emp.id || emp.user_id) === selfId);
           const assignedEmployeeRows = baseEmployees
-            .filter((employee) => normalizeRole(employee.role || '') === 'EMPLOYEE')
+            .filter((emp) => normalizeRole(emp.role || '') === 'EMPLOYEE')
             .sort(byDisplayName);
 
           mergedEmployees = dedupeById([...mlsRows, ...selfRows, ...assignedEmployeeRows]);
         } else {
-          mergedEmployees = baseEmployees
-            .filter((employee) => {
-              const roleValue = normalizeRole(employee.role || '');
-              return isMlsIdentity(employee) || roleValue === 'SGM' || roleValue === 'EMPLOYEE';
+          // HQEPL / ADMIN View
+          const mlsRows = baseEmployees.filter((emp) => isMlsIdentity(emp)).sort(byDisplayName);
+          const hqeplRows = baseEmployees
+            .filter((emp) => {
+              const r = normalizeRole(emp.role || '');
+              return r === 'HQEPL' && !isMlsIdentity(emp) && hasAnyActivity(getResolvedUserId(emp));
             })
-            .sort((a, b) => {
-              const priorityDiff = getRowPriority(a) - getRowPriority(b);
-              if (priorityDiff !== 0) return priorityDiff;
-              return byDisplayName(a, b);
-            });
+            .sort(byDisplayName);
+          const sgmRows = baseEmployees
+            .filter((emp) => normalizeRole(emp.role || '') === 'SGM')
+            .sort(byDisplayName);
+          const employeeRows = baseEmployees
+            .filter((emp) => normalizeRole(emp.role || '') === 'EMPLOYEE')
+            .sort(byDisplayName);
+
+          mergedEmployees = dedupeById([...mlsRows, ...hqeplRows, ...sgmRows, ...employeeRows]);
         }
 
         setClients(finalClients);
