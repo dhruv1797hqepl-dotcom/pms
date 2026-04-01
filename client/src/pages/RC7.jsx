@@ -570,11 +570,17 @@ const RC7 = () => {
           resolvedUser = meRes.data || null;
           resolvedUserId = String(meRes.data?.id || '');
         } catch {
-          const storedId = String(localStorage.getItem('user_id') || '');
-          const storedUsername = String(localStorage.getItem('username') || '');
-          if (storedId) {
-            resolvedUser = { id: storedId, username: storedUsername };
-            resolvedUserId = storedId;
+          try {
+            const accountMeRes = await api.get('/accounts/me/');
+            resolvedUser = accountMeRes.data || null;
+            resolvedUserId = String(accountMeRes.data?.id || '');
+          } catch {
+            const storedId = String(localStorage.getItem('user_id') || '');
+            const storedUsername = String(localStorage.getItem('username') || '');
+            if (storedId) {
+              resolvedUser = { id: storedId, username: storedUsername };
+              resolvedUserId = storedId;
+            }
           }
         }
 
