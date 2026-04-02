@@ -109,7 +109,10 @@ CSRF_TRUSTED_ORIGINS = [
 # ]
 # CORS
 CORS_ALLOWED_ORIGINS = [
+    "https://projectmanagement-1-3vmg.onrender.com",
     "https://projectmanagement-2-pync.onrender.com",
+    "http://localhost:5173",  # Local development
+    "http://localhost:3000",  # Alternative local
 ]
 
 CORS_ALLOW_CREDENTIALS = True
