@@ -174,10 +174,10 @@ const StaffManagement = () => {
                 const response = await api.get('admin/users/');
 
                 /** * FILTER LOGIC: 
-                 * Only allow users with roles: hqepl, sgm, or employee.
+                 * Only allow users with roles: hqepl, mls, sgm, or employee.
                  * Case-insensitive check to avoid issues with backend formatting.
                  */
-                const allowedRoles = ['hqepl', 'sgm', 'employee'];
+                const allowedRoles = ['hqepl', 'mls', 'sgm', 'employee'];
                 const filteredByRole = response.data.filter(user =>
                     user.role && allowedRoles.includes(user.role.toLowerCase())
                 );
@@ -352,7 +352,7 @@ const StaffManagement = () => {
                         </div>
 
                         <div className="flex items-center gap-1 md:gap-1.5 bg-slate-100/50 p-1 md:p-1.5 rounded-xl md:rounded-2xl flex-wrap">
-                            {(isManagerMemberView ? ['All'] : ['All', 'HQEPL', 'SGM', 'Employee']).map((filter) => (
+                            {(isManagerMemberView ? ['All'] : ['All', 'HQEPL', 'MLS', 'SGM', 'Employee']).map((filter) => (
                                 <button
                                     key={filter}
                                     onClick={() => setActiveFilter(filter)}
@@ -449,7 +449,8 @@ const StaffManagement = () => {
                                                         <div className="flex items-center justify-between">
                                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</span>
                                                             <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg tracking-widest border
-                                                                ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                    ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                        member.role?.toLowerCase() === 'mls' ? 'bg-violet-50 text-violet-600 border-violet-100' :
                                                                     member.role?.toLowerCase() === 'sgm' ? 'bg-orange-50 text-[#F58A4B] border-orange-100' :
                                                                         'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                                                 {member.role || 'Employee'}
@@ -629,6 +630,7 @@ const StaffManagement = () => {
                                                     <td className="px-8 py-6">
                                                         <span className={`text-[9px] font-black uppercase px-4 py-2 rounded-xl tracking-widest border
                                                     ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                member.role?.toLowerCase() === 'mls' ? 'bg-violet-50 text-violet-600 border-violet-100' :
                                                                 member.role?.toLowerCase() === 'sgm' ? 'bg-orange-50 text-[#F58A4B] border-orange-100' :
                                                                     'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                                             {member.role || 'Employee'}
@@ -818,6 +820,7 @@ const StaffManagement = () => {
                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-sm font-bold focus:outline-none focus:border-[#F58A4B] transition-all appearance-none"
                                     >
                                         <option value="HQEPL">HQEPL</option>
+                                        <option value="MLS">MLS</option>
                                         <option value="SGM">SGM</option>
                                         <option value="EMPLOYEE">Employee</option>
                                     </select>
