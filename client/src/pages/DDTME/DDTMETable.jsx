@@ -91,6 +91,7 @@ const DDTMETable = () => {
   const [hqeplName, setHqeplName] = useState(null); // Project/client HQEPL name
   const [hqeplId, setHqeplId] = useState(null); // Project/client HQEPL user id
   const [mlsLabel, setMlsLabel] = useState('MLS'); // MLS role shortform label
+  const [mlsId, setMlsId] = useState(null); // MLS user id for stable column mapping
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
   const [userRole, setUserRole] = useState(null); // To determine if SGM or Employee
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -183,14 +184,24 @@ const DDTMETable = () => {
           setHqeplName(null);
           setHqeplId(null);
           setMlsLabel('MLS');
+          setMlsId(null);
+
+          let resolvedMlsId = null;
 
           // Fetch MLS user shortform from HQEPL list
           try {
             const hqeplRes = await api.get('hqepl/');
             const hqeplUsers = Array.isArray(hqeplRes.data) ? hqeplRes.data : (hqeplRes.data?.results || []);
-            const mlsUser = hqeplUsers.find((u) => String(u.role || '').toUpperCase() === 'MLS');
+            const mlsUser = hqeplUsers.find((u) => String(u.role || '').toUpperCase() === 'MLS')
+              || hqeplUsers.find((u) => {
+                const hints = [u?.shortform, u?.username, u?.full_name, u?.email]
+                  .map((value) => String(value || '').toLowerCase());
+                return hints.some((hint) => hint.includes('mls'));
+              });
             if (mlsUser) {
               setMlsLabel(mlsUser.shortform || mlsUser.username || mlsUser.full_name || 'MLS');
+              resolvedMlsId = mlsUser.id || null;
+              setMlsId(resolvedMlsId);
             }
           } catch (mlsErr) {
             console.warn('Failed to fetch MLS shortform:', mlsErr);
@@ -381,9 +392,12 @@ const DDTMETable = () => {
           entriesData.forEach(entry => {
             const taskId = entry.big_task || entry.additional_task;
             const typePrefix = entry.big_task ? 'big' : 'add';
-            const personKey = entry.person_key || (entry.employee_user_id
+            const rawPersonKey = entry.person_key || (entry.employee_user_id
               ? `u-${entry.employee_user_id}`
               : (entry.employee ? `e-${entry.employee}` : null));
+            const personKey = (rawPersonKey === 'mls' && resolvedMlsId)
+              ? `u-${resolvedMlsId}`
+              : rawPersonKey;
             if (!personKey) {
               return;
             }
@@ -466,7 +480,8 @@ const DDTMETable = () => {
       return;
     }
 
-    const key = `${type}_${taskId}_${empId}`;
+    const canonicalEmpId = (empId === 'mls' && mlsId) ? `u-${mlsId}` : empId;
+    const key = `${type}_${taskId}_${canonicalEmpId}`;
     setManDayData(prev => ({
       ...prev,
       [key]: {
@@ -477,13 +492,25 @@ const DDTMETable = () => {
   };
 
   const getHours = (taskId, empId, field, type = 'big') => {
-    return manDayData[`${type}_${taskId}_${empId}`]?.[field] ?? 0;
+    const mlsUserKey = mlsId ? `u-${mlsId}` : null;
+    const candidateIds = (empId === 'mls' || (mlsUserKey && empId === mlsUserKey))
+      ? [mlsUserKey, 'mls'].filter(Boolean)
+      : [empId];
+
+    for (const candidateId of candidateIds) {
+      const value = manDayData[`${type}_${taskId}_${candidateId}`]?.[field];
+      if (value != null) {
+        return value;
+      }
+    }
+
+    return 0;
   };
 
   const getUserId = (employee) => employee?.user_id ?? null;
   const toUserKey = (userId) => (userId ? `u-${userId}` : null);
 
-  const mlsPersonKey = 'mls';
+  const mlsPersonKey = mlsId ? `u-${mlsId}` : 'mls';
   const sgmPersonKey = toUserKey(sgmId) || 'sgm';
   const hqeplPersonKey = toUserKey(hqeplId) || 'hqepl';
 
