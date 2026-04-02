@@ -127,10 +127,37 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
               mergeMemberOptions(seniors, projectToEdit?.senior_team_details || [])
             );
 
-            const assignedHqepls = clientData.assigned_hqepls_details || [];
-            setHqeplOptions(
-              mergeMemberOptions(assignedHqepls, projectToEdit?.assigned_hqepl_details ? [projectToEdit.assigned_hqepl_details] : [])
+            let assignedHqepls = Array.isArray(clientData.assigned_hqepls_details)
+              ? clientData.assigned_hqepls_details
+              : [];
+
+            // Fallback for older client payloads that only expose IDs.
+            if (assignedHqepls.length === 0 && Array.isArray(clientData.assigned_hqepls) && clientData.assigned_hqepls.length > 0) {
+              try {
+                const hqeplRes = await api.get('hqepl/');
+                const allHqepls = Array.isArray(hqeplRes.data)
+                  ? hqeplRes.data
+                  : (hqeplRes.data?.results || []);
+                const allowedIds = new Set(normalizeIdList(clientData.assigned_hqepls));
+                assignedHqepls = allHqepls.filter((user) => allowedIds.has(Number(user?.id)));
+              } catch (hqeplFallbackError) {
+                console.warn('Failed to resolve assigned HQEPL IDs for project form', hqeplFallbackError);
+              }
+            }
+
+            const mergedHqeplOptions = mergeMemberOptions(
+              assignedHqepls,
+              projectToEdit?.assigned_hqepl_details ? [projectToEdit.assigned_hqepl_details] : []
             );
+            setHqeplOptions(mergedHqeplOptions);
+
+            // For new projects, default to the first client-assigned HQEPL for quick assignment.
+            if (!projectToEdit && mergedHqeplOptions.length > 0) {
+              setFormData((prev) => ({
+                ...prev,
+                assigned_hqepl: prev.assigned_hqepl || mergedHqeplOptions[0].id,
+              }));
+            }
 
             // Auto-set SGM logic
             // If user is SGM, set themselves
