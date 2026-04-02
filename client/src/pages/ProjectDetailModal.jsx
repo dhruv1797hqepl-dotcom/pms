@@ -7,6 +7,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
   const [currentClient, setCurrentClient] = useState(null); // Store full client details
   const [internalTeamOptions, setInternalTeamOptions] = useState([]);
   const [seniorTeamOptions, setSeniorTeamOptions] = useState([]); // NEW: for senior team
+  const [hqeplOptions, setHqeplOptions] = useState([]);
 
   const normalizeIdList = (value, fallbackObjects = []) => {
     const source = Array.isArray(value) && value.length > 0 ? value : fallbackObjects;
@@ -34,6 +35,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
     target: '',
     client: clientId || '',
     assigned_sgm: '',
+    assigned_hqepl: '',
     internal_team_selection: [], // For local state of internal team
     external_team_selection: [],
     senior_team_selection: [], // NEW: for senior team
@@ -65,6 +67,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
         target: projectToEdit.target || projectToEdit.description || '', // Fallback for old projects
         client: clientVal,
         assigned_sgm: projectToEdit.assigned_sgm || '',
+        assigned_hqepl: projectToEdit.assigned_hqepl || '',
         internal_team_selection: internalTeamSelection,
         external_team_selection: externalTeamSelection,
         senior_team_selection: seniorTeamSelection,
@@ -79,6 +82,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
         target: '',
         client: clientId || '',
         assigned_sgm: '',
+        assigned_hqepl: '',
         internal_team_selection: [],
         external_team_selection: [],
         senior_team_selection: [],
@@ -123,6 +127,11 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
               mergeMemberOptions(seniors, projectToEdit?.senior_team_details || [])
             );
 
+            const assignedHqepls = clientData.assigned_hqepls_details || [];
+            setHqeplOptions(
+              mergeMemberOptions(assignedHqepls, projectToEdit?.assigned_hqepl_details ? [projectToEdit.assigned_hqepl_details] : [])
+            );
+
             // Auto-set SGM logic
             // If user is SGM, set themselves
             if (userRole === 'SGM') {
@@ -150,6 +159,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
         target: formData.target,
         client: formData.client,
         assigned_sgm: formData.assigned_sgm || null,
+        assigned_hqepl: formData.assigned_hqepl || null,
         assigned_employees: normalizeIdList(formData.internal_team_selection),
         external_team: normalizeIdList(formData.external_team_selection),
         senior_team: normalizeIdList(formData.senior_team_selection),
@@ -248,6 +258,21 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
 
             {/* Dropdowns Row - ONLY Status remaining */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">Project HQEPL</label>
+                <select
+                  className="w-full px-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold appearance-none outline-none focus:border-[#f5914e]"
+                  value={formData.assigned_hqepl || ''}
+                  onChange={(e) => setFormData({ ...formData, assigned_hqepl: e.target.value ? Number(e.target.value) : '' })}
+                >
+                  <option value="">Unassigned</option>
+                  {hqeplOptions.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name || member.username || member.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">Project Status</label>
                 <select className="w-full px-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold appearance-none outline-none focus:border-[#f5914e]"

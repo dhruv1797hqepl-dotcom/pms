@@ -25,6 +25,14 @@ class ProjectSerializer(serializers.ModelSerializer):
     assigned_sgm_details = serializers.SerializerMethodField()
     assigned_sgm = serializers.PrimaryKeyRelatedField(read_only=True)
 
+    assigned_hqepl = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role="HQEPL"),
+        required=False,
+        allow_null=True
+    )
+    assigned_hqepl_name = serializers.SerializerMethodField()
+    assigned_hqepl_details = serializers.SerializerMethodField()
+
     # --------------------
     # External Lead
     # --------------------
@@ -85,6 +93,10 @@ class ProjectSerializer(serializers.ModelSerializer):
             "assigned_sgm_name",
             "assigned_sgm_email",
             "assigned_sgm_details",
+
+            "assigned_hqepl",
+            "assigned_hqepl_name",
+            "assigned_hqepl_details",
 
             "external_lead",
             "external_lead_name",
@@ -175,6 +187,13 @@ class ProjectSerializer(serializers.ModelSerializer):
                     message = f"User IDs {invalid_ids} are not valid employee users."
                 raise serializers.ValidationError({
                     "assigned_employees": message
+                })
+
+        assigned_hqepl = attrs.get('assigned_hqepl', getattr(self.instance, 'assigned_hqepl', None))
+        if client and assigned_hqepl:
+            if not client.assigned_hqepls.filter(id=assigned_hqepl.id).exists():
+                raise serializers.ValidationError({
+                    "assigned_hqepl": "Selected HQEPL is not assigned to this client."
                 })
 
         # Validate External Team (User Objects or IDs depending on field type)
@@ -270,6 +289,25 @@ class ProjectSerializer(serializers.ModelSerializer):
                 "full_name": f"{sgm.first_name or ''} {sgm.last_name or ''}".strip() or sgm.username or sgm.email,
             }
         return None
+
+    def get_assigned_hqepl_name(self, obj):
+        hqepl = getattr(obj, 'assigned_hqepl', None)
+        if not hqepl:
+            return None
+        full_name = f"{hqepl.first_name or ''} {hqepl.last_name or ''}".strip()
+        return full_name or hqepl.username or hqepl.email
+
+    def get_assigned_hqepl_details(self, obj):
+        hqepl = getattr(obj, 'assigned_hqepl', None)
+        if not hqepl:
+            return None
+        return {
+            "id": hqepl.id,
+            "username": hqepl.username,
+            "email": hqepl.email,
+            "role": hqepl.role,
+            "full_name": f"{hqepl.first_name or ''} {hqepl.last_name or ''}".strip() or hqepl.username or hqepl.email,
+        }
 
     def get_team_members_details(self, obj):
         members = []

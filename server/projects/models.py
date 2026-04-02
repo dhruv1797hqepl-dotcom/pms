@@ -38,6 +38,15 @@ class Project(models.Model):
         limit_choices_to={"role": "SGM"}
     )
 
+    assigned_hqepl = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="hqepl_projects",
+        limit_choices_to={"role": "HQEPL"}
+    )
+
     external_lead = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

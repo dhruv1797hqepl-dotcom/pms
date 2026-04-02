@@ -377,6 +377,26 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
                 return task.client.assigned_sgms.first()
             return None
 
+        def get_hqepl_user(task_type, task_id):
+            if task_type == 'big':
+                task = BigTask.objects.select_related('project__assigned_hqepl', 'project__client').prefetch_related('project__client__assigned_hqepls').filter(id=task_id).first()
+                if not task or not task.project:
+                    return None
+                if task.project.assigned_hqepl:
+                    return task.project.assigned_hqepl
+                if task.project.client and task.project.client.assigned_hqepls.exists():
+                    return task.project.client.assigned_hqepls.first()
+                return None
+
+            task = DDTMEAdditionalTask.objects.select_related('project__assigned_hqepl', 'client').prefetch_related('client__assigned_hqepls').filter(id=task_id).first()
+            if not task:
+                return None
+            if task.project and task.project.assigned_hqepl:
+                return task.project.assigned_hqepl
+            if task.client and task.client.assigned_hqepls.exists():
+                return task.client.assigned_hqepls.first()
+            return None
+
         def resolve_employee(raw_employee_id, task_type, task_id):
             if raw_employee_id is None:
                 return None
@@ -386,8 +406,13 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
                 return None
 
             alias = employee_ref.lower()
-            if alias in {'sgm', 'mls'}:
-                linked_user = get_sgm_user(task_type, task_id) if alias == 'sgm' else get_owner_user()
+            if alias in {'sgm', 'mls', 'hqepl'}:
+                if alias == 'sgm':
+                    linked_user = get_sgm_user(task_type, task_id)
+                elif alias == 'hqepl':
+                    linked_user = get_hqepl_user(task_type, task_id)
+                else:
+                    linked_user = get_owner_user()
                 if not linked_user:
                     return None
                 employee_obj, _ = Employee.objects.get_or_create(user=linked_user)

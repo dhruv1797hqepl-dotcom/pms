@@ -19,7 +19,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "username", "email", "password",
             "company_name", "logo", "contact_email",
             "phone", "website", "address", "status",
-            "employees", "assigned_sgms", "internal_team", "client_hierarchy"
+            "employees", "assigned_sgms", "assigned_hqepls", "internal_team", "client_hierarchy"
         ]
 
     employees = serializers.SerializerMethodField()
@@ -65,6 +65,7 @@ class ClientSerializer(serializers.ModelSerializer):
             }
 
         ret['assigned_sgms_details'] = [format_user(u) for u in instance.assigned_sgms.all()]
+        ret['assigned_hqepls_details'] = [format_user(u) for u in instance.assigned_hqepls.all()]
         
         # Aggregate internal team members:
         # 1. Members directly in instance.internal_team
@@ -144,6 +145,7 @@ class ClientSerializer(serializers.ModelSerializer):
         
         # Extract new fields
         assigned_sgms = validated_data.pop("assigned_sgms", [])
+        assigned_hqepls = validated_data.pop("assigned_hqepls", [])
         internal_team = validated_data.pop("internal_team", [])
 
         unique_username = f"{raw_username}_{uuid.uuid4().hex[:6]}"
@@ -164,6 +166,7 @@ class ClientSerializer(serializers.ModelSerializer):
 
             # Persist explicit team selections (including empty lists on create).
             client.assigned_sgms.set(assigned_sgms)
+            client.assigned_hqepls.set(assigned_hqepls)
             client.internal_team.set(internal_team)
 
         return client
@@ -177,6 +180,7 @@ class ClientSerializer(serializers.ModelSerializer):
         new_password = validated_data.pop("password", None)
 
         assigned_sgms = validated_data.pop("assigned_sgms", serializers.empty)
+        assigned_hqepls = validated_data.pop("assigned_hqepls", serializers.empty)
         internal_team = validated_data.pop("internal_team", serializers.empty)
 
         with transaction.atomic():
@@ -213,6 +217,11 @@ class ClientSerializer(serializers.ModelSerializer):
                 "assigned_sgms",
                 treat_missing_as_empty=force_full_replace,
             )
+            assigned_hqepl_ids = self._extract_relation_ids(
+                request,
+                "assigned_hqepls",
+                treat_missing_as_empty=force_full_replace,
+            )
             internal_team_ids = self._extract_relation_ids(
                 request,
                 "internal_team",
@@ -224,6 +233,12 @@ class ClientSerializer(serializers.ModelSerializer):
                 client.assigned_sgms.set(sgm_users)
             elif assigned_sgms is not serializers.empty:
                 client.assigned_sgms.set(assigned_sgms)
+
+            if assigned_hqepl_ids is not None:
+                hqepl_users = User.objects.filter(id__in=assigned_hqepl_ids, role="HQEPL")
+                client.assigned_hqepls.set(hqepl_users)
+            elif assigned_hqepls is not serializers.empty:
+                client.assigned_hqepls.set(assigned_hqepls)
 
             if internal_team_ids is not None:
                 employee_users = User.objects.filter(id__in=internal_team_ids, role="EMPLOYEE")
@@ -239,6 +254,7 @@ class ClientListSerializer(serializers.ModelSerializer):
 
     project_count = serializers.IntegerField(read_only=True)
     assigned_sgms_details = serializers.SerializerMethodField()
+    assigned_hqepls_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
@@ -246,7 +262,7 @@ class ClientListSerializer(serializers.ModelSerializer):
             "id", "company_name", "username", "email",
             "contact_email", "phone", "website", "address",
             "logo", "status", "created_at", "project_count",
-            "assigned_sgms_details"
+            "assigned_sgms_details", "assigned_hqepls_details"
         ]
 
     def get_assigned_sgms_details(self, obj):
@@ -258,6 +274,17 @@ class ClientListSerializer(serializers.ModelSerializer):
                 "email": u.email
             }
             for u in obj.assigned_sgms.all()
+        ]
+
+    def get_assigned_hqepls_details(self, obj):
+        return [
+            {
+                "id": u.id,
+                "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "shortform": u.shortform,
+                "email": u.email
+            }
+            for u in obj.assigned_hqepls.all()
         ]
 
 # ---------------- External Team ---------------- #

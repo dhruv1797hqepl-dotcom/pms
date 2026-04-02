@@ -88,6 +88,8 @@ const DDTMETable = () => {
   const [clientEmployees, setClientEmployees] = useState([]);
   const [sgmName, setSgmName] = useState(null); // SGM name from project
   const [sgmId, setSgmId] = useState(null); // SGM user ID for hours mapping
+  const [hqeplName, setHqeplName] = useState(null); // Project/client HQEPL name
+  const [hqeplId, setHqeplId] = useState(null); // Project/client HQEPL user id
   const [mlsLabel, setMlsLabel] = useState('MLS'); // MLS role shortform label
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
   const [userRole, setUserRole] = useState(null); // To determine if SGM or Employee
@@ -177,6 +179,8 @@ const DDTMETable = () => {
           // Reset per-client derived SGM so stale values don't leak across clients/months.
           setSgmName(null);
           setSgmId(null);
+          setHqeplName(null);
+          setHqeplId(null);
           setMlsLabel('MLS');
 
           // Fetch MLS user shortform from HQEPL list
@@ -193,6 +197,8 @@ const DDTMETable = () => {
 
           let resolvedSgmName = null;
           let resolvedSgmId = null;
+          let resolvedHqeplName = null;
+          let resolvedHqeplId = null;
 
           // 0. Get User Role (Independent try/catch)
           try {
@@ -225,6 +231,20 @@ const DDTMETable = () => {
                 primarySgm.email ||
                 null;
               resolvedSgmId = primarySgm.id || null;
+            }
+
+            const assignedHqepls = Array.isArray(clientRes?.data?.assigned_hqepls_details)
+              ? clientRes.data.assigned_hqepls_details
+              : [];
+            const primaryHqepl = assignedHqepls[0] || null;
+            if (primaryHqepl) {
+              resolvedHqeplName =
+                primaryHqepl.shortform ||
+                primaryHqepl.full_name ||
+                primaryHqepl.username ||
+                primaryHqepl.email ||
+                null;
+              resolvedHqeplId = primaryHqepl.id || null;
             }
           } catch (clientErr) {
             console.error('Failed to fetch client details for SGM mapping', clientErr);
@@ -276,11 +296,33 @@ const DDTMETable = () => {
             }
           }
 
+          if (Array.isArray(projData)) {
+            const projectWithHqepl = projData.find((project) =>
+              project?.assigned_hqepl || project?.assigned_hqepl_details?.id
+            );
+
+            if (projectWithHqepl) {
+              resolvedHqeplId = projectWithHqepl.assigned_hqepl || projectWithHqepl.assigned_hqepl_details?.id || resolvedHqeplId;
+              resolvedHqeplName =
+                projectWithHqepl.assigned_hqepl_name ||
+                projectWithHqepl.assigned_hqepl_details?.full_name ||
+                projectWithHqepl.assigned_hqepl_details?.username ||
+                projectWithHqepl.assigned_hqepl_details?.email ||
+                resolvedHqeplName;
+            }
+          }
+
           if (resolvedSgmName) {
             setSgmName(resolvedSgmName);
           }
           if (resolvedSgmId) {
             setSgmId(resolvedSgmId);
+          }
+          if (resolvedHqeplName) {
+            setHqeplName(resolvedHqeplName);
+          }
+          if (resolvedHqeplId) {
+            setHqeplId(resolvedHqeplId);
           }
           // 1.5 Fetch Additional Tasks
           const addTasksRes = await api.get(`ddtme/additional-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
@@ -407,6 +449,14 @@ const DDTMETable = () => {
 
   const roundHours = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+  const formatDaysValue = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '0';
+
+    const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  };
+
   const handleHourChange = (taskId, empId, field, value, type = 'big') => {
     const normalizedValue = String(value ?? '').replace(',', '.').trim();
 
@@ -434,10 +484,12 @@ const DDTMETable = () => {
 
   const mlsPersonKey = 'mls';
   const sgmPersonKey = toUserKey(sgmId) || 'sgm';
+  const hqeplPersonKey = toUserKey(hqeplId) || 'hqepl';
 
   const reservedPersonKeys = new Set([
     mlsPersonKey,
-    sgmName ? sgmPersonKey : null
+    sgmName ? sgmPersonKey : null,
+    hqeplName ? hqeplPersonKey : null
   ].filter(Boolean));
 
   const employeePeople = Array.isArray(clientEmployees)
@@ -451,6 +503,7 @@ const DDTMETable = () => {
 
   const tablePeople = [
     { id: mlsPersonKey, label: mlsLabel },
+    ...(hqeplName ? [{ id: hqeplPersonKey, label: hqeplName }] : []),
     ...(sgmName ? [{ id: sgmPersonKey, label: sgmName }] : []),
     ...employeePeople
   ];
@@ -484,6 +537,10 @@ const DDTMETable = () => {
     }
     return roundHours(total);
   };
+
+  const getTotalOnDaysForEmp = (empId) => formatDaysValue(getTotalHoursForEmp(empId) / 6);
+
+  const getTotalOffDaysForEmp = (empId) => formatDaysValue(getTotalOffHoursForEmp(empId) / 7.5);
 
   const sortByProject = (tasks) =>
     [...tasks].sort((a, b) =>
@@ -1670,7 +1727,7 @@ const DDTMETable = () => {
 
               {/* Totals Row */}
               {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
-                <tr className="bg-yellow-50 font-bold sticky bottom-0 z-10 shadow-t">
+                <tr className="bg-yellow-50 font-bold sticky bottom-14 z-10 shadow-t">
                   <td className="sticky left-0 bg-yellow-50 z-20"></td>
                   <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
 
@@ -1681,6 +1738,25 @@ const DDTMETable = () => {
                       </td>
                       <td className="px-3 py-4 text-center text-sm text-slate-500 bg-yellow-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffHoursForEmp(person.id)}
+                      </td>
+                    </React.Fragment>
+                  ))}
+
+                </tr>
+              )}
+
+              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
+                <tr className="bg-slate-50 font-bold sticky bottom-0 z-10 border-t border-slate-200">
+                  <td className="sticky left-0 bg-slate-50 z-20"></td>
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-slate-50 z-20">Total Days</td>
+
+                  {tablePeople.map((person) => (
+                    <React.Fragment key={`total-days-${person.id}`}>
+                      <td className="px-3 py-4 text-center text-sm border-l border-slate-200 text-blue-800 bg-slate-50">
+                        {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOnDaysForEmp(person.id)}
+                      </td>
+                      <td className="px-3 py-4 text-center text-sm text-slate-500 bg-slate-50">
+                        {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffDaysForEmp(person.id)}
                       </td>
                     </React.Fragment>
                   ))}

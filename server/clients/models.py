@@ -26,6 +26,13 @@ class Client(models.Model):
         limit_choices_to={"role": "SGM"}
     )
 
+    assigned_hqepls = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="assigned_hqepl_clients",
+        blank=True,
+        limit_choices_to={"role": "HQEPL"}
+    )
+
     internal_team = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="internal_teams",

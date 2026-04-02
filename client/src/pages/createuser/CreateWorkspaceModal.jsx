@@ -22,6 +22,7 @@ const getEmptyFormData = () => ({
     address: '',
     logo: null,
     assigned_sgms: [],
+    assigned_hqepls: [],
     internal_team: []
 });
 
@@ -41,6 +42,10 @@ const buildFormDataFromClient = (clientData = {}) => {
         ? normalizeIdList(clientData.internal_team_details.map((user) => user?.id))
         : normalizeIdList(clientData.internal_team);
 
+    const assignedHqeplIds = Array.isArray(clientData.assigned_hqepls_details)
+        ? normalizeIdList(clientData.assigned_hqepls_details.map((user) => user?.id))
+        : normalizeIdList(clientData.assigned_hqepls);
+
     return {
         ...getEmptyFormData(),
         username: clientData.username || '',
@@ -51,6 +56,7 @@ const buildFormDataFromClient = (clientData = {}) => {
         website: clientData.website || '',
         address: clientData.address || '',
         assigned_sgms: assignedSgmIds,
+        assigned_hqepls: assignedHqeplIds,
         internal_team: internalTeamIds,
     };
 };
@@ -64,6 +70,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
     const [formData, setFormData] = useState(getEmptyFormData());
 
     const [sgmOptions, setSgmOptions] = useState([]);
+    const [hqeplOptions, setHqeplOptions] = useState([]);
     const [employeeOptions, setEmployeeOptions] = useState([]);
 
     useEffect(() => {
@@ -75,8 +82,9 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
 
         const fetchOptions = async () => {
             try {
-                const [sgmRes, empRes] = await Promise.all([
+                const [sgmRes, hqeplRes, empRes] = await Promise.all([
                     api.get('admin/users/?role=SGM', { headers }),
+                    api.get('admin/users/?role=HQEPL', { headers }),
                     api.get('admin/users/?role=EMPLOYEE', { headers })
                 ]);
 
@@ -90,6 +98,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
 
                 if (!isCancelled) {
                     setSgmOptions(sgmRes.data.map(formatUser));
+                    setHqeplOptions(hqeplRes.data.map(formatUser));
                     setEmployeeOptions(empRes.data.map(formatUser));
                 }
             } catch (error) {
@@ -156,6 +165,8 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                 formData[key].forEach(val => data.append('internal_team', val));
             } else if (key === 'assigned_sgms') {
                 formData[key].forEach(val => data.append('assigned_sgms', val));
+            } else if (key === 'assigned_hqepls') {
+                formData[key].forEach(val => data.append('assigned_hqepls', val));
             } else if (formData[key] !== null && formData[key] !== '') {
                 data.append(key, formData[key]);
             }
@@ -282,6 +293,14 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                                     options={sgmOptions}
                                     value={formData.assigned_sgms}
                                     onChange={(v) => setFormData({ ...formData, assigned_sgms: normalizeIdList(v) })}
+                                />
+                                <ModalSelect
+                                    icon={ShieldCheck}
+                                    label="Assign HQEPL"
+                                    multiple
+                                    options={hqeplOptions}
+                                    value={formData.assigned_hqepls}
+                                    onChange={(v) => setFormData({ ...formData, assigned_hqepls: normalizeIdList(v) })}
                                 />
                                 <ModalSelect
                                     icon={Users}

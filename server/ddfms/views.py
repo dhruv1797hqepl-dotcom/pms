@@ -7,6 +7,7 @@ from tasks.models import Task
 
 from .models import DDFMSPlan, DDFMSDeliverable, DDFMSStep
 from .serializers import DDFMSPlanSerializer, DDFMSDeliverableSerializer, DDFMSStepSerializer
+from .permissions import DDFMSPermission
 
 
 COMPLETED_TASK_STATUSES = ['Completed', 'On Time']
@@ -67,11 +68,17 @@ def sync_ddfms_step_task(step, actor):
 
 class DDFMSPlanViewSet(viewsets.ModelViewSet):
     serializer_class = DDFMSPlanSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [DDFMSPermission]
     queryset = DDFMSPlan.objects.select_related('client', 'created_by', 'updated_by').all()
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+
+        if user.role == 'SGM':
+            queryset = queryset.filter(client__assigned_sgms=user)
+        elif user.role == 'EMPLOYEE':
+            queryset = queryset.filter(client__internal_team=user)
 
         client_id = self.request.query_params.get('client_id')
         month = self.request.query_params.get('month')
@@ -95,7 +102,7 @@ class DDFMSPlanViewSet(viewsets.ModelViewSet):
 
 class DDFMSDeliverableViewSet(viewsets.ModelViewSet):
     serializer_class = DDFMSDeliverableSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [DDFMSPermission]
     queryset = DDFMSDeliverable.objects.select_related('plan', 'plan__client').all()
 
     def _validate_submit_ready(self, deliverable):
@@ -121,6 +128,12 @@ class DDFMSDeliverableViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+
+        if user.role == 'SGM':
+            queryset = queryset.filter(plan__client__assigned_sgms=user)
+        elif user.role == 'EMPLOYEE':
+            queryset = queryset.filter(plan__client__internal_team=user)
 
         plan_id = self.request.query_params.get('plan_id')
         client_id = self.request.query_params.get('client_id')
@@ -164,7 +177,7 @@ class DDFMSDeliverableViewSet(viewsets.ModelViewSet):
 
 class DDFMSStepViewSet(viewsets.ModelViewSet):
     serializer_class = DDFMSStepSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [DDFMSPermission]
     queryset = DDFMSStep.objects.select_related(
         'deliverable',
         'deliverable__plan',
@@ -174,6 +187,12 @@ class DDFMSStepViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+
+        if user.role == 'SGM':
+            queryset = queryset.filter(deliverable__plan__client__assigned_sgms=user)
+        elif user.role == 'EMPLOYEE':
+            queryset = queryset.filter(deliverable__plan__client__internal_team=user)
 
         deliverable_id = self.request.query_params.get('deliverable_id')
         plan_id = self.request.query_params.get('plan_id')
