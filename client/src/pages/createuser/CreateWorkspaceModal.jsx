@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     X, User, Mail, Lock, Building2, Phone, Globe,
     ImageIcon, Sparkles, ChevronRight, ChevronLeft,
-    Users, Briefcase
+    Users, Briefcase, ShieldCheck
 } from 'lucide-react';
 import api from '../../api';
 import emailjs from '@emailjs/browser';
