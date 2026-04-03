@@ -1051,9 +1051,9 @@ const DDFMS = () => {
       const allSgmPool = byRole(responsibleOptions, 'SGM');
       const hqeplWithHours = byRole(membersWithHours, 'HQEPL');
       const hqeplPool = byRole(responsibleOptions, 'HQEPL');
-      const step14Owner = pickHighestHours(hqeplWithHours, taskHoursMap)
-        || pickHighestHours(hqeplPool, taskHoursMap)
-        || null;
+      const step14Owner = hqeplWithHours.length > 0
+        ? (pickHighestHours(hqeplWithHours, taskHoursMap) || null)
+        : null;
 
       const sgmWithHours = byRole(sgmScHhWithHours, 'SGM');
       const scWithHours = byRole(sgmScHhWithHours, 'SC');
