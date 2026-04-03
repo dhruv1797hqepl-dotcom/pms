@@ -745,13 +745,20 @@ const DDTMETable = () => {
         setRowRemarks({});
         setRemarksDrafts({});
       }
-      const res = await api.post('ddtme/submissions/submit/', {
+      const submitRes = await api.post('ddtme/submissions/submit/', {
         client_id: clientId,
         month: selectedMonth,
         year: selectedYear
       });
-      setSubmission(res.data);
-      alert("Submitted successfully!");
+
+      if (userRole === 'SGM') {
+        const approvalRes = await api.post(`ddtme/submissions/${submitRes.data.id}/approve/`, {});
+        setSubmission(approvalRes.data);
+        alert('Submitted and approved successfully!');
+      } else {
+        setSubmission(submitRes.data);
+        alert("Submitted successfully!");
+      }
     } catch (error) {
       console.error("Error submitting", error);
       const backendError = error?.response?.data?.error || error?.response?.data?.detail;
@@ -1077,7 +1084,7 @@ const DDTMETable = () => {
   const canSubmitEditAndApprove = userRole === 'SGM' && planStatus === 'SUBMITTED' && isSgmEditApproveMode;
   const canAllowEdit = (userRole === 'SGM' || userRole === 'ADMIN') && planStatus === 'APPROVED';
 
-  const canSubmit = (planStatus === 'DRAFT' || planStatus === 'REJECTED') && (userRole === 'EMPLOYEE' || userRole === 'ADMIN');
+  const canSubmit = (planStatus === 'DRAFT' || planStatus === 'REJECTED') && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || userRole === 'SGM');
 
   useEffect(() => {
     if (userRole !== 'SGM' || planStatus !== 'SUBMITTED') {
