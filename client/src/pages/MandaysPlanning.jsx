@@ -22,7 +22,7 @@ const getEmployeeDisplayName = (employee) => {
   }
 
   if (normalizeRole(employee?.role) === 'HQEPL') {
-    return employee.shortform || employee.username || employee.full_name || employee.employee_name || employee.email || 'SS';
+    return employee.username || employee.shortform || employee.full_name || employee.employee_name || employee.email || 'SS';
   }
 
   const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
