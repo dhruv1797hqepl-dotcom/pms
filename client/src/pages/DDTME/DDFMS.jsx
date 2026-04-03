@@ -1028,6 +1028,7 @@ const DDFMS = () => {
       return hierarchy === 'SS' ? 'HQEPL' : hierarchy;
     };
     const byRole = (options, role) => options.filter((option) => toHierarchy(option) === role);
+    const getOptionByValue = (value) => responsibleOptions.find((option) => option.value === value);
 
     const pickHighestHours = (options, taskHoursMap) => {
       if (!Array.isArray(options) || options.length === 0) return null;
@@ -1367,6 +1368,10 @@ const DDFMS = () => {
           const { senior, junior, enforceStep14WithSgm, nonStep14Owner, step14Owner } = pickSeniorAndJunior(taskHoursMap);
           if (!senior?.value || !junior?.value) return;
 
+          const fallbackStep14Sgm = pickHighestHours(byRole(responsibleOptions, 'SGM'), taskHoursMap)
+            || byRole(responsibleOptions, 'SGM')[0]
+            || senior;
+
           stepDefinitions.forEach((_, stepIndex) => {
             const ownerKey = `${deliverable.id}-${stepIndex}-owner`;
             const completedKey = `${deliverable.id}-${stepIndex}`;
@@ -1381,20 +1386,29 @@ const DDFMS = () => {
                 : (nonStep14Owner?.value || junior.value);
             }
 
-            if (step14Owner?.value && forceSgmSteps.has(stepNumber)) {
-              desiredOwner = step14Owner.value;
+            if (forceSgmSteps.has(stepNumber)) {
+              desiredOwner = step14Owner?.value || fallbackStep14Sgm?.value || desiredOwner;
             }
 
-            // For Step 1 and 4, enforce HQEPL owner when HQEPL has hours.
+            const currentOwner = loadedTableData[ownerKey];
+            const currentOwnerRole = toHierarchy(getOptionByValue(currentOwner));
+
+            // For Step 1 and 4, enforce recomputed owner so stale HQEPL/legacy values are corrected.
             const shouldForceStep14Owner = Boolean(
-              step14Owner?.value
-              && forceSgmSteps.has(stepNumber)
-              && loadedTableData[ownerKey] !== step14Owner.value
+              forceSgmSteps.has(stepNumber)
+              && currentOwner !== desiredOwner
+            );
+
+            const shouldResetStaleHqeplOnStep14 = Boolean(
+              forceSgmSteps.has(stepNumber)
+              && !step14Owner?.value
+              && currentOwner
+              && currentOwnerRole === 'HQEPL'
+              && currentOwner !== desiredOwner
             );
 
             // For other cells, only prefill when empty.
-            const currentOwner = loadedTableData[ownerKey];
-            if (((currentOwner === undefined || currentOwner === '') || shouldForceStep14Owner) && desiredOwner) {
+            if (((currentOwner === undefined || currentOwner === '') || shouldForceStep14Owner || shouldResetStaleHqeplOnStep14) && desiredOwner) {
               loadedTableData[ownerKey] = desiredOwner;
               pendingChangedKeysRef.current.add(ownerKey);
               prefillHappened = true;
