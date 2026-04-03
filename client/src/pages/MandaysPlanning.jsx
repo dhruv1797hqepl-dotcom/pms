@@ -215,10 +215,21 @@ const MandaysPlanning = () => {
             : undefined;
 
         const clientsResponse = await api.get(clientsEndpoint, clientsRequestConfig);
-        const normalizedClients = unwrapList(clientsResponse.data).map((client, index) => ({
+        let normalizedClients = unwrapList(clientsResponse.data).map((client, index) => ({
           ...client,
           display_name: client.company_name || client.name || `Client ${index + 1}`,
         }));
+
+        // For SGM view, filter to only clients where the SGM is assigned
+        if (isSgm && currentUser) {
+          const sgmUserId = getResolvedUserId(currentUser);
+          normalizedClients = normalizedClients.filter((client) => {
+            const assignedSgms = Array.isArray(client?.assigned_sgms_details)
+              ? client.assigned_sgms_details
+              : [];
+            return assignedSgms.some((sgmUser) => String(sgmUser?.id) === String(sgmUserId));
+          });
+        }
 
         if (!normalizedClients.length) {
           setClients([]);
