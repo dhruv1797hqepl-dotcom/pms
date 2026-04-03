@@ -136,6 +136,10 @@ const DDTMETable = () => {
     return date.toLocaleString('default', { month: 'short', year: 'numeric' });
   };
 
+  const getHqeplDisplayLabel = (member) => {
+    return member?.shortform || 'SS';
+  };
+
   const handlePrevMonth = () => {
     setSelectedMonth(prev => {
       if (prev === 1) {
@@ -251,11 +255,7 @@ const DDTMETable = () => {
             const primaryHqepl = assignedHqepls[0] || null;
             if (primaryHqepl) {
               resolvedHqeplName =
-                primaryHqepl.shortform ||
-                primaryHqepl.full_name ||
-                primaryHqepl.username ||
-                primaryHqepl.email ||
-                null;
+                getHqeplDisplayLabel(primaryHqepl);
               resolvedHqeplId = primaryHqepl.id || null;
             }
           } catch (clientErr) {
@@ -316,11 +316,9 @@ const DDTMETable = () => {
             if (projectWithHqepl) {
               resolvedHqeplId = projectWithHqepl.assigned_hqepl || projectWithHqepl.assigned_hqepl_details?.id || resolvedHqeplId;
               resolvedHqeplName =
-                projectWithHqepl.assigned_hqepl_name ||
-                projectWithHqepl.assigned_hqepl_details?.full_name ||
-                projectWithHqepl.assigned_hqepl_details?.username ||
-                projectWithHqepl.assigned_hqepl_details?.email ||
-                resolvedHqeplName;
+                projectWithHqepl.assigned_hqepl_details
+                  ? getHqeplDisplayLabel(projectWithHqepl.assigned_hqepl_details)
+                  : (projectWithHqepl.assigned_hqepl_name || resolvedHqeplName);
             }
           }
 
