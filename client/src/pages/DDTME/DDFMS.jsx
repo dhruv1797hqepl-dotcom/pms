@@ -631,12 +631,9 @@ const DDFMS = () => {
           return raw;
         };
 
-        const formatHierarchyLabel = (hierarchy) => {
-          if (hierarchy === 'HQEPL') return 'SS';
-          return hierarchy;
-        };
+        const formatHierarchyLabel = (hierarchy) => hierarchy;
 
-        const hierarchyRank = { HH: 1, HQEPL: 2, SC: 3, SGM: 4 };
+        const hierarchyRank = { HH: 1, SC: 2, SGM: 3, HQEPL: 4 };
         const memberMap = new Map();
 
         const extractHierarchyMap = (hierarchyItems) => {
@@ -752,11 +749,12 @@ const DDFMS = () => {
           const memberId = member?.id;
           const memberKey = String(memberId ?? `hqepl-${index}`);
           const username = getMemberDisplayName(member);
-          const hierarchy = hierarchyByMemberGlobal[`id:${memberKey}`]
+          const hierarchyFromMap = hierarchyByMemberGlobal[`id:${memberKey}`]
             || hierarchyByMemberGlobal[`key:${memberKey}`]
             || getFallbackHierarchy(member)
             || 'HQEPL';
-          addOption(`id:${memberKey}`, `${username} (${formatHierarchyLabel(hierarchy)})`, 'HQEPL');
+          const displayHierarchy = hierarchyFromMap === 'HH' ? 'HQEPL' : hierarchyFromMap;
+          addOption(`id:${memberKey}`, `${username} (${formatHierarchyLabel(displayHierarchy)})`, 'HQEPL');
         });
 
         projectsData.forEach((project) => {
@@ -1029,12 +1027,7 @@ const DDFMS = () => {
       const hierarchy = String(option?.hierarchy || 'HH').toUpperCase();
       return hierarchy === 'SS' ? 'HQEPL' : hierarchy;
     };
-    const toLogicalHierarchy = (option) => {
-      const hierarchy = toHierarchy(option);
-      return hierarchy === 'HQEPL' ? 'HH' : hierarchy;
-    };
     const byRole = (options, role) => options.filter((option) => toHierarchy(option) === role);
-    const byLogicalRole = (options, role) => options.filter((option) => toLogicalHierarchy(option) === role);
 
     const pickHighestHours = (options, taskHoursMap) => {
       if (!Array.isArray(options) || options.length === 0) return null;
@@ -1057,12 +1050,12 @@ const DDFMS = () => {
       const hqeplWithHours = byRole(membersWithHours, 'HQEPL');
       const sgmWithHours = byRole(membersWithHours, 'SGM');
       const scWithHours = byRole(membersWithHours, 'SC');
-      const hhWithHours = byLogicalRole(membersWithHours, 'HH');
+      const hhWithHours = byRole(membersWithHours, 'HH');
 
       const hqeplPool = byRole(pool, 'HQEPL');
       const sgmPool = byRole(pool, 'SGM');
       const scPool = byRole(pool, 'SC');
-      const hhPool = byLogicalRole(pool, 'HH');
+      const hhPool = byRole(pool, 'HH');
 
       const hasSgmHours = sgmWithHours.length > 0;
       const hasScHours = scWithHours.length > 0;
@@ -1164,7 +1157,7 @@ const DDFMS = () => {
 
       if (!senior) return { senior: null, junior: null };
 
-      const seniorRole = toLogicalHierarchy(senior);
+      const seniorRole = toHierarchy(senior);
       let junior = null;
 
       if (seniorRole === 'SGM') {
