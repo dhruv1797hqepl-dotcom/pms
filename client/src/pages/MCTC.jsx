@@ -4,80 +4,29 @@ import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 
-const PLACE_LABEL_PREFIX = "__MCTC_PLACE__";
-
-const getDefaultPlaceDrafts = () => ([
-    {
-        half: "first",
-        placeType: "office",
-        companyName: "",
-    },
-    {
-        half: "second",
-        placeType: "office",
-        companyName: "",
-    },
-]);
-
-const normalizePlaceHalf = (value) => {
-    const normalized = String(value || "").toLowerCase();
-    if (normalized.includes("first")) return "First Half";
-    if (normalized.includes("second")) return "Second Half";
-    return String(value || "").trim();
-};
-
-const normalizePlaceType = (value) => {
-    const normalized = String(value || "").toLowerCase();
-    if (normalized === "office") return "Office";
-    if (normalized === "visit") return "Visit";
-    return String(value || "").trim();
-};
-
-const buildPlaceLabel = ({ half, placeType, companyName }) => {
-    const safeHalf = String(half || "").toLowerCase();
-    const safeType = String(placeType || "").toLowerCase();
-    const safeCompany = String(companyName || "").trim();
-    return `${PLACE_LABEL_PREFIX}::${safeHalf}::${safeType}::${safeCompany}`;
-};
-
-const parsePlaceLabel = (label) => {
-    const rawLabel = String(label || "");
-    if (!rawLabel.startsWith(`${PLACE_LABEL_PREFIX}::`)) return null;
-
-    const [, half = "", placeType = "", ...companyParts] = rawLabel.split("::");
-    const companyName = companyParts.join("::").trim();
-    const normalizedHalf = normalizePlaceHalf(half);
-    const normalizedType = normalizePlaceType(placeType);
-    const displayLabel = normalizedType === "Office"
-        ? `${normalizedType}${normalizedHalf ? ` · ${normalizedHalf}` : ""}`
-        : `${companyName || "Visit"}${normalizedHalf ? ` · ${normalizedHalf}` : ""}`;
-
-    return {
-        half,
-        placeType,
-        companyName,
-        normalizedHalf,
-        normalizedType,
-        displayLabel,
-    };
-};
-
 const MCTC = () => {
     const location = useLocation();
     const currentRole = (localStorage.getItem("role") || "").toUpperCase();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [loading, setLoading] = useState(true);
     const [userId, setUserId] = useState(null);
+    const [headerView, setHeaderView] = useState("place");
 
-    // State to store entries: { "YYYY-MM-DD": [{ id, label, type }] }
+    // State to store tasks: { "YYYY-MM-DD": [{ id, label, type }] }
     const [tasks, setTasks] = useState({});
 
     const [activeDayPopup, setActiveDayPopup] = useState(null);
-    const [popupMode, setPopupMode] = useState("task");
-    const [taskDrafts, setTaskDrafts] = useState([]);
-    const [placeDrafts, setPlaceDrafts] = useState(() => getDefaultPlaceDrafts());
+    const [popupMode, setPopupMode] = useState("reminder");
+    const [popupReminderDrafts, setPopupReminderDrafts] = useState([]);
+    const [popupTaskDrafts, setPopupTaskDrafts] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
-    const [entryChooserDay, setEntryChooserDay] = useState(null);
+    const [activePlacePopupDay, setActivePlacePopupDay] = useState(null);
+    const [placePopupStage, setPlacePopupStage] = useState("choice");
+    const [placePopupType, setPlacePopupType] = useState("onsite");
+    const [placePopupRows, setPlacePopupRows] = useState([
+        { halfLabel: "Half 1", mode: "office", companyName: "" },
+        { halfLabel: "Half 2", mode: "office", companyName: "" },
+    ]);
 
     const memberViewContext = useMemo(() => {
         const params = new URLSearchParams(location.search);
@@ -151,26 +100,40 @@ const MCTC = () => {
         });
     };
 
-    const openDayPopup = (dayKey, mode = "task") => {
+    const openDayPopup = (dayKey, mode = "reminder") => {
         if (!dayKey || isSundayDayKey(dayKey)) return;
-        setEntryChooserDay(null);
         setActiveDayPopup(dayKey);
         setPopupMode(mode);
-        setTaskDrafts([]);
-        setPlaceDrafts(getDefaultPlaceDrafts());
+        setPopupReminderDrafts([]);
+        setPopupTaskDrafts([]);
     };
 
-    const openEntryChooser = (dayKey) => {
+    const openPlacePopup = (dayKey) => {
         if (!dayKey || isSundayDayKey(dayKey)) return;
-        setActiveDayPopup(dayKey);
-        setEntryChooserDay(dayKey);
+
+        setActivePlacePopupDay(dayKey);
+        setPlacePopupStage("choice");
+        setPlacePopupType("onsite");
+        setPlacePopupRows([
+            { halfLabel: "Half 1", mode: "office", companyName: "" },
+            { halfLabel: "Half 2", mode: "office", companyName: "" },
+        ]);
     };
 
     const closeDayPopup = () => {
         setActiveDayPopup(null);
-        setEntryChooserDay(null);
-        setTaskDrafts([]);
-        setPlaceDrafts(getDefaultPlaceDrafts());
+        setPopupReminderDrafts([]);
+        setPopupTaskDrafts([]);
+    };
+
+    const closePlacePopup = () => {
+        setActivePlacePopupDay(null);
+        setPlacePopupStage("choice");
+        setPlacePopupType("onsite");
+        setPlacePopupRows([
+            { halfLabel: "Half 1", mode: "office", companyName: "" },
+            { halfLabel: "Half 2", mode: "office", companyName: "" },
+        ]);
     };
 
     const toDayKey = (year, monthIndex, day) => {
@@ -235,21 +198,12 @@ const MCTC = () => {
                 response.data.forEach((entry) => {
                     if (isSundayDayKey(entry.entry_date)) return;
 
-                    const parsedPlaceLabel = parsePlaceLabel(entry.label);
-                    const isTaskEntry = entry.entry_type === "task";
-                    const displayLabel = parsedPlaceLabel?.displayLabel || entry.label;
-                    const entryCategory = isTaskEntry ? "task" : "place";
-
                     const key = entry.entry_date;
                     if (!grouped[key]) grouped[key] = [];
                     grouped[key].push({
                         id: entry.id,
-                        label: displayLabel,
-                        rawLabel: entry.label,
-                        type: entryCategory,
-                        placeHalf: parsedPlaceLabel?.normalizedHalf || "",
-                        placeType: parsedPlaceLabel?.normalizedType || "",
-                        placeCompany: parsedPlaceLabel?.companyName || "",
+                        label: entry.label,
+                        type: entry.entry_type,
                         linkedTaskId: entry.linked_task,
                         linkedTaskStatus: entry.linked_task_status,
                         linkedTaskCompletionDate: entry.linked_task_completion_date,
@@ -283,7 +237,7 @@ const MCTC = () => {
 
     // --- Task Management ---
 
-    const addTask = async (dayKey, label) => {
+    const addTask = async (dayKey, label, entryType) => {
         if (!canManageEntries) return;
         if (isSundayDayKey(dayKey)) {
             alert("No task can be added on Sunday.");
@@ -292,27 +246,30 @@ const MCTC = () => {
 
         const normalizedLabel = String(label || "").trim();
         if (!normalizedLabel) return;
+        const normalizedType = entryType === "task" ? "task" : "normal";
 
         try {
             setIsSaving(true);
             let linkedTaskId = null;
 
-            const currentUserId = await fetchCurrentUserId();
+            if (normalizedType === "task") {
+                const currentUserId = await fetchCurrentUserId();
 
-            const taskResponse = await api.post("/tasks/", {
-                title: normalizedLabel,
-                assigned_to: currentUserId,
-                target_date: dayKey,
-                start_date: dayKey,
-                source_module: "MCTC",
-            });
+                const taskResponse = await api.post("/tasks/", {
+                    title: normalizedLabel,
+                    assigned_to: currentUserId,
+                    target_date: dayKey,
+                    start_date: dayKey,
+                    source_module: "MCTC",
+                });
 
-            linkedTaskId = taskResponse?.data?.id || null;
+                linkedTaskId = taskResponse?.data?.id || null;
+            }
 
             const response = await api.post("/mctc/entries/", {
                 entry_date: dayKey,
                 label: normalizedLabel,
-                entry_type: "task",
+                entry_type: normalizedType,
                 linked_task: linkedTaskId,
             });
 
@@ -339,88 +296,82 @@ const MCTC = () => {
         }
     };
 
-    const addTaskDraftRow = () => {
-        if (!canManageEntries || !activeDayPopup) return;
-        setTaskDrafts((prev) => [...prev, ""]);
+    const buildPlaceEntryLabel = (dayType, row) => {
+        const placeLabel = row.mode === "visit" ? String(row.companyName || "").trim() : "Office";
+        return `${dayType === "onsite" ? "Onsite" : "Offsite"} - ${row.halfLabel} - ${placeLabel}`;
     };
 
-    const updateTaskDraftRow = (index, value) => {
-        setTaskDrafts((prev) => prev.map((item, idx) => (idx === index ? value : item)));
+    const updatePlacePopupRow = (index, field, value) => {
+        setPlacePopupRows((prev) => prev.map((row, rowIndex) => {
+            if (rowIndex !== index) return row;
+
+            if (field === "mode" && value === "office") {
+                return { ...row, mode: value, companyName: "" };
+            }
+
+            return { ...row, [field]: value };
+        }));
     };
 
-    const removeTaskDraftRow = (index) => {
-        setTaskDrafts((prev) => prev.filter((_, idx) => idx !== index));
-    };
+    const savePlacePopupEntries = async () => {
+        if (!activePlacePopupDay) return;
 
-    const saveTaskDraftRow = async (index) => {
-        if (!activeDayPopup) return;
-        const value = taskDrafts[index] || "";
-        await addTask(activeDayPopup, value);
-        removeTaskDraftRow(index);
-    };
+        const normalizedRows = placePopupRows.map((row) => ({
+            ...row,
+            companyName: String(row.companyName || "").trim(),
+        }));
 
-    const updatePlaceDraftRow = (index, field, value) => {
-        setPlaceDrafts((prev) => prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item)));
-    };
-
-    const savePlaceDraftRow = async (index) => {
-        if (!activeDayPopup || !canManageEntries) return;
-
-        const draft = placeDrafts[index];
-        if (!draft) return;
-
-        const placeType = String(draft.placeType || "office").toLowerCase();
-        const companyName = String(draft.companyName || "").trim();
-        const halfLabel = normalizePlaceHalf(draft.half);
-
-        if (placeType === "visit" && !companyName) {
-            alert("Please enter the company name for Visit.");
+        const invalidVisitRow = normalizedRows.find((row) => row.mode === "visit" && !row.companyName);
+        if (invalidVisitRow) {
+            alert("Please enter the company name for every Visit entry.");
             return;
         }
 
-        const label = buildPlaceLabel({
-            half: draft.half,
-            placeType,
-            companyName: placeType === "office" ? "" : companyName,
-        });
-
-        const displayLabel = placeType === "office"
-            ? `Office${halfLabel ? ` · ${halfLabel}` : ""}`
-            : `${companyName}${halfLabel ? ` · ${halfLabel}` : ""}`;
-
         try {
             setIsSaving(true);
-            const response = await api.post("/mctc/entries/", {
-                entry_date: activeDayPopup,
-                label,
-                entry_type: "normal",
-            });
-
-            setTasks((prev) => {
-                const dayTasks = prev[activeDayPopup] || [];
-                const newTask = {
-                    id: response.data.id,
-                    label: displayLabel,
-                    rawLabel: label,
-                    type: "place",
-                    placeHalf: normalizePlaceHalf(draft.half),
-                    placeType: normalizePlaceType(placeType),
-                    placeCompany: placeType === "office" ? "" : companyName,
-                };
-
-                return {
-                    ...prev,
-                    [activeDayPopup]: [...dayTasks, newTask],
-                };
-            });
-
-            setPlaceDrafts((prev) => prev.map((item, idx) => (idx === index ? { ...item, companyName: "" } : item)));
+            for (const row of normalizedRows) {
+                const label = buildPlaceEntryLabel(placePopupType, row);
+                await addTask(activePlacePopupDay, label, "normal");
+            }
+            closePlacePopup();
         } catch (error) {
-            console.error("Failed to save MCTC place entry:", error);
-            alert("Failed to save place entry.");
+            console.error("Failed to save place entries:", error);
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const addPopupDraftRow = (mode) => {
+        if (!canManageEntries || !activeDayPopup) return;
+        if (mode === "task") {
+            setPopupTaskDrafts((prev) => [...prev, ""]);
+            return;
+        }
+        setPopupReminderDrafts((prev) => [...prev, ""]);
+    };
+
+    const updatePopupDraftRow = (mode, index, value) => {
+        if (mode === "task") {
+            setPopupTaskDrafts((prev) => prev.map((item, idx) => (idx === index ? value : item)));
+            return;
+        }
+        setPopupReminderDrafts((prev) => prev.map((item, idx) => (idx === index ? value : item)));
+    };
+
+    const removePopupDraftRow = (mode, index) => {
+        if (mode === "task") {
+            setPopupTaskDrafts((prev) => prev.filter((_, idx) => idx !== index));
+            return;
+        }
+        setPopupReminderDrafts((prev) => prev.filter((_, idx) => idx !== index));
+    };
+
+    const savePopupDraftRow = async (mode, index) => {
+        if (!activeDayPopup) return;
+        const drafts = mode === "task" ? popupTaskDrafts : popupReminderDrafts;
+        const value = drafts[index] || "";
+        await addTask(activeDayPopup, value, mode);
+        removePopupDraftRow(mode, index);
     };
 
     const completeTask = async (dayKey, index) => {
@@ -569,7 +520,11 @@ const MCTC = () => {
                                                     <button
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            openEntryChooser(key);
+                                                            if (headerView === "place") {
+                                                                openPlacePopup(key);
+                                                            } else {
+                                                                openDayPopup(key, "reminder");
+                                                            }
                                                         }}
                                                         className="rounded-md bg-blue-50 p-1.5 text-blue-600 transition-all hover:bg-[#1e293b] hover:text-white"
                                                     >
@@ -596,7 +551,7 @@ const MCTC = () => {
                                                                             ? taskCompleted
                                                                                 ? "border-emerald-200 bg-emerald-100 text-emerald-900"
                                                                                 : "border-amber-100 bg-amber-50 text-amber-900"
-                                                                            : "border-sky-100 bg-sky-50 text-sky-900"
+                                                                            : "border-slate-100 bg-slate-50 text-slate-700"
                                                                             }`}
                                                                     >
                                                                         <span className="flex-1 truncate font-bold">{task.label}</span>
@@ -641,63 +596,12 @@ const MCTC = () => {
         );
     };
 
-    const renderEntryChooser = () => {
-        if (!entryChooserDay || !activeDayPopup) return null;
-
-        return (
-            <div
-                className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm"
-                onClick={closeDayPopup}
-            >
-                <div
-                    className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.55)]"
-                    onClick={(event) => event.stopPropagation()}
-                >
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Add Entry</p>
-                            <h3 className="text-base font-black text-slate-800 truncate">Choose a type</h3>
-                        </div>
-                        <button
-                            onClick={closeDayPopup}
-                            className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                        >
-                            <X size={16} strokeWidth={3} />
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <button
-                            onClick={() => openDayPopup(entryChooserDay, "task")}
-                            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-left transition-all hover:border-slate-300 hover:bg-slate-100"
-                        >
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Task</p>
-                            <p className="mt-1 text-sm font-bold text-slate-800">Add a task entry</p>
-                        </button>
-
-                        <button
-                            onClick={() => openDayPopup(entryChooserDay, "place")}
-                            className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-5 text-left transition-all hover:border-sky-300 hover:bg-sky-100"
-                        >
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-500">Place</p>
-                            <p className="mt-1 text-sm font-bold text-slate-800">Add office or visit</p>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
     const renderDayPopup = () => {
-        if (!activeDayPopup || entryChooserDay) return null;
+        if (!activeDayPopup) return null;
 
         const dayTasks = tasks[activeDayPopup] || [];
-        const isTaskMode = popupMode === "task";
-        const popupTitle = isTaskMode ? "Task" : "Place";
-        const placeModeOptions = [
-            { label: "First Half", value: "first" },
-            { label: "Second Half", value: "second" },
-        ];
+        const visibleDrafts = popupMode === "task" ? popupTaskDrafts : popupReminderDrafts;
+        const popupTitle = popupMode === "task" ? "Task" : "Reminder";
 
         return (
             <div
@@ -723,22 +627,22 @@ const MCTC = () => {
                     {canManageEntries && (
                         <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
                             <button
+                                onClick={() => setPopupMode("reminder")}
+                                className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${popupMode === "reminder"
+                                    ? "bg-[#1e293b] text-white shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                    }`}
+                            >
+                                Reminder
+                            </button>
+                            <button
                                 onClick={() => setPopupMode("task")}
-                                className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${isTaskMode
+                                className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${popupMode === "task"
                                     ? "bg-[#1e293b] text-white shadow-sm"
                                     : "text-slate-500 hover:text-slate-800"
                                     }`}
                             >
                                 Task
-                            </button>
-                            <button
-                                onClick={() => setPopupMode("place")}
-                                className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${!isTaskMode
-                                    ? "bg-[#1e293b] text-white shadow-sm"
-                                    : "text-slate-500 hover:text-slate-800"
-                                    }`}
-                            >
-                                Place
                             </button>
                         </div>
                     )}
@@ -746,136 +650,56 @@ const MCTC = () => {
                     <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4 mb-2 md:mb-3">
                         {canManageEntries && (
                             <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-2 sm:p-3 lg:col-span-2 min-h-0 flex flex-col">
-                                {isTaskMode ? (
-                                    <>
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                Add Task
-                                            </p>
-                                            <button
-                                                onClick={addTaskDraftRow}
-                                                className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-blue-700"
-                                            >
-                                                <Plus size={12} strokeWidth={3} />
-                                                Add Row
-                                            </button>
-                                        </div>
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                        Add {popupTitle}
+                                    </p>
+                                    <button
+                                        onClick={() => addPopupDraftRow(popupMode)}
+                                        className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-blue-700"
+                                    >
+                                        <Plus size={12} strokeWidth={3} />
+                                        Add Row
+                                    </button>
+                                </div>
 
-                                        <div className="space-y-2 max-h-[38vh] lg:max-h-full overflow-y-auto pr-1">
-                                            {taskDrafts.length === 0 ? (
-                                                <p className="text-[10px] font-bold text-slate-400">Click Add Row to create tasks.</p>
-                                            ) : (
-                                                taskDrafts.map((draft, index) => (
-                                                    <div key={`task-draft-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                                        <input
-                                                            type="text"
-                                                            value={draft}
-                                                            onChange={(event) => updateTaskDraftRow(index, event.target.value)}
-                                                            onKeyDown={(event) => {
-                                                                if (event.key === "Enter") {
-                                                                    saveTaskDraftRow(index);
-                                                                }
-                                                            }}
-                                                            placeholder="Enter task..."
-                                                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                        />
-                                                        <div className="flex items-center gap-2 sm:shrink-0">
-                                                            <button
-                                                                onClick={() => saveTaskDraftRow(index)}
-                                                                disabled={isSaving}
-                                                                className="flex-1 sm:flex-none rounded-lg bg-emerald-600 px-2.5 py-2 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300"
-                                                            >
-                                                                Save
-                                                            </button>
-                                                            <button
-                                                                onClick={() => removeTaskDraftRow(index)}
-                                                                className="rounded-lg bg-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-300 hover:text-red-500"
-                                                            >
-                                                                <X size={12} strokeWidth={3} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                Add Place
-                                            </p>
-                                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                                Office / Visit per half
-                                            </p>
-                                        </div>
-
-                                        <div className="space-y-2 max-h-[38vh] lg:max-h-full overflow-y-auto pr-1">
-                                            {placeDrafts.map((draft, index) => (
-                                                <div key={`place-draft-${draft.half}-${index}`} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-                                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                            {normalizePlaceHalf(draft.half)}
-                                                        </p>
-                                                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                                                            Half {index + 1}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        <label className="block">
-                                                            <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Half</span>
-                                                            <select
-                                                                value={draft.half}
-                                                                onChange={(event) => updatePlaceDraftRow(index, "half", event.target.value)}
-                                                                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                            >
-                                                                {placeModeOptions.map((option) => (
-                                                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                                                ))}
-                                                            </select>
-                                                        </label>
-
-                                                        <label className="block">
-                                                            <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Type</span>
-                                                            <select
-                                                                value={draft.placeType}
-                                                                onChange={(event) => updatePlaceDraftRow(index, "placeType", event.target.value)}
-                                                                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                            >
-                                                                <option value="office">Office</option>
-                                                                <option value="visit">Visit</option>
-                                                            </select>
-                                                        </label>
-                                                    </div>
-
-                                                    {String(draft.placeType || "office") === "visit" && (
-                                                        <label className="mt-2 block">
-                                                            <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Company Name</span>
-                                                            <input
-                                                                type="text"
-                                                                value={draft.companyName}
-                                                                onChange={(event) => updatePlaceDraftRow(index, "companyName", event.target.value)}
-                                                                placeholder="Enter company name"
-                                                                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                            />
-                                                        </label>
-                                                    )}
-
-                                                    <div className="mt-3 flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={() => savePlaceDraftRow(index)}
-                                                            disabled={isSaving}
-                                                            className="rounded-lg bg-emerald-600 px-3 py-2 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                    </div>
+                                <div className="space-y-2 max-h-[38vh] lg:max-h-full overflow-y-auto pr-1">
+                                    {visibleDrafts.length === 0 ? (
+                                        <p className="text-[10px] font-bold text-slate-400">Click Add Row to create entries.</p>
+                                    ) : (
+                                        visibleDrafts.map((draft, index) => (
+                                            <div key={`${popupMode}-draft-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={draft}
+                                                    onChange={(event) => updatePopupDraftRow(popupMode, index, event.target.value)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter") {
+                                                            savePopupDraftRow(popupMode, index);
+                                                        }
+                                                    }}
+                                                    placeholder={`Enter ${popupTitle.toLowerCase()}...`}
+                                                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                />
+                                                <div className="flex items-center gap-2 sm:shrink-0">
+                                                    <button
+                                                        onClick={() => savePopupDraftRow(popupMode, index)}
+                                                        disabled={isSaving}
+                                                        className="flex-1 sm:flex-none rounded-lg bg-emerald-600 px-2.5 py-2 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                    <button
+                                                        onClick={() => removePopupDraftRow(popupMode, index)}
+                                                        className="rounded-lg bg-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-300 hover:text-red-500"
+                                                    >
+                                                        <X size={12} strokeWidth={3} />
+                                                    </button>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -883,30 +707,24 @@ const MCTC = () => {
                             {dayTasks.length > 0 ? (
                                 dayTasks.map((task, idx) => {
                                     const taskCompleted = isLinkedTaskCompleted(task);
-                                    const isTaskEntry = task.type === "task";
-                                    const isPlaceEntry = task.type === "place";
 
                                     return (
                                         <div
                                             key={`popup-${task.id}`}
-                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${isTaskEntry
+                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${task.type === "task"
                                                 ? taskCompleted
                                                     ? "border-emerald-200 bg-emerald-100"
                                                     : "border-amber-100 bg-amber-50"
-                                                : isPlaceEntry
-                                                    ? "border-sky-100 bg-sky-50"
-                                                    : "border-slate-100 bg-slate-50"
+                                                : "border-slate-100 bg-slate-50"
                                                 }`}
                                         >
                                             <div className="min-w-0">
                                                 <p className="truncate text-xs font-bold text-slate-800">{task.label}</p>
-                                                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
-                                                    {isTaskEntry ? "TASK" : isPlaceEntry ? "PLACE" : String(task.type || "").toUpperCase()}
-                                                </p>
+                                                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{task.type}</p>
                                             </div>
 
                                             <div className="flex shrink-0 items-center gap-2">
-                                                {canCompleteTasks && isTaskEntry && task.linkedTaskId && (
+                                                {canCompleteTasks && task.type === "task" && task.linkedTaskId && (
                                                     <button
                                                         onClick={() => completeTask(activeDayPopup, idx)}
                                                         disabled={isSaving || taskCompleted}
@@ -940,13 +758,181 @@ const MCTC = () => {
         );
     };
 
+    const renderPlacePopup = () => {
+        if (!activePlacePopupDay) return null;
+
+        const activeScopeLabel = placePopupType === "onsite" ? "Onsite" : "Offsite";
+
+        return (
+            <div className="fixed inset-0 z-130 flex items-end sm:items-center justify-center bg-slate-950/45 p-2 sm:p-4 backdrop-blur-sm">
+                <div
+                    className="w-full sm:max-w-2xl md:max-w-195 lg:max-w-215 rounded-2xl md:rounded-3xl border border-slate-200/80 bg-white p-3 sm:p-4 md:p-5 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.55)] max-h-[92vh] sm:max-h-[88vh] flex flex-col"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="mb-3 md:mb-4 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
+                        <div className="min-w-0">
+                            <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Add Place</p>
+                            <h3 className="text-base md:text-lg font-black text-slate-800 truncate">{formatDayLabel(activePlacePopupDay)}</h3>
+                        </div>
+                        <button
+                            onClick={closePlacePopup}
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 shrink-0"
+                        >
+                            <X size={16} strokeWidth={3} />
+                        </button>
+                    </div>
+
+                    {placePopupStage === "choice" ? (
+                        <div className="flex-1 min-h-0">
+                            <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choose category</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-700">Select whether this day is onsite or offsite.</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPlacePopupType("onsite");
+                                        setPlacePopupStage("details");
+                                    }}
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-5 text-left transition-all hover:border-blue-300 hover:shadow-md"
+                                >
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Onsite</p>
+                                    <p className="mt-2 text-lg font-black text-slate-900">Office day</p>
+                                    <p className="mt-1 text-sm text-slate-500">Use office for both halves unless you choose Visit.</p>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPlacePopupType("offsite");
+                                        setPlacePopupStage("details");
+                                    }}
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-5 text-left transition-all hover:border-blue-300 hover:shadow-md"
+                                >
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Offsite</p>
+                                    <p className="mt-2 text-lg font-black text-slate-900">Visit day</p>
+                                    <p className="mt-1 text-sm text-slate-500">Use company names for visit entries.</p>
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div className="min-w-0">
+                                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Selected type</p>
+                                    <p className="text-sm font-black text-slate-800">{activeScopeLabel}</p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setPlacePopupStage("choice")}
+                                    className="rounded-lg bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600 border border-slate-200 transition-colors hover:bg-slate-100"
+                                >
+                                    Change
+                                </button>
+                            </div>
+
+                            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
+                                {placePopupRows.map((row, index) => (
+                                    <div key={`${activePlacePopupDay}-${row.halfLabel}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                        <div className="mb-3 flex items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{row.halfLabel}</p>
+                                                <p className="text-sm font-black text-slate-800">{activeScopeLabel}</p>
+                                            </div>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                Half {index + 1}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+                                            <label className="min-w-0">
+                                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                    Office / Visit
+                                                </span>
+                                                <select
+                                                    value={row.mode}
+                                                    onChange={(event) => updatePlacePopupRow(index, "mode", event.target.value)}
+                                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                >
+                                                    <option value="office">Office</option>
+                                                    <option value="visit">Visit</option>
+                                                </select>
+                                            </label>
+
+                                            {row.mode === "visit" ? (
+                                                <label className="min-w-0">
+                                                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                        Company name
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        value={row.companyName}
+                                                        onChange={(event) => updatePlacePopupRow(index, "companyName", event.target.value)}
+                                                        placeholder="Enter company name"
+                                                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                    />
+                                                </label>
+                                            ) : (
+                                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-500 self-end">
+                                                    Office will be shown in the calendar.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-end gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={closePlacePopup}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={savePlacePopupEntries}
+                                    disabled={isSaving}
+                                    className="rounded-xl bg-[#1e293b] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-sm transition-colors hover:bg-blue-900 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isSaving ? "Saving" : "Save Place"}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-slate-50 font-sans text-slate-900">
             <Sidebar />
 
             <main className="flex min-w-0 flex-1 flex-col overflow-hidden px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 lg:py-5 space-y-2 sm:space-y-3 md:space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-3">
-                    <div className="min-w-0 flex-1">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
+                    <div className="flex items-center justify-start gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm justify-self-start">
+                        <button
+                            type="button"
+                            onClick={() => setHeaderView("task")}
+                            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${headerView === "task" ? "bg-[#1e293b] text-white shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                        >
+                            Task
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setHeaderView("place")}
+                            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${headerView === "place" ? "bg-[#0f5f8a] text-white shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                        >
+                            Place
+                        </button>
+                    </div>
+
+                    <div className="min-w-0 text-center justify-self-center">
                         <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-black tracking-tight text-[#1e293b]">
                             MCTC
                         </h1>
@@ -957,15 +943,15 @@ const MCTC = () => {
                         )}
                     </div>
 
-                    <div className="flex items-center gap-1 sm:gap-2 md:gap-3 rounded-lg sm:rounded-xl md:rounded-2xl border border-slate-100 border-b-4 border-b-slate-200 bg-white p-1 sm:p-1.5 md:p-2 shadow-lg shadow-slate-200/40 flex-shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-2 md:gap-3 rounded-lg sm:rounded-xl md:rounded-2xl border border-slate-100 border-b-4 border-b-slate-200 bg-white p-1 sm:p-1.5 md:p-2 shadow-lg shadow-slate-200/40 justify-self-end">
                         <button
                             onClick={handlePrevMonth}
-                            className="rounded-lg md:rounded-xl bg-[#1e293b] p-1.5 sm:p-2 md:p-2.5 text-white transition-all hover:bg-blue-900 active:scale-95 flex-shrink-0"
+                            className="rounded-lg md:rounded-xl bg-[#1e293b] p-1.5 sm:p-2 md:p-2.5 text-white transition-all hover:bg-blue-900 active:scale-95 shrink-0"
                         >
                             <ChevronLeft size={12} className="sm:w-4 sm:h-4 md:w-5 md:h-5" strokeWidth={3} />
                         </button>
 
-                        <div className="min-w-[80px] sm:min-w-[140px] md:min-w-[180px] px-1 sm:px-2 md:px-4 text-center">
+                        <div className="min-w-20 sm:min-w-35 md:min-w-45 px-1 sm:px-2 md:px-4 text-center">
                             <h2 className="flex items-center justify-center gap-0.5 sm:gap-1 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black text-[#1e293b] whitespace-nowrap">
                                 {monthNames[currentDate.getMonth()].substring(0, 3)}
                                 <span className="font-light text-slate-200 hidden sm:inline">/</span>
@@ -976,7 +962,7 @@ const MCTC = () => {
 
                         <button
                             onClick={handleNextMonth}
-                            className="rounded-lg md:rounded-xl bg-[#1e293b] p-1.5 sm:p-2 md:p-2.5 text-white transition-all hover:bg-blue-900 active:scale-95 flex-shrink-0"
+                            className="rounded-lg md:rounded-xl bg-[#1e293b] p-1.5 sm:p-2 md:p-2.5 text-white transition-all hover:bg-blue-900 active:scale-95 shrink-0"
                         >
                             <ChevronRight size={12} className="sm:w-4 sm:h-4 md:w-5 md:h-5" strokeWidth={3} />
                         </button>
@@ -987,8 +973,8 @@ const MCTC = () => {
                     {renderCalendarTable()}
                 </div>
 
-                {renderEntryChooser()}
                 {renderDayPopup()}
+                {renderPlacePopup()}
             </main>
         </div>
     );
