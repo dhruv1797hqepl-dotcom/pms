@@ -757,6 +757,32 @@ const MandaysPlanning = () => {
     };
   }, [clients, hrRows, hoursMatrix]);
 
+  const clientWiseTotals = useMemo(() => {
+    return clients.reduce((accumulator, client) => {
+      const totals = hrRows.reduce(
+        (employeeAccumulator, employee) => {
+          const rowHours = hoursMatrix[`${employee.id}_${client.id}`];
+          if (!rowHours) {
+            return employeeAccumulator;
+          }
+
+          return {
+            onsite: employeeAccumulator.onsite + parseHours(rowHours.on) / 6,
+            offsite: employeeAccumulator.offsite + parseHours(rowHours.off) / 7.5,
+          };
+        },
+        { onsite: 0, offsite: 0 }
+      );
+
+      accumulator[String(client.id)] = {
+        onsite: formatDaysValue(totals.onsite),
+        offsite: formatDaysValue(totals.offsite),
+      };
+
+      return accumulator;
+    }, {});
+  }, [clients, hrRows, hoursMatrix]);
+
   return (
     <div className="h-screen w-screen bg-slate-50 font-sans text-slate-800 flex overflow-hidden">
       <Sidebar />
@@ -896,8 +922,12 @@ const MandaysPlanning = () => {
                         </td>
                         {(clients.length ? clients : [{ id: 'fallback' }]).map((client) => (
                           <React.Fragment key={`grand-total-${client.id}`}>
-                            <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-700">-</td>
-                            <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-700">-</td>
+                            <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-700">
+                              {client.id === 'fallback' ? '-' : (clientWiseTotals[String(client.id)]?.onsite || '0')}
+                            </td>
+                            <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-700">
+                              {client.id === 'fallback' ? '-' : (clientWiseTotals[String(client.id)]?.offsite || '0')}
+                            </td>
                           </React.Fragment>
                         ))}
                         <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-900">
