@@ -256,6 +256,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_password_display(self, obj):
         return obj.plain_password or ''
 
+    def validate_phone_number(self, value):
+        """Validate phone number: max 10 digits only"""
+        if value:
+            # Remove any non-digit characters for validation
+            digits_only = ''.join(filter(str.isdigit, str(value)))
+            if len(digits_only) > 10:
+                raise serializers.ValidationError(
+                    "Phone number must contain maximum 10 digits."
+                )
+            # Store only digits
+            return digits_only
+        return value
+
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
         if password:

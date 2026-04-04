@@ -27,7 +27,7 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
 
     # Shared profile fields used by all role-based profile pages.
-    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    phone_number = models.CharField(max_length=10, blank=True, null=True)
     experience = models.CharField(max_length=255, blank=True, null=True)
     expertise = models.TextField(blank=True, null=True)
     photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)

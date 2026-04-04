@@ -39,6 +39,10 @@ const EditProfileModal = ({ isOpen, onClose, onUpdate, initialData }) => {
             const file = files[0];
             setFormData(prev => ({ ...prev, photo: file }));
             setPreviewUrl(URL.createObjectURL(file));
+        } else if (name === 'phone_number') {
+            // Allow only digits and limit to 10 characters
+            const digitsOnly = value.replace(/\D/g, '').slice(0, 10);
+            setFormData(prev => ({ ...prev, [name]: digitsOnly }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -177,8 +181,11 @@ const EditProfileModal = ({ isOpen, onClose, onUpdate, initialData }) => {
                                 name="phone_number"
                                 value={formData.phone_number}
                                 onChange={handleChange}
+                                maxLength="10"
+                                placeholder="10 digits max"
                                 className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#F58A4B]/20 outline-none transition-all"
                             />
+                            <p className="text-[9px] text-slate-400 font-bold px-1 italic">* Maximum 10 digits allowed</p>
                         </div>
 
                         {/* Experience */}

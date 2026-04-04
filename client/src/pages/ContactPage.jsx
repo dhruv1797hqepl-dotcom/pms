@@ -38,9 +38,16 @@ const ContactPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    let finalValue = value;
+    
+    // Restrict phone to 10 digits only
+    if (name === 'phone') {
+      finalValue = value.replace(/\D/g, '').slice(0, 10);
+    }
+    
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: finalValue,
     }));
     setError(null);
   };
@@ -238,8 +245,11 @@ const ContactPage = () => {
                         name={field}
                         value={formData[field]}
                         onChange={handleChange}
+                        maxLength={field === "phone" ? "10" : undefined}
+                        placeholder={field === "phone" ? "10 digits max" : ""}
                         className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       />
+                      {field === "phone" && <p className="text-xs text-slate-500 mt-1 italic">Maximum 10 digits allowed</p>}
                     </div>
                   ))}
 

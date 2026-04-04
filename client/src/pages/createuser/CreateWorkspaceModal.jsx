@@ -258,7 +258,17 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                 <ModalInput icon={Building2} label="Company Name" placeholder="e.g. Acme Corp" value={formData.company_name} onChange={(v) => setFormData({ ...formData, company_name: v })} />
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <ModalInput icon={Phone} label="Phone Number" placeholder="+91..." value={formData.phone} onChange={(v) => setFormData({ ...formData, phone: v })} />
+                                    <ModalInput 
+                                        icon={Phone} 
+                                        label="Phone Number" 
+                                        placeholder="10 digits max" 
+                                        value={formData.phone} 
+                                        onChange={(v) => {
+                                            // Allow only digits and limit to 10 characters
+                                            const digitsOnly = v.replace(/\D/g, '').slice(0, 10);
+                                            setFormData({ ...formData, phone: digitsOnly });
+                                        }} 
+                                    />
                                     <ModalInput icon={Globe} label="Website" placeholder="www.acme.com" value={formData.website} onChange={(v) => setFormData({ ...formData, website: v })} />
                                 </div>
                                 <div className="space-y-1.5">
@@ -346,13 +356,14 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
 };
 
 // Sub-components
-const ModalInput = ({ icon: Icon, label, value, onChange, type = "text", placeholder, disabled, required }) => (
+const ModalInput = ({ icon: Icon, label, value, onChange, type = "text", placeholder, disabled, required, maxLength }) => (
     <div className={`space-y-1.5 group ${disabled ? 'opacity-50' : ''}`}>
         <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-[0.15em] group-focus-within:text-[#F58A4B]">{label}</label>
         <div className="relative">
             <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#F58A4B]" size={16} />
             <input
                 required={required} type={type} disabled={disabled} placeholder={placeholder}
+                maxLength={maxLength}
                 className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-[13px] font-bold focus:border-[#F58A4B] outline-none transition-all"
                 value={value} onChange={(e) => onChange(e.target.value)}
             />
