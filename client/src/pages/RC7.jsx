@@ -530,6 +530,11 @@ const RC7 = () => {
 
   const satDates = useMemo(() => getSatWindow(today), [today]);
   const wedDates = useMemo(() => getWedWindow(today), [today]);
+  const sharedDateKeys = useMemo(() => {
+    const wedKeySet = new Set(wedDates.map(toDateKey));
+    return satDates.map(toDateKey).filter((dateKey) => wedKeySet.has(dateKey));
+  }, [satDates, wedDates]);
+  const sharedDateKeySet = useMemo(() => new Set(sharedDateKeys), [sharedDateKeys]);
 
   const [employees, setEmployees] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -942,12 +947,12 @@ const RC7 = () => {
     return { newPlan: newSatPlan, changed };
   };
 
-  const updatePlanCell = (setter, employeeId, dateKey, updater) => {
+  const updatePlanCell = (sourceRef, setter, employeeId, dateKey, updater) => {
+    const sourceEmployeePlan = sourceRef.current?.[employeeId] || {};
+    const nextCell = updater(normalizeCell(sourceEmployeePlan[dateKey]));
+
     setter((prev) => {
       const previousEmployeePlan = prev[employeeId] || {};
-      const previousCell = normalizeCell(previousEmployeePlan[dateKey]);
-      const nextCell = updater(previousCell);
-
       return {
         ...prev,
         [employeeId]: {
@@ -956,11 +961,13 @@ const RC7 = () => {
         },
       };
     });
+
+    return nextCell;
   };
 
-  const createHandlers = (setter, markDirty) => ({
+  const createHandlers = (sourceRef, setter, markDirty, mirrorSetter, markMirrorDirty) => ({
     onLocationChange: (employeeId, dateKey, value) => {
-      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+      updatePlanCell(sourceRef, setter, employeeId, dateKey, (cell) => {
         const isHoliday = String(value || '').toLowerCase() === 'holiday';
         return {
           ...cell,
@@ -973,10 +980,27 @@ const RC7 = () => {
               : new Array(cell.deliverables.length ? cell.deliverables.length : 1).fill(0)),
         };
       });
+      if (sharedDateKeySet.has(dateKey) && mirrorSetter) {
+        const mirrorSourcePlan = mirrorSetter === setSatPlan ? satPlanRef.current : wedPlanRef.current;
+        updatePlanCell({ current: mirrorSourcePlan }, mirrorSetter, employeeId, dateKey, (cell) => {
+          const isHoliday = String(value || '').toLowerCase() === 'holiday';
+          return {
+            ...cell,
+            location: value,
+            deliverables: isHoliday ? [''] : (cell.deliverables.length ? cell.deliverables : ['']),
+            deliverable_hours: isHoliday
+              ? [0]
+              : ((cell.deliverable_hours && cell.deliverable_hours.length)
+                ? cell.deliverable_hours
+                : new Array(cell.deliverables.length ? cell.deliverables.length : 1).fill(0)),
+          };
+        });
+        if (markMirrorDirty) markMirrorDirty(true);
+      }
       markDirty(true);
     },
     onDeliverableChange: (employeeId, dateKey, index, value) => {
-      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+      const nextCell = updatePlanCell(sourceRef, setter, employeeId, dateKey, (cell) => {
         if (String(cell.location || '').toLowerCase() === 'holiday') {
           return cell;
         }
@@ -984,19 +1008,27 @@ const RC7 = () => {
         nextDeliverables[index] = value;
         return { ...cell, deliverables: nextDeliverables };
       });
+      if (sharedDateKeySet.has(dateKey) && mirrorSetter) {
+        updatePlanCell({ current: mirrorSetter === setSatPlan ? satPlanRef.current : wedPlanRef.current }, mirrorSetter, employeeId, dateKey, () => nextCell);
+        if (markMirrorDirty) markMirrorDirty(true);
+      }
       markDirty(true);
     },
     onStepHoursChange: (employeeId, dateKey, index, value) => {
-      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+      const nextCell = updatePlanCell(sourceRef, setter, employeeId, dateKey, (cell) => {
         const nextHours = [...(cell.deliverable_hours || new Array(cell.deliverables.length || 1).fill(0))];
         const hours = parseFloat(value);
         nextHours[index] = Number.isFinite(hours) ? Math.max(0, hours) : 0;
         return { ...cell, deliverable_hours: nextHours };
       });
+      if (sharedDateKeySet.has(dateKey) && mirrorSetter) {
+        updatePlanCell({ current: mirrorSetter === setSatPlan ? satPlanRef.current : wedPlanRef.current }, mirrorSetter, employeeId, dateKey, () => nextCell);
+        if (markMirrorDirty) markMirrorDirty(true);
+      }
       markDirty(true);
     },
     onAddDeliverable: (employeeId, dateKey) => {
-      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+      const nextCell = updatePlanCell(sourceRef, setter, employeeId, dateKey, (cell) => {
         if (String(cell.location || '').toLowerCase() === 'holiday') {
           return cell;
         }
@@ -1006,10 +1038,14 @@ const RC7 = () => {
           deliverable_hours: [...(cell.deliverable_hours || []), 0],
         };
       });
+      if (sharedDateKeySet.has(dateKey) && mirrorSetter) {
+        updatePlanCell({ current: mirrorSetter === setSatPlan ? satPlanRef.current : wedPlanRef.current }, mirrorSetter, employeeId, dateKey, () => nextCell);
+        if (markMirrorDirty) markMirrorDirty(true);
+      }
       markDirty(true);
     },
     onRemoveDeliverable: (employeeId, dateKey, index) => {
-      updatePlanCell(setter, employeeId, dateKey, (cell) => {
+      const nextCell = updatePlanCell(sourceRef, setter, employeeId, dateKey, (cell) => {
         if (String(cell.location || '').toLowerCase() === 'holiday') {
           return cell;
         }
@@ -1022,12 +1058,16 @@ const RC7 = () => {
           deliverable_hours: nextHours.length ? nextHours : [0],
         };
       });
+      if (sharedDateKeySet.has(dateKey) && mirrorSetter) {
+        updatePlanCell({ current: mirrorSetter === setSatPlan ? satPlanRef.current : wedPlanRef.current }, mirrorSetter, employeeId, dateKey, () => nextCell);
+        if (markMirrorDirty) markMirrorDirty(true);
+      }
       markDirty(true);
     },
   });
 
-  const satHandlers = createHandlers(setSatPlan, setSatDirty);
-  const wedHandlers = createHandlers(setWedPlan, setWedDirty);
+  const satHandlers = createHandlers(satPlanRef, setSatPlan, setSatDirty, setWedPlan, setWedDirty);
+  const wedHandlers = createHandlers(wedPlanRef, setWedPlan, setWedDirty, setSatPlan, setSatDirty);
 
   const flushPendingChanges = () => {
     const userId = effectiveEmployeeIdRef.current;
