@@ -1228,7 +1228,7 @@ const RC7 = () => {
         const entries = Array.isArray(mctcRes.data) ? mctcRes.data : [];
         setMctcEntries(entries);
 
-        const { newPlan, changed } = syncSaturdayPreFill(satPlan, currentWedPlan, entries);
+        const { newPlan, changed } = syncSaturdayPreFill(satPlan, wedPlan, entries);
         if (changed) {
           setSatPlan(newPlan);
           setSatDirty(true);
@@ -1324,7 +1324,7 @@ const RC7 = () => {
         const entries = Array.isArray(mctcRes.data) ? mctcRes.data : [];
         setMctcEntries(entries);
 
-        const { newPlan, changed } = syncWednesdayPreFill(wedPlan, currentSatPlan, entries);
+        const { newPlan, changed } = syncWednesdayPreFill(wedPlan, satPlan, entries);
         if (changed) {
           setWedPlan(newPlan);
           setWedDirty(true);
