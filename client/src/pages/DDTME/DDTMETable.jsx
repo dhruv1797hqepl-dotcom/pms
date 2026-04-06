@@ -1533,8 +1533,34 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase">{task.project_name}</td>
-                  <td className="px-4 py-4 text-xs text-slate-600 font-mono">{formatDateDDMMYYYY(task.target_date)}</td>
+                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase">
+                    {editingDeliverableKey === `big_${task.id}` ? (
+                      <select
+                        value={deliverableDraft.projectId}
+                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+                      >
+                        <option value="">Select Project</option>
+                        {clientProjects.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      task.project_name
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-xs text-slate-600 font-mono">
+                    {editingDeliverableKey === `big_${task.id}` ? (
+                      <input
+                        type="date"
+                        value={deliverableDraft.targetDate}
+                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                      />
+                    ) : (
+                      formatDateDDMMYYYY(task.target_date)
+                    )}
+                  </td>
                   {showRowRemarks && (
                     <td className="px-4 py-4 text-xs text-slate-600">
                       {canEditRowRemarks ? (
@@ -1687,8 +1713,34 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase">{task.project_name || '-'}</td>
-                  <td className="px-4 py-4 text-xs text-slate-400 font-mono">{formatDateDDMMYYYY(task.target_date)}</td>
+                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase">
+                    {editingDeliverableKey === `add_${task.id}` ? (
+                      <select
+                        value={deliverableDraft.projectId}
+                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+                      >
+                        <option value="">Select Project</option>
+                        {clientProjects.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      task.project_name || '-'
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-xs text-slate-400 font-mono">
+                    {editingDeliverableKey === `add_${task.id}` ? (
+                      <input
+                        type="date"
+                        value={deliverableDraft.targetDate}
+                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                      />
+                    ) : (
+                      formatDateDDMMYYYY(task.target_date)
+                    )}
+                  </td>
                   {showRowRemarks && (
                     <td className="px-4 py-4 text-xs text-slate-600">
                       {canEditRowRemarks ? (
