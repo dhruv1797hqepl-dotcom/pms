@@ -21,6 +21,10 @@ def _is_sgm_for_client(user, client):
     return user.role == "SGM" and client.assigned_sgms.filter(id=user.id).exists()
 
 
+def _is_hqepl_for_client(user, client):
+    return user.role == "HQEPL" and client.assigned_hqepls.filter(id=user.id).exists()
+
+
 def _is_senior_for_client(user, client):
     return user.role == "SENIOR" and ExternalTeam.objects.filter(client_org=client, user=user).exists()
 
@@ -45,7 +49,14 @@ class ClientListView(ListAPIView):
         qs = Client.objects.annotate(project_count=Count('projects')).order_by("-created_at")
         view_context = (self.request.query_params.get('view') or '').strip().lower()
         
-        if user.role in ["ADMIN", "HQEPL", "MLS"]:
+        if user.role == "ADMIN":
+            return qs
+        
+        if user.role == "HQEPL":
+            # HQEPL users should only see clients they are assigned to
+            return qs.filter(assigned_hqepls=user)
+        
+        if user.role == "MLS":
             return qs
         
         if user.role == "SGM":
@@ -84,7 +95,12 @@ class ClientDetailView(APIView):
         client = get_object_or_404(Client, pk=pk)
         
         # Permission Check
-        if request.user.role == "SGM":
+        if request.user.role == "ADMIN":
+            pass  # Admin can view any client
+        elif request.user.role == "HQEPL":
+            if not _is_hqepl_for_client(request.user, client):
+                raise PermissionDenied("You do not have permission to view this client.")
+        elif request.user.role == "SGM":
             if not _is_sgm_for_client(request.user, client):
                 raise PermissionDenied("You do not have permission to view this client.")
         elif request.user.role in ["SENIOR", "EXTERNAL"]:
@@ -93,7 +109,8 @@ class ClientDetailView(APIView):
         elif request.user.role == "CLIENT":
              if client.user != request.user:
                  raise PermissionDenied("You can only view your own profile.")
-        # Admin/HQEPL allowed by default
+        elif request.user.role == "MLS":
+            pass  # MLS can view any client
         
         serializer = ClientSerializer(client)
         return Response(serializer.data)
@@ -101,9 +118,16 @@ class ClientDetailView(APIView):
     def put(self, request, pk):
         client = get_object_or_404(Client, pk=pk)
         
-        # Ensure only Admin, HQEPL, or MLS can edit
-        if not (request.user.role in ["ADMIN", "HQEPL", "MLS"]):
-             raise PermissionDenied("You do not have permission to edit this client.")
+        # Ensure only Admin, HQEPL (for assigned clients), or MLS can edit
+        if request.user.role == "ADMIN":
+            pass  # Admin can edit any client
+        elif request.user.role == "HQEPL":
+            if not _is_hqepl_for_client(request.user, client):
+                raise PermissionDenied("You do not have permission to edit this client.")
+        elif request.user.role == "MLS":
+            pass  # MLS can edit any client
+        else:
+            raise PermissionDenied("You do not have permission to edit this client.")
 
         serializer = ClientSerializer(
             client,
@@ -121,10 +145,17 @@ class ClientDetailView(APIView):
 
         # Support hierarchy updates from the client dashboard hierarchy modal.
         if "client_hierarchy" in request.data:
-            if request.user.role == "SGM":
+            if request.user.role == "ADMIN":
+                pass  # Admin can update any client
+            elif request.user.role == "HQEPL":
+                if not _is_hqepl_for_client(request.user, client):
+                    raise PermissionDenied("You do not have permission to update this client.")
+            elif request.user.role == "MLS":
+                pass  # MLS can update any client
+            elif request.user.role == "SGM":
                 if not client.assigned_sgms.filter(id=request.user.id).exists():
                     raise PermissionDenied("You do not have permission to update this client.")
-            elif request.user.role not in ["ADMIN", "HQEPL", "MLS"]:
+            else:
                 raise PermissionDenied("You do not have permission to update this client.")
 
             serializer = ClientSerializer(
@@ -142,11 +173,18 @@ class ClientDetailView(APIView):
         if not status_val:
             return Response({"detail": "Status is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # SGM can update status only for assigned clients
-        if request.user.role == "SGM":
+        # Admin, HQEPL (for assigned), MLS, SGM (for assigned) can update status
+        if request.user.role == "ADMIN":
+            pass  # Admin can update any client
+        elif request.user.role == "HQEPL":
+            if not _is_hqepl_for_client(request.user, client):
+                raise PermissionDenied("You do not have permission to update this client.")
+        elif request.user.role == "MLS":
+            pass  # MLS can update any client
+        elif request.user.role == "SGM":
             if not client.assigned_sgms.filter(id=request.user.id).exists():
                 raise PermissionDenied("You do not have permission to update this client.")
-        elif request.user.role not in ["ADMIN", "HQEPL", "MLS"]:
+        else:
             raise PermissionDenied("You do not have permission to update this client.")
 
         if status_val not in ["active", "hold", "inactive"]:
@@ -199,7 +237,12 @@ class ClientExternalMemberView(APIView):
 
     def check_access(self, request, client):
         user = request.user
-        if user.role in ["ADMIN", "HQEPL", "MLS"]:
+        if user.role == "ADMIN":
+            return True
+        if user.role == "HQEPL":
+            if _is_hqepl_for_client(user, client):
+                return True
+        if user.role == "MLS":
             return True
         if _is_sgm_for_client(user, client):
             return True
@@ -287,7 +330,12 @@ class ClientExternalMemberDetailView(APIView):
 
     def check_access(self, request, client):
         user = request.user
-        if user.role in ["ADMIN", "HQEPL", "MLS"]:
+        if user.role == "ADMIN":
+            return True
+        if user.role == "HQEPL":
+            if _is_hqepl_for_client(user, client):
+                return True
+        if user.role == "MLS":
             return True
         if _is_sgm_for_client(user, client):
             return True

@@ -94,9 +94,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # ADMIN / HQEPL → All projects
-        if user.role in ["ADMIN", "HQEPL"]:
+        # ADMIN → All projects
+        if user.role == "ADMIN":
             return Project.objects.all()
+        
+        # HQEPL → Projects of assigned clients only
+        if user.role == "HQEPL":
+            from clients.models import Client
+            assigned_clients = Client.objects.filter(assigned_hqepls=user).values_list('id', flat=True)
+            return Project.objects.filter(client_id__in=assigned_clients).distinct()
 
         # SGM → Projects of assigned clients
         if user.role == "SGM":
@@ -138,13 +144,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
     # CREATE PROJECT
     # ---------------------------------
     def perform_create(self, serializer):
-        from clients.models import ExternalTeam
+        from clients.models import ExternalTeam, Client
         
         user = self.request.user
         client = serializer.validated_data.get("client")
 
-        # 1. ADMIN / HQEPL can create for anyone
-        if user.role in ["ADMIN", "HQEPL"]:
+        # 1. ADMIN can create for anyone
+        if user.role == "ADMIN":
              project = serializer.save(created_by=user)
              # Auto-add seniors from client's external team
              seniors = User.objects.filter(
@@ -153,8 +159,25 @@ class ProjectViewSet(viewsets.ModelViewSet):
              )
              project.senior_team.set(seniors)
              return
+        
+        # 2. HQEPL can create only for assigned clients
+        if user.role == "HQEPL":
+            if not client:
+                raise ValidationError({"client": "Client is required."})
+            
+            if not client.assigned_hqepls.filter(id=user.id).exists():
+                raise PermissionDenied("You can only create projects for clients assigned to you.")
+            
+            project = serializer.save(created_by=user)
+            # Auto-add seniors from client's external team
+            seniors = User.objects.filter(
+                role="SENIOR",
+                externalteam__client_org=client
+            )
+            project.senior_team.set(seniors)
+            return
 
-        # 2. SGM can create IF assigned to the client
+        # 3. SGM can create IF assigned to the client
         if user.role == "SGM":
             if not client:
                  raise ValidationError({"client": "Client is required."})
@@ -183,8 +206,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
         user = self.request.user
         project = self.get_object()
 
-        # ADMIN / HQEPL → Full control
-        if user.role in ["ADMIN", "HQEPL"]:
+        # ADMIN → Full control
+        if user.role == "ADMIN":
+            serializer.save()
+            return
+        
+        # HQEPL → Can update only projects from assigned clients
+        if user.role == "HQEPL":
+            if not project.client.assigned_hqepls.filter(id=user.id).exists():
+                raise PermissionDenied("You can only update projects from clients assigned to you.")
             serializer.save()
             return
 
@@ -222,10 +252,18 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         user = self.request.user
 
-        if user.role not in ["ADMIN", "HQEPL", "SGM"]:
+        if user.role == "ADMIN":
+            instance.delete()
+        elif user.role == "HQEPL":
+            if not instance.client.assigned_hqepls.filter(id=user.id).exists():
+                raise PermissionDenied("You can only delete projects from clients assigned to you.")
+            instance.delete()
+        elif user.role == "SGM":
+            if not instance.client.assigned_sgms.filter(id=user.id).exists():
+                raise PermissionDenied("You can only delete projects from clients assigned to you.")
+            instance.delete()
+        else:
             raise PermissionDenied("Only Admin, HQEPL, or SGM can delete projects.")
-
-        instance.delete()
 
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
