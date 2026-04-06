@@ -3073,8 +3073,7 @@ const Table = ({
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const isOverviewMode = mode === "overview";
-  const isMyFunctionTasksTable = isOverviewMode && String(title || "").toLowerCase().includes("my function tasks");
-  const [sortField, setSortField] = useState(isMyFunctionTasksTable ? "start_date" : "default");
+  const [sortField, setSortField] = useState(isOverviewMode ? "start_date" : "default");
   const [sortDirection, setSortDirection] = useState("asc");
 
   const getTaskSortValue = (task) => {
@@ -3142,7 +3141,7 @@ const Table = ({
   }, [data, mode, title]);
 
   useEffect(() => {
-    if (isMyFunctionTasksTable) {
+    if (isOverviewMode) {
       setSortField("start_date");
       setSortDirection("asc");
       return;
@@ -3150,7 +3149,7 @@ const Table = ({
 
     setSortField("default");
     setSortDirection("asc");
-  }, [isMyFunctionTasksTable, mode, title]);
+  }, [isOverviewMode, mode, title]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
