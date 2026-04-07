@@ -20,7 +20,6 @@ class MCTCEntry(models.Model):
     entry_date = models.DateField(db_index=True)
     label = models.CharField(max_length=255)
     entry_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=TYPE_NORMAL)
-    source_module = models.CharField(max_length=50, blank=True, default='')
     linked_task = models.ForeignKey(
         Task,
         on_delete=models.SET_NULL,

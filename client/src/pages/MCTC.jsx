@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 
@@ -347,6 +347,17 @@ const MCTC = () => {
 
     const isPlaceEntry = (entry) => parsePlaceLabel(entry?.label).isPlace;
 
+    const formatCalendarTaskLabel = (label) => {
+        const rawLabel = String(label || "");
+        const rc7Prefix = "__RC7_SYNC__:";
+
+        if (rawLabel.startsWith(rc7Prefix)) {
+            return rawLabel.slice(rc7Prefix.length).trim();
+        }
+
+        return rawLabel;
+    };
+
     const getVisibleDayEntries = (dayKey) => {
         const dayEntries = tasks[dayKey] || [];
 
@@ -608,7 +619,7 @@ const MCTC = () => {
                                                                             : "border-slate-100 bg-slate-50 text-slate-700"
                                                                             }`}
                                                                     >
-                                                                        <span className="flex-1 truncate font-bold">{headerView === "place" ? formatPlaceCalendarLabel(task.label) : task.label}</span>
+                                                                        <span className="flex-1 truncate font-bold">{headerView === "place" ? formatPlaceCalendarLabel(task.label) : formatCalendarTaskLabel(task.label)}</span>
                                                                         <div className="ml-2 flex items-center gap-1">
                                                                             {headerView !== "place" && canCompleteTasks && task.type === "task" && task.linkedTaskId && (
                                                                                 <button
@@ -779,7 +790,7 @@ const MCTC = () => {
                                                 }`}
                                         >
                                             <div className="min-w-0">
-                                                <p className="truncate text-xs font-bold text-slate-800">{task.label}</p>
+                                                <p className="truncate text-xs font-bold text-slate-800">{headerView === "place" ? task.label : formatCalendarTaskLabel(task.label)}</p>
                                                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{task.type}</p>
                                             </div>
 

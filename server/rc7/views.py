@@ -13,6 +13,7 @@ import datetime
 import traceback
 
 RC7_TOMBSTONE_PREFIX = '__RC7_TOMBSTONE__:'
+RC7_MCTC_LABEL_PREFIX = '__RC7_SYNC__:'
 
 
 def _collect_visible_rc7_labels_for_dates(employee, dates):
@@ -48,7 +49,7 @@ def _sync_rc7_mctc_entries(employee, dates):
     labels_by_date = _collect_visible_rc7_labels_for_dates(employee, normalized_dates)
     MCTCEntry.objects.filter(
         user=employee,
-        source_module='RC7',
+        label__startswith=RC7_MCTC_LABEL_PREFIX,
         entry_date__in=normalized_dates,
     ).delete()
 
@@ -59,9 +60,8 @@ def _sync_rc7_mctc_entries(employee, dates):
                 MCTCEntry(
                     user=employee,
                     entry_date=date_val,
-                    label=label,
+                    label=f'{RC7_MCTC_LABEL_PREFIX}{label}',
                     entry_type=MCTCEntry.TYPE_TASK,
-                    source_module='RC7',
                 )
             )
 

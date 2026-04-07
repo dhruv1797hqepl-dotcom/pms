@@ -7,6 +7,9 @@ from mctc.models import MCTCEntry
 from .models import RC7Plan, RC7Submission
 
 
+RC7_MCTC_LABEL_PREFIX = '__RC7_SYNC__:'
+
+
 class RC7PlanningViewTests(TestCase):
 	def setUp(self):
 		self.employee_a = CustomUser.objects.create_user(
@@ -213,9 +216,12 @@ class RC7PlanningViewTests(TestCase):
 		entries = MCTCEntry.objects.filter(
 			user=self.employee_a,
 			entry_date=self.date_key,
-			source_module='RC7',
+			label__startswith=RC7_MCTC_LABEL_PREFIX,
 		).order_by('label')
-		self.assertEqual(list(entries.values_list('label', flat=True)), ['Task A', 'Task B'])
+		self.assertEqual(
+			list(entries.values_list('label', flat=True)),
+			[f'{RC7_MCTC_LABEL_PREFIX}Task A', f'{RC7_MCTC_LABEL_PREFIX}Task B']
+		)
 		self.assertTrue(all(entry.entry_type == MCTCEntry.TYPE_TASK for entry in entries))
 
 		clear_payload = {
@@ -238,6 +244,6 @@ class RC7PlanningViewTests(TestCase):
 			MCTCEntry.objects.filter(
 				user=self.employee_a,
 				entry_date=self.date_key,
-				source_module='RC7',
+				label__startswith=RC7_MCTC_LABEL_PREFIX,
 			).exists()
 		)
