@@ -7,11 +7,66 @@ from clients.models import Client
 from employees.models import Employee
 from projects.models import Project
 from sgm.models import ProjectTeam
+from mctc.models import MCTCEntry
 from .models import RC7Plan, RC7Submission
 import datetime
 import traceback
 
 RC7_TOMBSTONE_PREFIX = '__RC7_TOMBSTONE__:'
+
+
+def _collect_visible_rc7_labels_for_dates(employee, dates):
+    labels_by_date = {}
+    plans = RC7Plan.objects.filter(
+        employee=employee,
+        date__in=dates,
+    ).order_by('date', 'plan_type', 'updated_at', 'id')
+
+    for plan in plans:
+        visible_lines, _ = _split_rc7_visible_and_tombstones(plan.deliverable)
+        if not visible_lines:
+            continue
+
+        date_key = plan.date
+        if date_key not in labels_by_date:
+            labels_by_date[date_key] = []
+
+        seen = set(labels_by_date[date_key])
+        for line in visible_lines:
+            if line not in seen:
+                labels_by_date[date_key].append(line)
+                seen.add(line)
+
+    return labels_by_date
+
+
+def _sync_rc7_mctc_entries(employee, dates):
+    normalized_dates = {date_val for date_val in dates if date_val}
+    if not normalized_dates:
+        return
+
+    labels_by_date = _collect_visible_rc7_labels_for_dates(employee, normalized_dates)
+    MCTCEntry.objects.filter(
+        user=employee,
+        source_module='RC7',
+        entry_date__in=normalized_dates,
+    ).delete()
+
+    entries_to_create = []
+    for date_val in sorted(normalized_dates):
+        for label in labels_by_date.get(date_val, []):
+            entries_to_create.append(
+                MCTCEntry(
+                    user=employee,
+                    entry_date=date_val,
+                    label=label,
+                    entry_type=MCTCEntry.TYPE_TASK,
+                    source_module='RC7',
+                )
+            )
+
+    if entries_to_create:
+        MCTCEntry.objects.bulk_create(entries_to_create)
 
 
 def _split_rc7_visible_and_tombstones(deliverable_text):
@@ -197,6 +252,7 @@ class RC7PlanningView(APIView):
             end_date_str = request.data.get('end')
             plan_data = request.data.get('plan') or {}
             is_submitted = request.data.get('is_submitted')
+            affected_dates = set()
 
             if not all([plan_type, start_date_str, end_date_str]):
                 return Response(
@@ -241,6 +297,8 @@ class RC7PlanningView(APIView):
 
                             if date_val < start_date or date_val > end_date:
                                 continue
+
+                            affected_dates.add(date_val)
 
                             if not isinstance(cell_data, dict):
                                 location = ""
@@ -398,6 +456,8 @@ class RC7PlanningView(APIView):
                             end_date=end_date,
                             is_submitted=bool(is_submitted)
                         )
+
+                _sync_rc7_mctc_entries(user, affected_dates)
 
             return Response({
                 "message": "Success",

@@ -218,17 +218,17 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-100 flex items-start justify-center overflow-y-auto p-2 sm:items-center sm:p-4 md:p-6">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative bg-white w-full max-w-xl rounded-xl md:rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-300">
+            <div className="relative flex w-full max-w-[min(100vw-1rem,72rem)] flex-col overflow-hidden rounded-xl md:rounded-[2.5rem] border border-slate-100 bg-white shadow-2xl animate-in zoom-in-95 duration-300 max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-3rem)] lg:max-h-[calc(100vh-4rem)]">
 
                 {/* Step Indicator */}
                 <div className="flex h-1.5 w-full bg-slate-100">
                     <div className={`h-full bg-[#F58A4B] transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
                 </div>
 
-                <div className="p-5 md:p-8 lg:p-10">
-                    <div className="flex justify-between items-start mb-8">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 md:p-8 lg:p-10 custom-scrollbar">
+                    <div className="mb-6 flex items-start justify-between gap-4 md:mb-8">
                         <div>
                             <span className="text-[10px] font-black text-[#F58A4B] uppercase tracking-[0.2em]">Step 0{step} / 03</span>
                             <h2 className="text-xl md:text-2xl font-black uppercase italic tracking-tighter mt-1">
@@ -242,7 +242,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                         </button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
+                    <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6">
 
                         {/* STEP 1: CREDENTIALS */}
                         {step === 1 && (
@@ -329,7 +329,8 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                         )}
 
                         {/* Navigation Buttons */}
-                        <div className="flex gap-3 pt-4">
+                        <div className="sticky bottom-0 -mx-4 border-t border-slate-100 bg-white/95 px-4 py-4 backdrop-blur sm:-mx-5 sm:px-5 md:-mx-8 md:px-8 lg:-mx-10 lg:px-10">
+                            <div className="flex gap-3">
                             {step > 1 && (
                                 <button type="button" onClick={prevStep} className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all flex items-center justify-center gap-2">
                                     <ChevronLeft size={16} /> Back
@@ -347,6 +348,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                                     </>
                                 )}
                             </button>
+                            </div>
                         </div>
                     </form>
                 </div>

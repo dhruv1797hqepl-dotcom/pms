@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 
@@ -530,7 +530,7 @@ const MCTC = () => {
                     {dayLabels.map((dayLabel, dayIndex) => (
                         <div
                             key={dayLabel}
-                            className={`px-1 md:px-2 py-1.5 md:py-2 text-center text-[8px] md:text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.16em] ${dayIndex === 0 ? "bg-red-50/70 text-red-600" : "bg-slate-50/70 text-slate-600"
+                            className={`px-1 md:px-2 py-1.5 md:py-2 text-center text-[8px] md:text-[10px] font-black uppercase tracking-widest md:tracking-[0.16em] ${dayIndex === 0 ? "bg-red-50/70 text-red-600" : "bg-slate-50/70 text-slate-600"
                                 } ${dayIndex < 6 ? "border-r border-slate-200" : ""}`}
                         >
                             <span className="hidden sm:inline">{dayLabel}</span>
@@ -567,39 +567,24 @@ const MCTC = () => {
                                     return (
                                         <div
                                             key={key}
-                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} ${isSunday ? "bg-red-50/40" : "bg-white"}`}
+                                            onClick={() => {
+                                                if (isSunday) return;
+
+                                                if (headerView === "place") {
+                                                    openPlacePopup(key);
+                                                } else {
+                                                    openDayPopup(key);
+                                                }
+                                            }}
+                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} ${isSunday ? "bg-red-50/40" : "cursor-pointer bg-white hover:bg-slate-50/50"}`}
                                         >
-                                            <div
-                                                onClick={() => {
-                                                    if (headerView === "place") {
-                                                        openPlacePopup(key);
-                                                    } else {
-                                                        openDayPopup(key);
-                                                    }
-                                                }}
-                                                className={`flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2 ${isSunday ? "cursor-default" : "cursor-pointer"}`}
-                                            >
+                                            <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
                                                 <span
                                                     className={`flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black ${isSunday ? "bg-[#b91c1c] text-white" : "bg-[#1e293b] text-white"
                                                         }`}
                                                 >
                                                     {cell.day}
                                                 </span>
-                                                {!isSunday && canManageEntries && (
-                                                    <button
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            if (headerView === "place") {
-                                                                openPlacePopup(key);
-                                                            } else {
-                                                                openDayPopup(key, "reminder");
-                                                            }
-                                                        }}
-                                                        className="rounded-md bg-blue-50 p-1.5 text-blue-600 transition-all hover:bg-[#1e293b] hover:text-white"
-                                                    >
-                                                        <Plus size={11} strokeWidth={3} />
-                                                    </button>
-                                                )}
                                             </div>
 
                                             {isSunday ? (
@@ -627,7 +612,10 @@ const MCTC = () => {
                                                                         <div className="ml-2 flex items-center gap-1">
                                                                             {headerView !== "place" && canCompleteTasks && task.type === "task" && task.linkedTaskId && (
                                                                                 <button
-                                                                                    onClick={() => completeTask(key, idx)}
+                                                                                    onClick={(event) => {
+                                                                                        event.stopPropagation();
+                                                                                        completeTask(key, idx);
+                                                                                    }}
                                                                                     disabled={isSaving || taskCompleted}
                                                                                     className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[8px] font-black uppercase text-white disabled:bg-slate-200"
                                                                                 >
@@ -636,7 +624,10 @@ const MCTC = () => {
                                                                             )}
                                                                             {canManageEntries && (
                                                                                 <button
-                                                                                    onClick={() => removeTask(key, idx)}
+                                                                                    onClick={(event) => {
+                                                                                        event.stopPropagation();
+                                                                                        removeTask(key, idx);
+                                                                                    }}
                                                                                     className="p-0.5 text-slate-400 transition-colors hover:text-red-500"
                                                                                 >
                                                                                     <X size={10} strokeWidth={3} />
@@ -674,20 +665,20 @@ const MCTC = () => {
 
         return (
             <div
-                className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-slate-950/45 p-2 sm:p-4 backdrop-blur-sm"
+                className="fixed inset-0 z-120 flex items-end sm:items-center justify-center bg-slate-950/45 p-2 sm:p-4 backdrop-blur-sm"
             >
                 <div
-                    className="w-full sm:max-w-[90vw] md:max-w-[780px] lg:max-w-[860px] rounded-2xl md:rounded-3xl border border-slate-200/80 bg-white p-3 sm:p-4 md:p-5 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.55)] max-h-[92vh] sm:max-h-[88vh] flex flex-col"
+                    className="w-full sm:max-w-[90vw] md:max-w-195 lg:max-w-215 rounded-2xl md:rounded-3xl border border-slate-200/80 bg-white p-3 sm:p-4 md:p-5 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.55)] max-h-[92vh] sm:max-h-[88vh] flex flex-col"
                     onClick={(event) => event.stopPropagation()}
                 >
-                    <div className="mb-3 md:mb-4 flex items-center justify-between gap-2 sm:gap-3 flex-shrink-0">
+                    <div className="mb-3 md:mb-4 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
                         <div className="min-w-0">
                             <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Date Summary</p>
                             <h3 className="text-base md:text-lg font-black text-slate-800 truncate">{formatDayLabel(activeDayPopup)}</h3>
                         </div>
                         <button
                             onClick={closeDayPopup}
-                            className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 flex-shrink-0"
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 shrink-0"
                         >
                             <X size={16} strokeWidth={3} />
                         </button>
@@ -718,7 +709,7 @@ const MCTC = () => {
 
                     <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4 mb-2 md:mb-3">
                         {canManageEntries && (
-                            <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-2 sm:p-3 lg:col-span-2 min-h-0 flex flex-col">
+                            <div className="rounded-xl border border-slate-200 bg-linear-to-br from-slate-50 to-white p-2 sm:p-3 lg:col-span-2 min-h-0 flex flex-col">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                                         Add {popupTitle}

@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import CustomUser
+from mctc.models import MCTCEntry
 from .models import RC7Plan, RC7Submission
 
 
@@ -173,3 +174,70 @@ class RC7PlanningViewTests(TestCase):
 		cell = fetch_res.data['plans'][str(self.employee_a.id)][self.date_key]
 		self.assertEqual(cell['location'], '')
 		self.assertEqual(cell['deliverables'], [])
+
+	def test_rc7_deliverables_sync_into_mctc_entries(self):
+		self.client.force_authenticate(user=self.employee_a)
+
+		sat_payload = {
+			'type': 'sat',
+			'start': self.start,
+			'end': self.end,
+			'plan': {
+				str(self.employee_a.id): {
+					self.date_key: {
+						'location': 'office',
+						'deliverables': ['Task A'],
+					},
+				}
+			},
+		}
+		sat_res = self.client.post('/api/rc7/planning/', sat_payload, format='json')
+		self.assertEqual(sat_res.status_code, status.HTTP_200_OK)
+
+		wed_payload = {
+			'type': 'wed',
+			'start': self.start,
+			'end': self.end,
+			'plan': {
+				str(self.employee_a.id): {
+					self.date_key: {
+						'location': 'office',
+						'deliverables': ['Task A', 'Task B'],
+					},
+				}
+			},
+		}
+		wed_res = self.client.post('/api/rc7/planning/', wed_payload, format='json')
+		self.assertEqual(wed_res.status_code, status.HTTP_200_OK)
+
+		entries = MCTCEntry.objects.filter(
+			user=self.employee_a,
+			entry_date=self.date_key,
+			source_module='RC7',
+		).order_by('label')
+		self.assertEqual(list(entries.values_list('label', flat=True)), ['Task A', 'Task B'])
+		self.assertTrue(all(entry.entry_type == MCTCEntry.TYPE_TASK for entry in entries))
+
+		clear_payload = {
+			'type': 'wed',
+			'start': self.start,
+			'end': self.end,
+			'plan': {
+				str(self.employee_a.id): {
+					self.date_key: {
+						'location': '',
+						'deliverables': [],
+					},
+				}
+			},
+		}
+		clear_res = self.client.post('/api/rc7/planning/', clear_payload, format='json')
+		self.assertEqual(clear_res.status_code, status.HTTP_200_OK)
+
+		self.assertFalse(
+			MCTCEntry.objects.filter(
+				user=self.employee_a,
+				entry_date=self.date_key,
+				source_module='RC7',
+			).exists()
+		)

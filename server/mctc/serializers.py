@@ -14,13 +14,14 @@ class MCTCEntrySerializer(serializers.ModelSerializer):
             'entry_date',
             'label',
             'entry_type',
+            'source_module',
             'linked_task',
             'linked_task_status',
             'linked_task_completion_date',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'source_module', 'created_at', 'updated_at']
 
     def validate(self, attrs):
         entry_date = attrs.get('entry_date') or getattr(self.instance, 'entry_date', None)

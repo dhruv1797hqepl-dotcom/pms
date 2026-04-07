@@ -31,7 +31,7 @@ const LoginPage = () => {
       
       const { data } = response;
       console.log("[LOGIN] Response data:", data); // Debug log
-      console.log("[LOGIN] Access token:", data.access);
+      // console.log("[LOGIN] Access token:", data.access);
 
       // Store tokens
       if (data.access) {
