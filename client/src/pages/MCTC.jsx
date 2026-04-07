@@ -180,26 +180,65 @@ const MCTC = () => {
 
     const calendarWeeks = useMemo(() => buildCalendarWeeks(currentDate), [currentDate]);
 
+    const buildDashboardTaskEntries = (taskRows, linkedTaskIds, year, month) => {
+        const grouped = {};
+
+        (Array.isArray(taskRows) ? taskRows : []).forEach((task) => {
+            const dayKey = String(task?.target_date || "").slice(0, 10);
+            if (!dayKey) return;
+            if (isSundayDayKey(dayKey)) return;
+
+            const [taskYear, taskMonth] = dayKey.split("-").map(Number);
+            if (taskYear !== year || taskMonth !== month) return;
+
+            const numericTaskId = Number(task?.id);
+            if (Number.isFinite(numericTaskId) && linkedTaskIds.has(numericTaskId)) {
+                return;
+            }
+
+            if (!grouped[dayKey]) grouped[dayKey] = [];
+
+            grouped[dayKey].push({
+                id: `dashboard-${String(task?.id || task?.task_id || `${dayKey}-${String(task?.title || '').trim()}`)}`,
+                label: String(task?.title || "").trim(),
+                type: "task",
+                linkedTaskId: Number.isFinite(numericTaskId) ? numericTaskId : null,
+                linkedTaskStatus: task?.status || null,
+                linkedTaskCompletionDate: task?.completion_date || null,
+                isDashboardTask: true,
+            });
+        });
+
+        return grouped;
+    };
+
     useEffect(() => {
         const loadMonthEntries = async () => {
             try {
                 setLoading(true);
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth() + 1;
-                const params = targetUserId
+                const mctcParams = targetUserId
                     ? { year, month, user: targetUserId }
                     : { year, month };
+                const tasksParams = targetUserId
+                    ? { assigned_to: targetUserId }
+                    : undefined;
 
-                const response = await api.get("/mctc/entries/", {
-                    params,
-                });
+                const [mctcResponse, tasksResponse] = await Promise.all([
+                    api.get("/mctc/entries/", { params: mctcParams }),
+                    api.get("/tasks/", tasksParams ? { params: tasksParams } : undefined),
+                ]);
 
                 const grouped = {};
-                response.data.forEach((entry) => {
+                const linkedTaskIds = new Set();
+
+                mctcResponse.data.forEach((entry) => {
                     if (isSundayDayKey(entry.entry_date)) return;
 
                     const key = entry.entry_date;
                     if (!grouped[key]) grouped[key] = [];
+                    if (entry.linked_task) linkedTaskIds.add(Number(entry.linked_task));
                     grouped[key].push({
                         id: entry.id,
                         label: entry.label,
@@ -207,7 +246,20 @@ const MCTC = () => {
                         linkedTaskId: entry.linked_task,
                         linkedTaskStatus: entry.linked_task_status,
                         linkedTaskCompletionDate: entry.linked_task_completion_date,
+                        isDashboardTask: false,
                     });
+                });
+
+                const dashboardGrouped = buildDashboardTaskEntries(
+                    tasksResponse?.data,
+                    linkedTaskIds,
+                    year,
+                    month,
+                );
+
+                Object.entries(dashboardGrouped).forEach(([dayKey, dayEntries]) => {
+                    if (!grouped[dayKey]) grouped[dayKey] = [];
+                    grouped[dayKey] = [...grouped[dayKey], ...dayEntries];
                 });
 
                 setTasks(grouped);
@@ -641,6 +693,7 @@ const MCTC = () => {
                                                                                         event.stopPropagation();
                                                                                         removeTask(key, idx);
                                                                                     }}
+                                                                                    disabled={task.isDashboardTask}
                                                                                     className="p-0.5 text-slate-400 transition-colors hover:text-red-500"
                                                                                 >
                                                                                     <X size={10} strokeWidth={3} />
@@ -816,6 +869,7 @@ const MCTC = () => {
                                                 {canManageEntries && (
                                                     <button
                                                         onClick={() => removeTask(activeDayPopup, idx)}
+                                                        disabled={task.isDashboardTask}
                                                         className="rounded-md bg-slate-100 p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-red-500"
                                                     >
                                                         <X size={12} strokeWidth={3} />
