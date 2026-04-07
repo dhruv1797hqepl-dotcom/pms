@@ -710,7 +710,7 @@ const MCTC = () => {
                                                         )}
 
                                                         {hiddenTaskCount > 0 && (
-                                                            <p className="pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                                            <p className="mt-1.5 pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
                                                                 {hiddenTaskCount} more
                                                             </p>
                                                         )}
