@@ -124,6 +124,7 @@ const MCTC = () => {
         setActiveDayPopup(null);
         setPopupReminderDrafts([]);
         setPopupTaskDrafts([]);
+        setPopupMode("reminder");
     };
 
     const closePlacePopup = () => {
@@ -737,7 +738,8 @@ const MCTC = () => {
 
         const dayTasks = (tasks[activeDayPopup] || []).filter((entry) => !isPlaceEntry(entry));
         const visibleDrafts = popupMode === "task" ? popupTaskDrafts : popupReminderDrafts;
-        const popupTitle = popupMode === "task" ? "Task" : "Reminder";
+        const popupTitle = popupMode === "task" ? "Task" : popupMode === "place" ? "Place" : "Reminder";
+        const isPlaceMode = popupMode === "place";
 
         return (
             <div
@@ -780,118 +782,224 @@ const MCTC = () => {
                             >
                                 Task
                             </button>
+                            <button
+                                onClick={() => {
+                                    setPopupMode("place");
+                                    setPlacePopupStage("details");
+                                    setPlacePopupType("onsite");
+                                    setPlacePopupRows([
+                                        { halfLabel: "Half 1", mode: "office", companyName: "" },
+                                        { halfLabel: "Half 2", mode: "office", companyName: "" },
+                                    ]);
+                                }}
+                                className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${popupMode === "place"
+                                    ? "bg-[#0f5f8a] text-white shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                    }`}
+                            >
+                                Place
+                            </button>
                         </div>
                     )}
 
-                    <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4 mb-2 md:mb-3">
-                        {canManageEntries && (
-                            <div className="rounded-xl border border-slate-200 bg-linear-to-br from-slate-50 to-white p-2 sm:p-3 lg:col-span-2 min-h-0 flex flex-col">
-                                <div className="mb-2 flex items-center justify-between gap-2">
+                    {isPlaceMode ? (
+                        <div className="flex-1 min-h-0 rounded-xl border border-slate-200 bg-linear-to-br from-slate-50 to-white p-3 sm:p-4 flex flex-col">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                                <div>
                                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                        Add {popupTitle}
+                                        Add Place
                                     </p>
-                                    <button
-                                        onClick={() => addPopupDraftRow(popupMode)}
-                                        className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-blue-700"
-                                    >
-                                        <Plus size={12} strokeWidth={3} />
-                                        Add Row
-                                    </button>
+                                    <p className="text-sm font-semibold text-slate-600">Select office or visit for each half.</p>
                                 </div>
-
-                                <div className="space-y-2 max-h-[38vh] lg:max-h-full overflow-y-auto pr-1">
-                                    {visibleDrafts.length === 0 ? (
-                                        <p className="text-[10px] font-bold text-slate-400">Click Add Row to create entries.</p>
-                                    ) : (
-                                        visibleDrafts.map((draft, index) => (
-                                            <div key={`${popupMode}-draft-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={draft}
-                                                    onChange={(event) => updatePopupDraftRow(popupMode, index, event.target.value)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === "Enter") {
-                                                            savePopupDraftRow(popupMode, index);
-                                                        }
-                                                    }}
-                                                    placeholder={`Enter ${popupTitle.toLowerCase()}...`}
-                                                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                />
-                                                <div className="flex items-center gap-2 sm:shrink-0">
-                                                    <button
-                                                        onClick={() => savePopupDraftRow(popupMode, index)}
-                                                        disabled={isSaving}
-                                                        className="flex-1 sm:flex-none rounded-lg bg-emerald-600 px-2.5 py-2 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300"
-                                                    >
-                                                        Save
-                                                    </button>
-                                                    <button
-                                                        onClick={() => removePopupDraftRow(popupMode, index)}
-                                                        className="rounded-lg bg-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-300 hover:text-red-500"
-                                                    >
-                                                        <X size={12} strokeWidth={3} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setPlacePopupStage("choice")}
+                                    className="rounded-lg bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600 border border-slate-200 transition-colors hover:bg-slate-100"
+                                >
+                                    Change type
+                                </button>
                             </div>
-                        )}
 
-                        <div className={`custom-scrollbar min-h-0 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/40 p-2 sm:p-3 ${canManageEntries ? "lg:col-span-3" : "lg:col-span-5"}`}>
-                            {dayTasks.length > 0 ? (
-                                dayTasks.map((task, idx) => {
-                                    const taskCompleted = isLinkedTaskCompleted(task);
-
-                                    return (
-                                        <div
-                                            key={`popup-${task.id}`}
-                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${task.type === "task"
-                                                ? taskCompleted
-                                                    ? "border-emerald-200 bg-emerald-100"
-                                                    : "border-amber-100 bg-amber-50"
-                                                : "border-slate-100 bg-slate-50"
-                                                }`}
-                                        >
-                                            <div className="min-w-0">
-                                                <p className="truncate text-xs font-bold text-slate-800">{headerView === "place" ? task.label : formatCalendarTaskLabel(task.label)}</p>
-                                                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{task.type}</p>
+                            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
+                                {placePopupRows.map((row, index) => (
+                                    <div key={`${activeDayPopup}-${row.halfLabel}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                        <div className="mb-3 flex items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{row.halfLabel}</p>
+                                                <p className="text-sm font-black text-slate-800">{placePopupType === "onsite" ? "Onsite" : "Offsite"}</p>
                                             </div>
-
-                                            <div className="flex shrink-0 items-center gap-2">
-                                                {canCompleteTasks && task.type === "task" && task.linkedTaskId && (
-                                                    <button
-                                                        onClick={() => completeTask(activeDayPopup, idx)}
-                                                        disabled={isSaving || taskCompleted}
-                                                        className="rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase text-white disabled:bg-slate-200 whitespace-nowrap"
-                                                    >
-                                                        {taskCompleted ? "Done" : "Complete"}
-                                                    </button>
-                                                )}
-
-                                                {canManageEntries && (
-                                                    <button
-                                                        onClick={() => removeTask(activeDayPopup, idx)}
-                                                        disabled={task.isDashboardTask}
-                                                        className="rounded-md bg-slate-100 p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-red-500"
-                                                    >
-                                                        <X size={12} strokeWidth={3} />
-                                                    </button>
-                                                )}
-                                            </div>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                Half {index + 1}
+                                            </span>
                                         </div>
-                                    );
-                                })
-                            ) : (
-                                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center">
-                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                        {headerView === "place" ? "No places for this date" : "No items for this date"}
-                                    </p>
+
+                                        <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+                                            <label className="min-w-0">
+                                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                    Office / Visit
+                                                </span>
+                                                <select
+                                                    value={row.mode}
+                                                    onChange={(event) => updatePlacePopupRow(index, "mode", event.target.value)}
+                                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                >
+                                                    <option value="office">Office</option>
+                                                    <option value="visit">Visit</option>
+                                                </select>
+                                            </label>
+
+                                            {row.mode === "visit" ? (
+                                                <label className="min-w-0">
+                                                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                        Company name
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        value={row.companyName}
+                                                        onChange={(event) => updatePlacePopupRow(index, "companyName", event.target.value)}
+                                                        placeholder="Enter company name"
+                                                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                    />
+                                                </label>
+                                            ) : (
+                                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-500 self-end">
+                                                    Office will be shown in the calendar.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-end gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={closeDayPopup}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={savePlacePopupEntries}
+                                    disabled={isSaving}
+                                    className="rounded-xl bg-[#1e293b] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-sm transition-colors hover:bg-blue-900 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isSaving ? "Saving" : "Save Place"}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4 mb-2 md:mb-3">
+                            {canManageEntries && (
+                                <div className="rounded-xl border border-slate-200 bg-linear-to-br from-slate-50 to-white p-2 sm:p-3 lg:col-span-2 min-h-0 flex flex-col">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                            Add {popupTitle}
+                                        </p>
+                                        <button
+                                            onClick={() => addPopupDraftRow(popupMode)}
+                                            className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-blue-700"
+                                        >
+                                            <Plus size={12} strokeWidth={3} />
+                                            Add Row
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-2 max-h-[38vh] lg:max-h-full overflow-y-auto pr-1">
+                                        {visibleDrafts.length === 0 ? (
+                                            <p className="text-[10px] font-bold text-slate-400">Click Add Row to create entries.</p>
+                                        ) : (
+                                            visibleDrafts.map((draft, index) => (
+                                                <div key={`${popupMode}-draft-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={draft}
+                                                        onChange={(event) => updatePopupDraftRow(popupMode, index, event.target.value)}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === "Enter") {
+                                                                savePopupDraftRow(popupMode, index);
+                                                            }
+                                                        }}
+                                                        placeholder={`Enter ${popupTitle.toLowerCase()}...`}
+                                                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                    />
+                                                    <div className="flex items-center gap-2 sm:shrink-0">
+                                                        <button
+                                                            onClick={() => savePopupDraftRow(popupMode, index)}
+                                                            disabled={isSaving}
+                                                            className="flex-1 sm:flex-none rounded-lg bg-emerald-600 px-2.5 py-2 text-[9px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:bg-slate-300"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            onClick={() => removePopupDraftRow(popupMode, index)}
+                                                            className="rounded-lg bg-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-300 hover:text-red-500"
+                                                        >
+                                                            <X size={12} strokeWidth={3} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
                             )}
+
+                            <div className={`custom-scrollbar min-h-0 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/40 p-2 sm:p-3 ${canManageEntries ? "lg:col-span-3" : "lg:col-span-5"}`}>
+                                {dayTasks.length > 0 ? (
+                                    dayTasks.map((task, idx) => {
+                                        const taskCompleted = isLinkedTaskCompleted(task);
+
+                                        return (
+                                            <div
+                                                key={`popup-${task.id}`}
+                                                className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${task.type === "task"
+                                                    ? taskCompleted
+                                                        ? "border-emerald-200 bg-emerald-100"
+                                                        : "border-amber-100 bg-amber-50"
+                                                    : "border-slate-100 bg-slate-50"
+                                                    }`}
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-xs font-bold text-slate-800">{headerView === "place" ? task.label : formatCalendarTaskLabel(task.label)}</p>
+                                                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{task.type}</p>
+                                                </div>
+
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    {canCompleteTasks && task.type === "task" && task.linkedTaskId && (
+                                                        <button
+                                                            onClick={() => completeTask(activeDayPopup, idx)}
+                                                            disabled={isSaving || taskCompleted}
+                                                            className="rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase text-white disabled:bg-slate-200 whitespace-nowrap"
+                                                        >
+                                                            {taskCompleted ? "Done" : "Complete"}
+                                                        </button>
+                                                    )}
+
+                                                    {canManageEntries && (
+                                                        <button
+                                                            onClick={() => removeTask(activeDayPopup, idx)}
+                                                            disabled={task.isDashboardTask}
+                                                            className="rounded-md bg-slate-100 p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-red-500"
+                                                        >
+                                                            <X size={12} strokeWidth={3} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center">
+                                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                                            {headerView === "place" ? "No places for this date" : "No items for this date"}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         );
