@@ -658,7 +658,7 @@ const MCTC = () => {
                                                 </p>
                                             ) : (
                                                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                                                    <div className="mt-1 md:mt-2 flex-1 min-h-0 space-y-0.5 md:space-y-1 px-1.5 md:px-2.5 pb-1.5 md:pb-2">
+                                                    <div className="mt-1 md:mt-2 flex-1 min-h-0 space-y-0.5 md:space-y-1 px-1.5 md:px-2.5 pb-3 md:pb-3.5">
                                                         {dayTasks.length > 0 ? (
                                                             visibleDayTasks.map((task, idx) => {
                                                                 const taskCompleted = isLinkedTaskCompleted(task);
@@ -710,7 +710,7 @@ const MCTC = () => {
                                                         )}
 
                                                         {hiddenTaskCount > 0 && (
-                                                            <p className="mt-1.5 pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                                            <p className="mt-1.5 mb-1 pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 leading-none">
                                                                 {hiddenTaskCount} more
                                                             </p>
                                                         )}
