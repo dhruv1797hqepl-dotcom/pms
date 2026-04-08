@@ -8,7 +8,7 @@ class TaskSerializer(serializers.ModelSerializer):
     # These fields provide names to your React tables (Read Only)
     assigned_by_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.ReadOnlyField(source='assigned_to.username')
-    project_name = serializers.ReadOnlyField(source='project.name')
+    project_name = serializers.SerializerMethodField()
     client_name = serializers.ReadOnlyField(source='client_org.company_name')
     
     # This brings the math from your model property into the JSON for React
@@ -40,6 +40,17 @@ class TaskSerializer(serializers.ModelSerializer):
             return None
 
         return obj.assigned_by.username
+
+    def get_project_name(self, obj):
+        if obj.project_id and obj.project:
+            return obj.project.name
+
+        # DDFMS tasks don't always have a concrete project FK,
+        # but EmployeeDashboard expects a project label similar to DDTME rows.
+        if str(obj.source_module or '').strip().upper() == 'DDFMS' and obj.client_org:
+            return obj.client_org.company_name
+
+        return None
 
     def validate(self, data):
         """
