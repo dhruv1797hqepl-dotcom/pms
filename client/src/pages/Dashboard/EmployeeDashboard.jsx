@@ -3236,6 +3236,17 @@ const Table = ({
     return sourceModule || "N/A";
   };
 
+  const getProjectClientLabel = (task) => {
+    const sourceModule = String(task?.source_module || "").trim().toUpperCase();
+    const projectLabel = String(task?.project_name || "").trim();
+    const clientLabel = String(task?.client_name || task?.client_org_name || task?.client || "").trim();
+
+    const resolvedProjectLabel = projectLabel || (sourceModule === "DDFMS" ? "DDFMS" : (sourceModule || "N/A"));
+    const resolvedClientLabel = clientLabel || "N/A";
+
+    return `${resolvedProjectLabel} / ${resolvedClientLabel}`;
+  };
+
   const getTaskDisplayStatus = (task) => {
     const effectiveStatus = getEffectiveTaskStatus(task);
 
@@ -3336,7 +3347,7 @@ const Table = ({
                     <td className="px-4 py-3 font-bold text-slate-500 text-[11px]">{t.task_id}</td>
                     <td className="px-4 py-3 font-semibold text-xs text-slate-800">{t.title}</td>
 
-                    {mode !== "assigned" && <td className="px-4 py-3 text-[11px] font-medium text-slate-500 italic">{t.project_name} / {t.client_name}</td>}
+                    {mode !== "assigned" && <td className="px-4 py-3 text-[11px] font-medium text-slate-500 italic">{getProjectClientLabel(t)}</td>}
                     {mode === "assigned" && <td className="px-4 py-3 text-xs font-medium">{t.assigned_to_name}</td>}
                     <td className="px-4 py-3 text-xs font-semibold text-slate-700">
                       {getAssignedByLabel(t)}
