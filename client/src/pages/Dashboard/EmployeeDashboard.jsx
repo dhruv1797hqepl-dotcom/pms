@@ -2369,7 +2369,7 @@ const EmployeeDashboard = () => {
           onToggleSelectAll={toggleSelectAll}
           onBulkComplete={handleBulkComplete}
           currentUserId={currentUser?.id}
-          onDeleteTask={handleDeleteTask}
+          onDeleteTask={deleteDashboardTask}
         />
         {/* ===== UPCOMING 7 DAYS TASKS TABLE ===== */}
         <Table
@@ -2394,12 +2394,12 @@ const EmployeeDashboard = () => {
           onToggleSelectAll={toggleSelectAll}
           onBulkComplete={handleBulkComplete}
           currentUserId={currentUser?.id}
-          onDeleteTask={handleDeleteTask}
+          onDeleteTask={deleteDashboardTask}
         />
         {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
-        <Table title="Completed Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(completedTasks))))} mode="completed" currentUserId={currentUser?.id} onDeleteTask={handleDeleteTask} />
+        <Table title="Completed Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(completedTasks))))} mode="completed" currentUserId={currentUser?.id} onDeleteTask={deleteDashboardTask} />
         {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
-        <Table title="Delegated Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(delegatedTasks))))} mode="assigned" currentUserId={currentUser?.id} onDeleteTask={handleDeleteTask} />
+        <Table title="Delegated Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(delegatedTasks))))} mode="assigned" currentUserId={currentUser?.id} onDeleteTask={deleteDashboardTask} />
         {/* ========================================================== */}
         {/* TASK COMPLETION MODAL FORM */}
         {/* ========================================================== */}
@@ -3263,7 +3263,7 @@ const Table = ({
     return 'In Progress';
   };
 
-  const handleDeleteTask = async (task) => {
+  const deleteDashboardTask = async (task) => {
     if (!task?.id) return;
 
     const sourceModule = String(task?.source_module || '').trim().toUpperCase();
