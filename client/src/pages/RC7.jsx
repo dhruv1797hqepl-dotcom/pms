@@ -123,6 +123,14 @@ const getLocationLabel = (value, locationOptions) => {
   return match ? match.label : '-';
 };
 
+const getCellTotalHours = (cell) => {
+  const normalized = normalizeCell(cell);
+  return (normalized.deliverable_hours || []).reduce((sum, item) => {
+    const hours = Number(item);
+    return sum + (Number.isFinite(hours) && hours > 0 ? hours : 0);
+  }, 0);
+};
+
 const splitDeliverableText = (value) =>
   String(value ?? '')
     .split(/\r?\n+/)
@@ -320,11 +328,18 @@ const PlanSheet = ({
   onSubmit,
   submittedAt,
 }) => {
-  const headers = dates.map((date) => ({
-    key: toDateKey(date),
-    dayLabel: DAY_NAMES[date.getDay()],
-    dateLabel: formatDate(date),
-  }));
+  const headers = dates.map((date) => {
+    const key = toDateKey(date);
+    const totalHours = getCellTotalHours(planData?.[employeeId]?.[key]);
+
+    return {
+      key,
+      dayLabel: DAY_NAMES[date.getDay()],
+      dateLabel: formatDate(date),
+      totalHours,
+      isOverbooked: totalHours > 8,
+    };
+  });
 
   if (!employeeId) {
     return (
@@ -402,8 +417,16 @@ const PlanSheet = ({
               <tr>
                 <th className="border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">Day</th>
                 {headers.map((head) => (
-                  <th key={`day-${head.key}`} className="border-2 border-slate-300 bg-slate-50 px-2 py-2 text-center text-sm font-bold text-slate-800">
-                    {head.dayLabel}
+                  <th
+                    key={`day-${head.key}`}
+                    className={`border-2 px-2 py-2 text-center text-sm font-bold text-slate-800 ${head.isOverbooked ? 'border-red-300 bg-red-100' : 'border-slate-300 bg-slate-50'}`}
+                  >
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span>{head.dayLabel}</span>
+                      <span className={`inline-flex min-w-9 items-center justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold leading-none ${head.isOverbooked ? 'border-red-300 bg-white text-red-700' : 'border-slate-300 bg-white text-slate-600'}`}>
+                        {head.totalHours.toFixed(1)}h
+                      </span>
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -411,7 +434,10 @@ const PlanSheet = ({
               <tr>
                 <th className="border-2 border-slate-300 bg-slate-100 px-3 py-2 text-left text-sm font-bold text-slate-800">Dates</th>
                 {headers.map((head) => (
-                  <td key={`date-${head.key}`} className="border-2 border-slate-300 px-2 py-2 text-center text-sm font-semibold text-slate-700">
+                  <td
+                    key={`date-${head.key}`}
+                    className={`border-2 px-2 py-2 text-center text-sm font-semibold ${head.isOverbooked ? 'border-red-300 bg-red-50 text-red-900' : 'border-slate-300 text-slate-700'}`}
+                  >
                     {head.dateLabel}
                   </td>
                 ))}
@@ -425,7 +451,10 @@ const PlanSheet = ({
                   const cell = normalizeCell(planData?.[employeeId]?.[head.key]);
 
                   return (
-                    <td key={`loc-${head.key}`} className="border-2 border-slate-300 px-2 py-2 align-top">
+                    <td
+                      key={`loc-${head.key}`}
+                      className={`border-2 px-2 py-2 align-top ${head.isOverbooked ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                    >
                       {canEdit ? (
                         <select
                           value={cell.location}
@@ -461,7 +490,10 @@ const PlanSheet = ({
                     .filter(Boolean);
 
                   return (
-                    <td key={`del-${head.key}`} className="border-2 border-slate-300 px-2 py-2 align-top min-w-60">
+                    <td
+                      key={`del-${head.key}`}
+                      className={`border-2 px-2 py-2 align-top min-w-60 ${head.isOverbooked ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                    >
                       {canEdit ? (
                         <div className="space-y-2">
                           {!isHoliday && (
