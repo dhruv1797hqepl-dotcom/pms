@@ -2368,7 +2368,7 @@ const EmployeeDashboard = () => {
           onToggleSelect={toggleTaskSelection}
           onToggleSelectAll={toggleSelectAll}
           onBulkComplete={handleBulkComplete}
-          canDeleteTask={canDeleteTask}
+          currentUserId={currentUser?.id}
           onDeleteTask={handleDeleteTask}
         />
         {/* ===== UPCOMING 7 DAYS TASKS TABLE ===== */}
@@ -2393,13 +2393,13 @@ const EmployeeDashboard = () => {
           onToggleSelect={toggleTaskSelection}
           onToggleSelectAll={toggleSelectAll}
           onBulkComplete={handleBulkComplete}
-          canDeleteTask={canDeleteTask}
+          currentUserId={currentUser?.id}
           onDeleteTask={handleDeleteTask}
         />
         {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
-        <Table title="Completed Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(completedTasks))))} mode="completed" canDeleteTask={canDeleteTask} onDeleteTask={handleDeleteTask} />
+        <Table title="Completed Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(completedTasks))))} mode="completed" currentUserId={currentUser?.id} onDeleteTask={handleDeleteTask} />
         {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
-        <Table title="Delegated Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(delegatedTasks))))} mode="assigned" canDeleteTask={canDeleteTask} onDeleteTask={handleDeleteTask} />
+        <Table title="Delegated Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(delegatedTasks))))} mode="assigned" currentUserId={currentUser?.id} onDeleteTask={handleDeleteTask} />
         {/* ========================================================== */}
         {/* TASK COMPLETION MODAL FORM */}
         {/* ========================================================== */}
@@ -3131,7 +3131,7 @@ const Table = ({
   onToggleSelect,
   onToggleSelectAll,
   onBulkComplete,
-  canDeleteTask,
+  currentUserId,
   onDeleteTask
 }) => {
   const PAGE_SIZE = 10;
@@ -3263,6 +3263,35 @@ const Table = ({
     return 'In Progress';
   };
 
+  const handleDeleteTask = async (task) => {
+    if (!task?.id) return;
+
+    const sourceModule = String(task?.source_module || '').trim().toUpperCase();
+    if (sourceModule && sourceModule !== 'DIRECT') return;
+
+    if (Number(task?.assigned_by) !== Number(currentUser?.id)) return;
+
+    const confirmed = window.confirm(`Delete task "${task.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`tasks/${task.id}/`);
+
+      const tasksRes = await api.get('tasks/');
+      const allFetchedTasks = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data.results || []);
+
+      const userRes = await api.get('me/');
+      const { my_active, my_completed, delegated } = splitTasksForUser(allFetchedTasks, userRes.data);
+      setMyTasks(my_active);
+      setCompletedTasks(my_completed);
+      setDelegatedTasks(delegated);
+    } catch (err) {
+      console.error('Task delete failed:', err.response?.data || err);
+      const msg = err.response?.data ? JSON.stringify(err.response.data) : (err.message || 'Unknown error');
+      alert(`Failed to delete task: ${msg}`);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto mt-10 px-6">
       <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden transition-all hover:shadow-md">
@@ -3344,7 +3373,8 @@ const Table = ({
             <tbody className="divide-y divide-slate-50">
               {paginatedData.map((t) => {
                 const isActionPlanTask = String(t?.source_module || '').trim().toUpperCase() === 'ACTION_PLAN';
-                const deletable = canDeleteTask(t);
+                const sourceModule = String(t?.source_module || '').trim().toUpperCase();
+                const deletable = Boolean(onDeleteTask) && currentUserId && sourceModule === 'DIRECT' && Number(t?.assigned_by) === Number(currentUserId);
                 const rowClass = selectedTasks?.includes(t.id)
                   ? 'bg-emerald-50/50'
                   : isActionPlanTask
