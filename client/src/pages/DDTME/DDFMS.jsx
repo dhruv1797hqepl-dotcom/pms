@@ -258,6 +258,19 @@ const DDFMS = () => {
           }
         }
 
+        // Step 7 is the deliverable target date in DDFMS; keep deliverable in sync with edited value.
+        if (stepNumber === 7 && payload.target_date) {
+          await api.patch(`ddfms/deliverables/${backendDeliverableId}/`, {
+            target_date: payload.target_date,
+          });
+
+          setDeliverables((prev) => prev.map((deliverable) => (
+            String(deliverable.id) === String(deliverableFrontendId)
+              ? { ...deliverable, targetDate: payload.target_date }
+              : deliverable
+          )));
+        }
+
         const savedKeys = tokenToKeys[token] || [];
         savedKeys.forEach((savedKey) => pendingChangedKeysRef.current.delete(savedKey));
       } catch (error) {
@@ -923,6 +936,8 @@ const DDFMS = () => {
           pendingChangedKeysRef.current.add(step7DateKey);
         }
 
+        tableDataRef.current = next;
+
         return next;
       });
 
@@ -942,6 +957,8 @@ const DDFMS = () => {
         next[previousDateKey] = previousDate;
         pendingChangedKeysRef.current.add(previousDateKey);
       }
+
+      tableDataRef.current = next;
 
       return next;
     });
@@ -982,6 +999,7 @@ const DDFMS = () => {
         });
 
         if (changed) {
+          tableDataRef.current = next;
           setSaveNonce((nonce) => nonce + 1);
           return next;
         }
@@ -1313,6 +1331,7 @@ const DDFMS = () => {
         const loadedTableData = {};
         const loadedStepIdMap = {};
         const loadedCompletedStepMap = {};
+        const loadedStepKeySet = new Set();
 
         backendSteps.forEach((step) => {
           const backendDeliverableId = step?.deliverable;
@@ -1325,6 +1344,7 @@ const DDFMS = () => {
           const stepIndex = stepNumber - 1;
           const ownerKey = `${frontendDeliverableId}-${stepIndex}-owner`;
           const dateKey = `${frontendDeliverableId}-${stepIndex}-date`;
+          loadedStepKeySet.add(dateKey);
           const rawStepDate = step?.target_date ? String(step.target_date).slice(0, 10) : '';
           const normalizedStepDate = shiftSundayTargetDateToSaturday(rawStepDate);
 
@@ -1348,7 +1368,8 @@ const DDFMS = () => {
           if (!taskTargetDate) return;
 
           const step7DateKey = `${deliverable.id}-6-date`;
-          if (loadedTableData[step7DateKey] !== taskTargetDate) {
+          const hasBackendStep7 = loadedStepKeySet.has(step7DateKey) && Boolean(loadedTableData[step7DateKey]);
+          if (!hasBackendStep7 && loadedTableData[step7DateKey] !== taskTargetDate) {
             loadedTableData[step7DateKey] = taskTargetDate;
             pendingChangedKeysRef.current.add(step7DateKey);
           }
