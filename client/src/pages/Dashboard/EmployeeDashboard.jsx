@@ -99,6 +99,7 @@ const EmployeeDashboard = () => {
 
   const [assignData, setAssignData] = useState({
     task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null,
+    flag: 'none',
     isInternal: false
   });
 
@@ -107,9 +108,16 @@ const EmployeeDashboard = () => {
   // Initializing with one empty row
   const getEmptyTaskRow = () => ({
     client: "", project: "", assignedTo: "",
-    title: "", targetDate: "", file: null,
+    title: "", targetDate: "", file: null, flag: 'none',
     isInternal: false
   });
+
+  const taskFlagOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'discuss', label: 'Discuss' },
+    { value: 'training', label: 'Training' },
+    { value: 'resource', label: 'Resource' },
+  ];
 
   const [bulkTasks, setBulkTasks] = useState([getEmptyTaskRow()]);
 
@@ -1320,6 +1328,7 @@ const EmployeeDashboard = () => {
         client_org: selectedProjectObj ? selectedProjectObj.client : selectedClientId, // Send ID or null
         assigned_to: selectedUser.id, // Send ID
         target_date: assignData.targetDate,
+        flag: assignData.flag || 'none',
         description: assignData.isInternal ? "Internal Task" : "Assigned via Dashboard",
         status: "In Progress",
         is_repeatable: false,
@@ -1356,7 +1365,7 @@ const EmployeeDashboard = () => {
 
       setShowAssignModal(false);
       setAssignData({
-        task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null,
+        task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null, flag: 'none',
         isInternal: false
       });
 
@@ -1428,6 +1437,7 @@ const EmployeeDashboard = () => {
           client_org: selectedProjectObj ? selectedProjectObj.client : selectedClientId,
           assigned_to: selectedUser.id,
           target_date: task.targetDate,
+          flag: task.flag || 'none',
           description: task.isInternal ? "Internal Bulk Task" : "Assigned via Bulk Assign",
           status: "In Progress",
           is_repeatable: false // Bulk tasks are strictly Normal now
@@ -1689,6 +1699,7 @@ const EmployeeDashboard = () => {
       project: "",
       assignedTo: "",
       targetDate: minTaskDate,
+      flag: 'none',
       file: null,
       isInternal: false,
       pasteRowIndex: idx
@@ -1887,6 +1898,7 @@ const EmployeeDashboard = () => {
           client_org: selectedProjectObj ? selectedProjectObj.client : null,
           assigned_to: selectedUser.id,
           target_date: task.targetDate,
+          flag: task.flag || 'none',
           description: "Created via Smart Paste",
           status: "In Progress",
           is_repeatable: false
@@ -2593,6 +2605,7 @@ const EmployeeDashboard = () => {
                         <th className="px-4 py-3 min-w-[140px]">Project</th>
                         <th className="px-4 py-3 min-w-[200px]">Task Title</th>
                         <th className="px-4 py-3 min-w-[160px]">Assigned To</th>
+                        <th className="px-4 py-3 min-w-[130px]">Flag</th>
                         <th className="px-4 py-3 min-w-[120px]">Due Date</th>
                         <th className="px-4 py-3 w-10 text-center">Ads</th>
                         <th className="px-4 py-3 w-10 text-center">Act</th>
@@ -2690,6 +2703,19 @@ const EmployeeDashboard = () => {
                                   <option key={i} value={m.email}>{m.full_name || m.username || m.email} ({m.role})</option>
                                 ));
                               })()}
+                            </select>
+                          </td>
+
+                          {/* FLAG */}
+                          <td className="px-4 py-3 align-top">
+                            <select
+                              value={task.flag || 'none'}
+                              onChange={(e) => handleRowChange(index, "flag", e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
+                            >
+                              {taskFlagOptions.map((flagOption) => (
+                                <option key={flagOption.value} value={flagOption.value}>{flagOption.label}</option>
+                              ))}
                             </select>
                           </td>
 
@@ -2810,6 +2836,7 @@ const EmployeeDashboard = () => {
                             <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Client</th>
                             <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Project</th>
                             <th className="text-left px-3 py-2 text-slate-400 min-w-[120px]">Assigned To</th>
+                            <th className="text-left px-3 py-2 text-slate-400 min-w-[110px]">Flag</th>
                             <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Date</th>
                           </tr>
                         </thead>
@@ -2853,6 +2880,21 @@ const EmployeeDashboard = () => {
                                         <option key={i} value={m.email}>{m.full_name || m.username || m.email.split('@')[0]}</option>
                                       ));
                                     })()}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 min-w-[110px]">
+                                  <select
+                                    value={task.flag || 'none'}
+                                    onChange={(e) => {
+                                      const updated = [...draftTasks];
+                                      updated[idx] = { ...updated[idx], flag: e.target.value };
+                                      setDraftTasks(updated);
+                                    }}
+                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
+                                  >
+                                    {taskFlagOptions.map((flagOption) => (
+                                      <option key={flagOption.value} value={flagOption.value}>{flagOption.label}</option>
+                                    ))}
                                   </select>
                                 </td>
                                 <td className="px-3 py-2 min-w-[120px]">
@@ -3205,6 +3247,19 @@ const EmployeeDashboard = () => {
                         onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })}
                         className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
                       />
+                    </div>
+
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Flag (Optional)</label>
+                      <select
+                        value={assignData.flag || 'none'}
+                        onChange={e => setAssignData({ ...assignData, flag: e.target.value })}
+                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                      >
+                        {taskFlagOptions.map((flagOption) => (
+                          <option key={flagOption.value} value={flagOption.value}>{flagOption.label}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="col-span-1 md:col-span-2">

@@ -26,7 +26,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'assigned_to', 'assigned_to_name',
             'assigned_by', 'assigned_by_name',
             'start_date', 'target_date', 'completion_date',
-            'status', 'remarks', 'ats_score',
+            'status', 'flag', 'remarks', 'ats_score',
             'assigned_file', 'completion_file',
             'is_repeatable', 'repeat_frequency', 'repeat_end_date', 'repeat_day', 'repeat_week',
             'source_module'

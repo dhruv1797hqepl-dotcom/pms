@@ -14,6 +14,13 @@ import { resolveMediaUrl } from '../utils/media';
 import { formatDateDDMMYYYY } from '../utils/dateFormat';
 
 const ActionPlanDashboard = () => {
+    const taskFlagOptions = [
+      { value: 'none', label: 'None' },
+      { value: 'discuss', label: 'Discuss' },
+      { value: 'training', label: 'Training' },
+      { value: 'resource', label: 'Resource' },
+    ];
+
   const { clientId } = useParams();
   const navigate = useNavigate();
 
@@ -33,6 +40,7 @@ const ActionPlanDashboard = () => {
     target_date: "",
     start_date: new Date().toISOString().split('T')[0], // Default today
     assigned_to: "",
+    flag: 'none',
     visit_agenda_id: "",
     assign_file: null
   });
@@ -210,6 +218,7 @@ const ActionPlanDashboard = () => {
       formData.append("target_date", newTask.target_date);
       formData.append("start_date", newTask.start_date);
       formData.append("assigned_to", newTask.assigned_to);
+      formData.append("flag", newTask.flag || 'none');
       if (newTask.visit_agenda_id) {
         formData.append("visit_agenda_id", newTask.visit_agenda_id);
       }
@@ -223,7 +232,7 @@ const ActionPlanDashboard = () => {
         },
       });
       setIsModalOpen(false);
-      setNewTask({ task: "", target_date: "", start_date: new Date().toISOString().split('T')[0], assigned_to: "", visit_agenda_id: "", assign_file: null });
+      setNewTask({ task: "", target_date: "", start_date: new Date().toISOString().split('T')[0], assigned_to: "", flag: 'none', visit_agenda_id: "", assign_file: null });
       fetchData(clientId); // Refresh list
     } catch (error) {
       console.error("Error creating task:", error);
@@ -839,6 +848,18 @@ const ActionPlanDashboard = () => {
                         <option value="">Select Member</option>
                         {projectMembers.map(m => (
                           <option key={m.id} value={m.id}>{m.username || m.email} ({m.email})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5 col-span-1 sm:col-span-2">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Flag (Optional)</label>
+                      <select
+                        value={newTask.flag}
+                        onChange={e => setNewTask({ ...newTask, flag: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none appearance-none"
+                      >
+                        {taskFlagOptions.map((flag) => (
+                          <option key={flag.value} value={flag.value}>{flag.label}</option>
                         ))}
                       </select>
                     </div>

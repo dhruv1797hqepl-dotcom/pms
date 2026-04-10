@@ -286,6 +286,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 'target_date': task.target_date,
                 'completion_date': task.completion_date,
                 'status': self._normalize_action_plan_status(task.status),
+                'flag': task.flag,
                 'remarks': '',
                 'ats_score': None,
                 'assigned_file': task.assign_file.url if task.assign_file else None,

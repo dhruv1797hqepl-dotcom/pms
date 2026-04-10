@@ -128,6 +128,12 @@ class ActionTask(models.Model):
         ("in_progress", "In Progress"),
         ("over_due", "Over Due"),
     ]
+    FLAG_CHOICES = [
+        ("none", "None"),
+        ("discuss", "Discuss"),
+        ("training", "Training"),
+        ("resource", "Resource"),
+    ]
 
     action_plan = models.ForeignKey(
         ActionPlan,
@@ -171,6 +177,7 @@ class ActionTask(models.Model):
         choices=STATUS_CHOICES,
         default="in_progress"
     )
+    flag = models.CharField(max_length=20, choices=FLAG_CHOICES, default="none", blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
