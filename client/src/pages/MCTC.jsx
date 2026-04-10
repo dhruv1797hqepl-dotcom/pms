@@ -817,55 +817,42 @@ const MCTC = () => {
                                     </button>
                                 </div>
 
-                                <div className="space-y-3">
-                                    {placePopupRows.map((row, index) => (
-                                        <div key={`${activeDayPopup}-${row.halfLabel}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                            <div className="mb-3 flex items-center justify-between gap-2">
-                                                <div>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{row.halfLabel}</p>
-                                                    <p className="text-sm font-black text-slate-800">{placePopupType === "onsite" ? "Onsite" : "Offsite"}</p>
-                                                </div>
-                                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                    Half {index + 1}
-                                                </span>
-                                            </div>
-
-                                            <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
-                                                <label className="min-w-0">
-                                                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                        Office / Visit
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="mb-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {placePopupRows.map((row, index) => (
+                                            <div key={`${activeDayPopup}-${row.halfLabel}`} className="min-w-0">
+                                                <div className="mb-1 flex items-center justify-between">
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{row.halfLabel}</p>
+                                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                                        Half {index + 1}
                                                     </span>
-                                                    <select
-                                                        value={row.mode}
-                                                        onChange={(event) => updatePlacePopupRow(index, "mode", event.target.value)}
-                                                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
-                                                    >
-                                                        <option value="office">Office</option>
-                                                        <option value="visit">Visit</option>
-                                                    </select>
-                                                </label>
+                                                </div>
 
-                                                {row.mode === "visit" ? (
-                                                    <label className="min-w-0">
-                                                        <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                                                            Company name
-                                                        </span>
-                                                        <input
-                                                            type="text"
-                                                            value={row.companyName}
-                                                            onChange={(event) => updatePlacePopupRow(index, "companyName", event.target.value)}
-                                                            placeholder="Enter company name"
-                                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
-                                                        />
-                                                    </label>
-                                                ) : (
-                                                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-500 self-end">
-                                                        Office will be shown in the calendar.
-                                                    </div>
+                                                <select
+                                                    value={row.mode}
+                                                    onChange={(event) => updatePlacePopupRow(index, "mode", event.target.value)}
+                                                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                >
+                                                    <option value="office">Office</option>
+                                                    <option value="visit">Visit</option>
+                                                </select>
+
+                                                {row.mode === "visit" && (
+                                                    <input
+                                                        type="text"
+                                                        value={row.companyName}
+                                                        onChange={(event) => updatePlacePopupRow(index, "companyName", event.target.value)}
+                                                        placeholder="Company name"
+                                                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                                    />
                                                 )}
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
+
+                                    <p className="text-[10px] font-semibold text-slate-500">
+                                        {placePopupType === "onsite" ? "Onsite" : "Offsite"} selected for this day.
+                                    </p>
                                 </div>
                             </div>
                         )}
