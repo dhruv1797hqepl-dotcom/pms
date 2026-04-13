@@ -4,10 +4,10 @@ from .models import Task
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
     # What to show in the main admin table
-    list_display = ('task_id', 'title', 'project', 'assigned_to', 'status', 'display_ats')
+    list_display = ('task_id', 'title', 'project', 'assigned_to', 'priority', 'status', 'display_ats')
     
     # Filter options on the right sidebar for easy management
-    list_filter = ('status', 'project', 'source_module')
+    list_filter = ('priority', 'status', 'project', 'source_module')
     
     # Search configuration (Search by Task ID, User email, or Title)
     search_fields = ('task_id', 'title', 'assigned_to__email', 'assigned_by__email')
@@ -21,7 +21,7 @@ class TaskAdmin(admin.ModelAdmin):
             'fields': ('project', 'client_org', 'assigned_to', 'assigned_by')
         }),
         ('Timeline', {
-            'fields': ('start_date', 'target_date', 'completion_date', 'status')
+            'fields': ('start_date', 'target_date', 'completion_date', 'priority', 'status')
         }),
         ('Files & Performance', {
             'fields': ('assigned_file', 'completion_file', 'remarks', 'ats_score')

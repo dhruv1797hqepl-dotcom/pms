@@ -18,6 +18,11 @@ class Task(models.Model):
         ('training', 'Training'),
         ('resource', 'Resource'),
     ]
+    PRIORITY_CHOICES = [
+        ('HIGH', 'High'),
+        ('MEDIUM', 'Medium'),
+        ('LOW', 'Low'),
+    ]
 
     task_id = models.CharField(max_length=20, unique=True, editable=False)
     title = models.CharField(max_length=255)
@@ -43,6 +48,7 @@ class Task(models.Model):
     completion_date = models.DateField(null=True, blank=True)
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='In Progress')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='LOW')
     flag = models.CharField(max_length=20, choices=FLAG_CHOICES, default='none', blank=True)
     remarks = models.TextField(blank=True, null=True)
 

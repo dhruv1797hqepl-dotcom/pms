@@ -99,7 +99,7 @@ const EmployeeDashboard = () => {
 
   const [assignData, setAssignData] = useState({
     task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null,
-    flag: 'none',
+    flag: 'none', priority: 'LOW',
     isInternal: false
   });
 
@@ -108,7 +108,7 @@ const EmployeeDashboard = () => {
   // Initializing with one empty row
   const getEmptyTaskRow = () => ({
     client: "", project: "", assignedTo: "",
-    title: "", targetDate: "", file: null, flag: 'none',
+    title: "", targetDate: "", file: null, flag: 'none', priority: 'LOW',
     isInternal: false
   });
 
@@ -117,6 +117,12 @@ const EmployeeDashboard = () => {
     { value: 'document', label: 'Document' },
     { value: 'training', label: 'Training' },
     { value: 'resource', label: 'Resource' },
+  ];
+
+  const taskPriorityOptions = [
+    { value: 'HIGH', label: 'High' },
+    { value: 'MEDIUM', label: 'Medium' },
+    { value: 'LOW', label: 'Low' },
   ];
 
   const [bulkTasks, setBulkTasks] = useState([getEmptyTaskRow()]);
@@ -1335,6 +1341,7 @@ const EmployeeDashboard = () => {
         client_org: selectedProjectObj ? selectedProjectObj.client : selectedClientId, // Send ID or null
         assigned_to: selectedUser.id, // Send ID
         target_date: assignData.targetDate,
+        priority: assignData.priority || 'LOW',
         flag: assignData.flag || 'none',
         description: assignData.isInternal ? "Internal Task" : "Assigned via Dashboard",
         status: "In Progress",
@@ -1373,6 +1380,7 @@ const EmployeeDashboard = () => {
       setShowAssignModal(false);
       setAssignData({
         task: "", project: "", client: "", assignedTo: "", targetDate: "", file: null, flag: 'none',
+        priority: 'LOW',
         isInternal: false
       });
 
@@ -1444,6 +1452,7 @@ const EmployeeDashboard = () => {
           client_org: selectedProjectObj ? selectedProjectObj.client : selectedClientId,
           assigned_to: selectedUser.id,
           target_date: task.targetDate,
+          priority: task.priority || 'LOW',
           flag: task.flag || 'none',
           description: task.isInternal ? "Internal Bulk Task" : "Assigned via Bulk Assign",
           status: "In Progress",
@@ -1905,6 +1914,7 @@ const EmployeeDashboard = () => {
           client_org: selectedProjectObj ? selectedProjectObj.client : null,
           assigned_to: selectedUser.id,
           target_date: task.targetDate,
+          priority: task.priority || 'LOW',
           flag: task.flag || 'none',
           description: "Created via Smart Paste",
           status: "In Progress",
@@ -2612,6 +2622,7 @@ const EmployeeDashboard = () => {
                         <th className="px-4 py-3 min-w-[140px]">Project</th>
                         <th className="px-4 py-3 min-w-[200px]">Task Title</th>
                         <th className="px-4 py-3 min-w-[160px]">Assigned To</th>
+                        <th className="px-4 py-3 min-w-[120px]">Priority</th>
                         <th className="px-4 py-3 min-w-[130px]">Flag</th>
                         <th className="px-4 py-3 min-w-[120px]">Due Date</th>
                         <th className="px-4 py-3 w-10 text-center">Ads</th>
@@ -2710,6 +2721,19 @@ const EmployeeDashboard = () => {
                                   <option key={i} value={m.email}>{m.full_name || m.username || m.email} ({m.role})</option>
                                 ));
                               })()}
+                            </select>
+                          </td>
+
+                          {/* FLAG */}
+                          <td className="px-4 py-3 align-top">
+                            <select
+                              value={task.priority || 'LOW'}
+                              onChange={(e) => handleRowChange(index, "priority", e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
+                            >
+                              {taskPriorityOptions.map((priorityOption) => (
+                                <option key={priorityOption.value} value={priorityOption.value}>{priorityOption.label}</option>
+                              ))}
                             </select>
                           </td>
 
@@ -3257,6 +3281,19 @@ const EmployeeDashboard = () => {
                     </div>
 
                     <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Priority</label>
+                      <select
+                        value={assignData.priority || 'LOW'}
+                        onChange={e => setAssignData({ ...assignData, priority: e.target.value })}
+                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 md:py-4 text-sm outline-none focus:ring-2 ring-emerald-400 transition-all font-bold text-slate-700"
+                      >
+                        {taskPriorityOptions.map((priorityOption) => (
+                          <option key={priorityOption.value} value={priorityOption.value}>{priorityOption.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-span-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Flag (Optional)</label>
                       <select
                         value={assignData.flag || 'none'}
@@ -3433,6 +3470,14 @@ const Table = ({
     return 'In Progress';
   };
 
+  const getTaskDisplayPriority = (task) => {
+    const rawPriority = String(task?.priority || '').trim().toUpperCase();
+    if (rawPriority === 'HIGH' || rawPriority === 'MEDIUM' || rawPriority === 'LOW') {
+      return rawPriority;
+    }
+    return 'LOW';
+  };
+
   const deleteDashboardTask = async (task) => {
     if (!task?.id) return;
 
@@ -3531,6 +3576,7 @@ const Table = ({
                   </th>
                 )}
                 {mode === "completed" && <th className="px-4 py-3">Complete Date</th>}
+                <th className="px-4 py-3 text-center">Priority</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 {(mode === "overview" || mode === "assigned") && <th className="px-4 py-3 text-center">Assigned PDF</th>}
                 {mode === "completed" && <th className="px-4 py-3 text-center">Remarks</th>}
@@ -3564,6 +3610,7 @@ const Table = ({
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-violet-700 whitespace-nowrap">{t.start_date ? formatDateDDMMYYYY(t.start_date, "—") : "—"}</td>}
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{formatDateDDMMYYYY(t.target_date, "—")}</td>}
                     {mode === "completed" && <td className="px-4 py-3 text-[11px] font-bold text-emerald-500 whitespace-nowrap">{formatDateDDMMYYYY(t.completion_date, "—")}</td>}
+                    <td className="px-4 py-3 text-center"><PriorityBadge priority={getTaskDisplayPriority(t)} /></td>
                     <td className="px-4 py-3 text-center"><StatusBadge status={getTaskDisplayStatus(t)} /></td>
                     {(mode === "overview" || mode === "assigned") && <td className="px-4 py-3 text-center">{t.assigned_file ? <Download size={16} className="mx-auto text-blue-500 cursor-pointer hover:scale-110" /> : "—"}</td>}
                     {mode === "completed" && <td className="px-4 py-3 text-[11px] font-medium text-slate-600 max-w-[200px] truncate" title={getCompletedRemarkLabel(t)}>{getCompletedRemarkLabel(t)}</td>}
@@ -3631,6 +3678,15 @@ const MidBtn = ({ label, icon, primary, onClick }) => (
 const StatusBadge = ({ status }) => {
   const map = { "On Time": "bg-green-50 text-green-600", "In Progress": "bg-blue-50 text-blue-600", Delayed: "bg-yellow-50 text-yellow-600", Overdue: "bg-red-50 text-red-600", Completed: "bg-emerald-50 text-emerald-600" };
   return <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${map[status] || "bg-slate-100"}`}>{status}</span>;
+};
+
+const PriorityBadge = ({ priority }) => {
+  const map = {
+    HIGH: "bg-rose-50 text-rose-600",
+    MEDIUM: "bg-amber-50 text-amber-600",
+    LOW: "bg-emerald-50 text-emerald-600",
+  };
+  return <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${map[priority] || map.LOW}`}>{priority || 'LOW'}</span>;
 };
 
 const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, className }) => {

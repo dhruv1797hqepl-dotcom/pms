@@ -7,6 +7,15 @@ from ddtme.models import BigTask, DDTMEAdditionalTask
 User = get_user_model()
 
 class TaskSerializer(serializers.ModelSerializer):
+    priority = serializers.ChoiceField(
+        choices=[
+            ('HIGH', 'High'),
+            ('MEDIUM', 'Medium'),
+            ('LOW', 'Low'),
+        ],
+        required=False,
+        default='LOW',
+    )
     flag = serializers.ChoiceField(
         choices=[
             ('none', 'None'),
@@ -38,7 +47,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'assigned_to', 'assigned_to_name',
             'assigned_by', 'assigned_by_name',
             'start_date', 'target_date', 'completion_date',
-            'status', 'flag', 'remarks', 'ats_score',
+            'status', 'priority', 'flag', 'remarks', 'ats_score',
             'assigned_file', 'completion_file',
             'is_repeatable', 'repeat_frequency', 'repeat_end_date', 'repeat_day', 'repeat_week',
             'source_module'
