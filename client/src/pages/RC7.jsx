@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { CalendarRange, Loader2, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
-import { saveRc7PreviewSnapshot } from '../utils/rc7Preview';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -309,40 +308,41 @@ const serializeEmployeePlan = (employeePlan) => {
   return output;
 };
 
-const buildRc7PreviewRows = ({ dates, plan, locationOptions }) => {
-  const rows = [];
-
-  dates.forEach((date) => {
+const buildRc7PreviewPayload = ({ type, dates, plan, locationOptions, employeeLabel, submittedAt }) => {
+  const days = dates.map((date) => {
     const dateKey = toDateKey(date);
     const cell = normalizeCell(plan?.[dateKey]);
     const office = getLocationLabel(cell.location, locationOptions) || '-';
     const deliverables = (cell.deliverables || []).map((item) => String(item || '').trim()).filter(Boolean);
     const deliverableHours = Array.isArray(cell.deliverable_hours) ? cell.deliverable_hours : [];
 
-    if (deliverables.length === 0) {
-      rows.push({
-        day: DAY_NAMES[date.getDay()],
-        date: formatDate(date),
-        office,
-        deliverable: '-',
-        estimatedHours: 0,
-      });
-      return;
-    }
-
-    deliverables.forEach((deliverable, index) => {
+    const items = deliverables.map((deliverable, index) => {
       const parsedHours = Number(deliverableHours[index]);
-      rows.push({
-        day: DAY_NAMES[date.getDay()],
-        date: formatDate(date),
-        office,
+      return {
         deliverable,
         estimatedHours: Number.isFinite(parsedHours) && parsedHours > 0 ? parsedHours : 0,
-      });
+      };
     });
+
+    const totalHours = items.reduce((sum, item) => sum + Number(item.estimatedHours || 0), 0);
+
+    return {
+      dayLabel: DAY_NAMES[date.getDay()],
+      dateLabel: formatDate(date),
+      office,
+      totalHours,
+      items,
+    };
   });
 
-  return rows;
+  return {
+    planType: type,
+    planLabel: type === 'sat' ? 'Saturday' : 'Wednesday',
+    employeeLabel,
+    submittedAt: submittedAt || null,
+    generatedAt: new Date().toISOString(),
+    days,
+  };
 };
 
 const PlanSheet = ({
@@ -638,7 +638,6 @@ const PlanSheet = ({
 
 const RC7 = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const currentRole = (localStorage.getItem('role') || '').toUpperCase();
   const today = useMemo(() => new Date(), []);
   const todayDay = today.getDay();
@@ -1565,22 +1564,6 @@ const RC7 = () => {
       });
 
       const submittedAt = response.data?.submitted_at || new Date().toISOString();
-      const previewRows = buildRc7PreviewRows({
-        dates: activeDates,
-        plan: activePlan[effectiveEmployeeId] || {},
-        locationOptions,
-      });
-
-      saveRc7PreviewSnapshot({
-        employeeId: effectiveEmployeeId,
-        planType: type,
-        submittedAt,
-        planLabel: isSat ? 'Saturday' : 'Wednesday',
-        employeeLabel: getDisplayName(selectedUser || currentUser),
-        startDate: keys[0],
-        endDate: keys[keys.length - 1],
-        rows: previewRows,
-      });
 
       setSaved(true);
       setSubmitted(true);
@@ -1598,12 +1581,18 @@ const RC7 = () => {
     }
   };
 
-  const handleOpenPreview = (type, submittedAt = null) => {
-    const params = new URLSearchParams();
-    if (effectiveEmployeeId) params.set('employeeId', effectiveEmployeeId);
-    params.set('type', type);
-    if (submittedAt) params.set('ts', submittedAt);
-    navigate(`/rc7/preview${params.toString() ? `?${params.toString()}` : ''}`);
+  const handleOpenPreview = (type, activeDates, activePlan, submittedAt = null) => {
+    const payload = buildRc7PreviewPayload({
+      type,
+      dates: activeDates,
+      plan: activePlan[effectiveEmployeeId] || {},
+      locationOptions,
+      employeeLabel: getDisplayName(selectedUser || currentUser),
+      submittedAt,
+    });
+
+    const encodedPayload = encodeURIComponent(JSON.stringify(payload));
+    window.open(`/rc7/preview?payload=${encodedPayload}`, '_blank', 'noopener,noreferrer');
   };
 
 
@@ -1677,7 +1666,7 @@ const RC7 = () => {
                     saved={activeSaved}
                     showAutoSaveStatus={!isMemberView && activeCycleActive && Boolean(effectiveEmployeeId)}
                     onSubmit={() => handleSubmitCycle(type)}
-                    onPreview={() => handleOpenPreview(type, activeSubmittedAt)}
+                    onPreview={() => handleOpenPreview(type, activeDates, activePlan, activeSubmittedAt)}
                     submittedAt={activeSubmittedAt}
                   />
                 );

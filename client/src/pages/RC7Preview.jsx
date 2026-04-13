@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Printer, ArrowLeft, CalendarRange, FileText } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
-import { formatRc7PreviewDateTime, loadRc7PreviewSnapshot } from '../utils/rc7Preview';
 
 const formatHours = (value) => {
   const hours = Number(value);
@@ -11,20 +10,44 @@ const formatHours = (value) => {
   return hours.toFixed(1);
 };
 
+const formatDateTime = (isoString) => {
+  if (!isoString) return '';
+  const dt = new Date(isoString);
+  if (Number.isNaN(dt.getTime())) return '';
+
+  return dt.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
 const RC7Preview = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const previewSnapshot = useMemo(() => {
+  const previewPayload = useMemo(() => {
     const params = new URLSearchParams(location.search);
-    return loadRc7PreviewSnapshot({
-      employeeId: params.get('employeeId') || '',
-      planType: params.get('type') || '',
-      submittedAt: params.get('ts') || '',
-    });
+    const rawPayload = params.get('payload');
+    if (!rawPayload) return null;
+
+    try {
+      return JSON.parse(decodeURIComponent(rawPayload));
+    } catch (error) {
+      console.error('Failed to parse RC7 preview payload:', error);
+      return null;
+    }
   }, [location.search]);
 
-  const rows = previewSnapshot?.rows || [];
+  const dayColumns = previewPayload?.days || [];
+  const maxDeliverableRows = dayColumns.reduce((max, day) => {
+    const count = Array.isArray(day?.items) ? day.items.length : 0;
+    return Math.max(max, count);
+  }, 0);
+  const deliverableRowCount = Math.max(maxDeliverableRows, 1);
 
   return (
     <div className="flex min-h-screen w-screen overflow-hidden bg-[#f7f7f7] antialiased">
@@ -47,7 +70,7 @@ const RC7Preview = () => {
                     <CalendarRange size={22} className="text-rose-500" /> RC7 Preview
                   </h1>
                   <p className="mt-1 text-sm text-slate-600">
-                    Read-only snapshot of the last submitted plan.
+                    Read-only RC7 preview generated from current page data.
                   </p>
                 </div>
               </div>
@@ -66,58 +89,88 @@ const RC7Preview = () => {
             <div className="mt-5 grid gap-3 md:grid-cols-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{previewSnapshot?.employeeLabel || 'Unknown'}</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{previewPayload?.employeeLabel || 'Unknown'}</div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cycle</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{previewSnapshot?.planLabel || previewSnapshot?.planType?.toUpperCase() || 'RC7'}</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{previewPayload?.planLabel || previewPayload?.planType?.toUpperCase() || 'RC7'}</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview Generated</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{formatDateTime(previewPayload?.generatedAt) || '—'}</div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Submitted At</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{formatRc7PreviewDateTime(previewSnapshot?.submittedAt) || '—'}</div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Range</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">
-                  {previewSnapshot?.startDate && previewSnapshot?.endDate
-                    ? `${previewSnapshot.startDate} to ${previewSnapshot.endDate}`
-                    : '—'}
-                </div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{formatDateTime(previewPayload?.submittedAt) || '—'}</div>
               </div>
             </div>
           </div>
 
-          {!previewSnapshot ? (
+          {!previewPayload ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                 <FileText size={24} />
               </div>
               <h2 className="mt-4 text-lg font-bold text-slate-900">No preview found</h2>
               <p className="mt-2 text-sm text-slate-500">
-                Submit an RC7 plan first, then open Preview to view the saved snapshot.
+                Open this page using the Preview button on RC7.
               </p>
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="max-h-[72vh] overflow-auto">
+              <div className="max-h-[74vh] overflow-auto">
                 <table className="w-full border-collapse text-left">
                   <thead className="sticky top-0 z-20 bg-slate-900 text-white">
                     <tr>
-                      <th className="border-b border-slate-700 px-4 py-3 text-[11px] font-black uppercase tracking-widest">Day</th>
-                      <th className="border-b border-slate-700 px-4 py-3 text-[11px] font-black uppercase tracking-widest">Date</th>
-                      <th className="border-b border-slate-700 px-4 py-3 text-[11px] font-black uppercase tracking-widest">Office</th>
-                      <th className="border-b border-slate-700 px-4 py-3 text-[11px] font-black uppercase tracking-widest">Deliverable</th>
-                      <th className="border-b border-slate-700 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-right">Estimated Hours</th>
+                      <th className="border-b border-slate-700 bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-widest sticky left-0 z-30 min-w-32">
+                        Item
+                      </th>
+                      {dayColumns.map((day, index) => (
+                        <th key={`${day.dayLabel}-${day.dateLabel}-${index}`} className="border-b border-slate-700 px-4 py-3 min-w-56 align-top">
+                          <div className="text-[11px] font-black uppercase tracking-widest">
+                            {day.dayLabel} {formatHours(day.totalHours)}h
+                          </div>
+                          <div className="mt-0.5 text-[11px] font-semibold text-slate-300 normal-case tracking-normal">
+                            {day.dateLabel}
+                          </div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {rows.map((row, index) => (
-                      <tr key={`${row.date}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
-                        <td className="border-b border-slate-200 px-4 py-3 text-sm font-bold text-slate-800">{row.day || '—'}</td>
-                        <td className="border-b border-slate-200 px-4 py-3 text-sm text-slate-700">{row.date || '—'}</td>
-                        <td className="border-b border-slate-200 px-4 py-3 text-sm text-slate-700">{row.office || '—'}</td>
-                        <td className="border-b border-slate-200 px-4 py-3 text-sm text-slate-800 whitespace-pre-wrap">{row.deliverable || '—'}</td>
-                        <td className="border-b border-slate-200 px-4 py-3 text-right text-sm font-bold text-slate-900 tabular-nums">{formatHours(row.estimatedHours)}</td>
+                  <tbody>
+                    <tr className="bg-slate-50/70">
+                      <th className="border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-widest text-slate-600 sticky left-0 z-20">
+                        Office
+                      </th>
+                      {dayColumns.map((day, index) => (
+                        <td key={`office-${index}`} className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
+                          {day.office || '-'}
+                        </td>
+                      ))}
+                    </tr>
+
+                    {Array.from({ length: deliverableRowCount }).map((_, rowIndex) => (
+                      <tr key={`deliverable-row-${rowIndex}`} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
+                        <th className="border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-widest text-slate-600 sticky left-0 z-20">
+                          Deliverable {rowIndex + 1}
+                        </th>
+                        {dayColumns.map((day, dayIndex) => {
+                          const item = day.items?.[rowIndex];
+                          return (
+                            <td key={`cell-${rowIndex}-${dayIndex}`} className="border-b border-slate-200 px-4 py-3 align-top">
+                              {item ? (
+                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                                  <div className="text-sm leading-relaxed text-slate-800 whitespace-pre-wrap">{item.deliverable}</div>
+                                  <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                                    {formatHours(item.estimatedHours)}h
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
