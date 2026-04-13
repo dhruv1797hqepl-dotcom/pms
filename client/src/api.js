@@ -17,7 +17,7 @@ API.interceptors.request.use(
       config.url = normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
     }
 
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem("access_token") || localStorage.getItem("token") || localStorage.getItem("access");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
       console.log(`[API] Authorization header set for ${config.url}`);

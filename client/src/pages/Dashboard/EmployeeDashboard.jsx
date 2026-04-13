@@ -114,7 +114,7 @@ const EmployeeDashboard = () => {
 
   const taskFlagOptions = [
     { value: 'none', label: 'None' },
-    { value: 'discuss', label: 'Discuss' },
+    { value: 'document', label: 'Document' },
     { value: 'training', label: 'Training' },
     { value: 'resource', label: 'Resource' },
   ];
@@ -646,6 +646,15 @@ const EmployeeDashboard = () => {
           { name: "Overdue", value: 0, color: "#ef4444" },
         ]
       });
+
+      const authToken = localStorage.getItem("access_token") || localStorage.getItem("token") || localStorage.getItem("access");
+      if (!authToken) {
+        console.warn("EmployeeDashboard: missing auth token, skipping dashboard fetch.");
+        navigate("/login");
+        setLoading(false);
+        return;
+      }
+
       try {
         const memberParam = new URLSearchParams(window.location.search).get('member');
         const memberId = Number(memberParam);
@@ -657,8 +666,6 @@ const EmployeeDashboard = () => {
 
         let userData;
         let isMemberView = false;
-
-        // If viewing another employee (from internal team view)
         if (hasValidMemberId) {
           console.log("Attempting to fetch member ID:", memberId);
           try {
@@ -2264,7 +2271,7 @@ const EmployeeDashboard = () => {
             </div>
 
             <div className="h-[220px] relative">
-              <ResponsiveContainer>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
                   <Pie
                     data={filteredDashboardStats.chart_data}

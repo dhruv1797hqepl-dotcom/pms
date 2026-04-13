@@ -16,7 +16,7 @@ import { formatDateDDMMYYYY } from '../utils/dateFormat';
 const ActionPlanDashboard = () => {
     const taskFlagOptions = [
       { value: 'none', label: 'None' },
-      { value: 'discuss', label: 'Discuss' },
+      { value: 'document', label: 'Document' },
       { value: 'training', label: 'Training' },
       { value: 'resource', label: 'Resource' },
     ];

@@ -14,7 +14,7 @@ class Task(models.Model):
     ]
     FLAG_CHOICES = [
         ('none', 'None'),
-        ('discuss', 'Discuss'),
+        ('document', 'Document'),
         ('training', 'Training'),
         ('resource', 'Resource'),
     ]

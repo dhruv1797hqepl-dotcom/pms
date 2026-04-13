@@ -405,7 +405,13 @@ class ActionTaskSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()
     project_id = serializers.SerializerMethodField()
     flag = serializers.ChoiceField(
-        choices=ActionTask.FLAG_CHOICES,
+        choices=[
+            ('none', 'None'),
+            ('document', 'Document'),
+            ('discuss', 'Discuss'),  # Legacy alias accepted on input.
+            ('training', 'Training'),
+            ('resource', 'Resource'),
+        ],
         required=False,
         allow_blank=True,
         default='none',
@@ -451,4 +457,6 @@ class ActionTaskSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if not attrs.get('flag'):
             attrs['flag'] = 'none'
+        elif attrs.get('flag') == 'discuss':
+            attrs['flag'] = 'document'
         return attrs

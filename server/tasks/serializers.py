@@ -8,7 +8,13 @@ User = get_user_model()
 
 class TaskSerializer(serializers.ModelSerializer):
     flag = serializers.ChoiceField(
-        choices=Task.FLAG_CHOICES,
+        choices=[
+            ('none', 'None'),
+            ('document', 'Document'),
+            ('discuss', 'Discuss'),  # Legacy alias accepted on input.
+            ('training', 'Training'),
+            ('resource', 'Resource'),
+        ],
         required=False,
         allow_blank=True,
         default='none',
@@ -137,5 +143,7 @@ class TaskSerializer(serializers.ModelSerializer):
         # Keep legacy clients compatible when flag is omitted or sent as blank.
         if not data.get('flag'):
             data['flag'] = 'none'
+        elif data.get('flag') == 'discuss':
+            data['flag'] = 'document'
 
         return data
