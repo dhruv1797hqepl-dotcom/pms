@@ -35,8 +35,8 @@ const LoginPage = () => {
 
       // Store tokens
       if (data.access) {
-        localStorage.setItem("token", data.access);
         localStorage.setItem("access_token", data.access);
+        localStorage.setItem("token", data.access);
         console.log("[LOGIN] Token stored successfully");
       } else {
         console.error("[LOGIN] No access token in response!");
