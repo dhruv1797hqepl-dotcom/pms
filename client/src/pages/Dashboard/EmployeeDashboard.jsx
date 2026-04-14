@@ -2107,6 +2107,8 @@ const EmployeeDashboard = () => {
         const inferredFields = inferErrorFields(backendErrors);
         setExcelErrorFields(inferredFields);
 
+        const importedDraftRows = Array.isArray(response.data.draft_rows) ? response.data.draft_rows : [];
+
         setExcelUploadStatus({
           success: true,
           tasksCreated: response.data.tasks_created,
@@ -2116,7 +2118,34 @@ const EmployeeDashboard = () => {
           backendErrors,
           warnings: response.data.warnings
         });
-        // On success (including draft fallback), close and refresh so created drafts appear in assigned tasks.
+
+        // If failed rows exist, open Smart Paste drafts so user can fix fields and submit manually.
+        if (importedDraftRows.length > 0) {
+          const smartDrafts = importedDraftRows.map((row, idx) => ({
+            _id: `excel_draft_${Date.now()}_${idx}`,
+            title: row.title || '',
+            client: row.client || '',
+            project: row.project || '',
+            assignedTo: row.assigned_to || '',
+            targetDate: row.target_date || minTaskDate,
+            flag: row.flag || 'none',
+            priority: row.priority || 'LOW',
+            file: null,
+            isInternal: false,
+            pasteRowIndex: idx,
+            importError: row.error || '',
+            importErrorFields: row.error_fields || [],
+          }));
+
+          setDraftTasks(smartDrafts);
+          setShowExcelImportModal(false);
+          setMappingStep(false);
+          setExcelPreview(null);
+          setShowSmartPasteModal(true);
+          return;
+        }
+
+        // No failed rows: close and refresh.
         setMappingStep(false);
         setExcelPreview(null);
         setShowExcelImportModal(false);
@@ -2909,6 +2938,12 @@ const EmployeeDashboard = () => {
                             const isInvalidClient = task.client.startsWith('[INVALID]');
                             const isInvalidProject = task.project.startsWith('[INVALID]');
                             const isInvalid = isInvalidClient || isInvalidProject;
+                            const importErrorFields = Array.isArray(task.importErrorFields) ? task.importErrorFields : [];
+                            const hasTitleError = importErrorFields.includes('title');
+                            const hasClientError = importErrorFields.includes('client');
+                            const hasProjectError = importErrorFields.includes('project');
+                            const hasAssignedToError = importErrorFields.includes('assigned_to');
+                            const hasTargetDateError = importErrorFields.includes('target_date');
 
                             return (
                               <tr
@@ -2916,11 +2951,11 @@ const EmployeeDashboard = () => {
                                 className={`border-b border-slate-100 ${isInvalid ? 'bg-red-50' : 'hover:bg-slate-50'}`}
                               >
                                 <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                                <td className="px-3 py-2 text-slate-700 truncate max-w-[100px]" title={task.title}>{task.title || "—"}</td>
-                                <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidClient ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.client}>
+                                <td className={`px-3 py-2 truncate max-w-[100px] ${hasTitleError ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.title}>{task.title || "—"}</td>
+                                <td className={`px-3 py-2 truncate max-w-[90px] ${(isInvalidClient || hasClientError) ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.client}>
                                   {isInvalidClient ? '❌ ' : ''}{task.client || "—"}
                                 </td>
-                                <td className={`px-3 py-2 truncate max-w-[90px] ${isInvalidProject ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.project}>
+                                <td className={`px-3 py-2 truncate max-w-[90px] ${(isInvalidProject || hasProjectError) ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.project}>
                                   {isInvalidProject ? '❌ ' : ''}{task.project || "—"}
                                 </td>
                                 <td className="px-3 py-2 min-w-[120px]">
@@ -2931,7 +2966,7 @@ const EmployeeDashboard = () => {
                                       updated[idx] = { ...updated[idx], assignedTo: e.target.value };
                                       setDraftTasks(updated);
                                     }}
-                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
+                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${hasAssignedToError ? 'border-red-400 bg-red-50/50' : 'border-slate-200'}`}
                                   >
                                     <option value="">Select...</option>
                                     {(() => {
@@ -2971,7 +3006,7 @@ const EmployeeDashboard = () => {
                                       setDraftTasks(updated);
                                     }}
                                     min={minTaskDate}
-                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
+                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${hasTargetDateError ? 'border-red-400 bg-red-50/50' : 'border-slate-200'}`}
                                   />
                                 </td>
                               </tr>

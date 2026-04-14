@@ -36,7 +36,7 @@ class ExcelTaskImporter:
         self.errors = []
         self.warnings = []
         self.created_tasks = []
-        self.draft_tasks = []
+        self.draft_rows = []
 
     @staticmethod
     def _normalize_lookup_text(value):
@@ -305,13 +305,37 @@ class ExcelTaskImporter:
         print(f"DEBUG: ✗ No user match found for '{identifier}'")
         return None
 
-    def build_draft_task(self, row, column_mapping, row_number, assigned_by, error_message, default_flag='none', default_priority='LOW', upload_date=None):
+    def build_draft_row(self, row, column_mapping, row_number, error_message, default_flag='none', default_priority='LOW', upload_date=None):
         task_title = ''
+        client_value = ''
+        project_value = ''
+        assigned_to_value = ''
         if 'task' in column_mapping:
             try:
                 task_title = str(row.iloc[column_mapping['task']]).strip()[:255]
             except Exception:
                 task_title = ''
+
+        if 'client' in column_mapping:
+            try:
+                raw = row.iloc[column_mapping['client']]
+                client_value = '' if pd.isna(raw) else str(raw).strip()
+            except Exception:
+                client_value = ''
+
+        if 'project' in column_mapping:
+            try:
+                raw = row.iloc[column_mapping['project']]
+                project_value = '' if pd.isna(raw) else str(raw).strip()
+            except Exception:
+                project_value = ''
+
+        if 'assigned_to' in column_mapping:
+            try:
+                raw = row.iloc[column_mapping['assigned_to']]
+                assigned_to_value = '' if pd.isna(raw) else str(raw).strip()
+            except Exception:
+                assigned_to_value = ''
 
         description = ''
         if 'description' in column_mapping:
@@ -322,37 +346,7 @@ class ExcelTaskImporter:
             except Exception:
                 description = ''
 
-        client_obj = None
-        project_obj = None
-        assigned_to_user = assigned_by
         target_date = None
-
-        if 'client' in column_mapping:
-            try:
-                client_val = row.iloc[column_mapping['client']]
-                client_obj = self.get_or_find_client(client_val)
-            except Exception as e:
-                self.warnings.append(f"Row {row_number}: Client error - {str(e)}")
-
-        if 'project' in column_mapping:
-            try:
-                project_val = row.iloc[column_mapping['project']]
-                project_obj = self.get_or_find_project(project_val)
-            except Exception as e:
-                self.warnings.append(f"Row {row_number}: Project error - {str(e)}")
-
-        if 'assigned_to' in column_mapping:
-            try:
-                assignee_val = row.iloc[column_mapping['assigned_to']]
-                assignee_str = '' if pd.isna(assignee_val) else str(assignee_val).strip()
-                if assignee_str:
-                    resolved_user = self.get_or_find_user(assignee_str)
-                    if resolved_user:
-                        assigned_to_user = resolved_user
-                    else:
-                        self.warnings.append(f"Row {row_number}: Assigned to user '{assignee_str}' not found. Draft will use uploader as assignee.")
-            except Exception as e:
-                self.warnings.append(f"Row {row_number}: Assigned to error - {str(e)}")
 
         if 'target_date' in column_mapping:
             try:
@@ -364,23 +358,35 @@ class ExcelTaskImporter:
         if not target_date:
             target_date = upload_date or timezone.localdate()
 
-        task = Task(
-            title=(task_title or f"Draft Task Row {row_number}")[:255],
-            description=description,
-            project=project_obj,
-            client_org=client_obj if 'client' in column_mapping else None,
-            assigned_to=assigned_to_user,
-            assigned_by=assigned_by,
-            start_date=upload_date or timezone.localdate(),
-            target_date=target_date,
-            status='In Progress',
-            priority=default_priority,
-            flag=default_flag,
-            remarks=error_message,
-            is_repeatable=False,
-            source_module='EXCEL_IMPORT_DRAFT'
-        )
-        return task
+        lowered_error = str(error_message or '').lower()
+        error_fields = []
+        if 'task' in lowered_error:
+            error_fields.append('title')
+        if 'client' in lowered_error:
+            error_fields.append('client')
+            client_value = ''
+        if 'project' in lowered_error:
+            error_fields.append('project')
+            project_value = ''
+        if 'assigned to' in lowered_error or 'assignee' in lowered_error or 'user' in lowered_error:
+            error_fields.append('assigned_to')
+            assigned_to_value = ''
+        if 'date' in lowered_error or 'target_date' in lowered_error:
+            error_fields.append('target_date')
+
+        return {
+            'row_number': row_number,
+            'title': (task_title or f"Draft Task Row {row_number}")[:255],
+            'client': client_value,
+            'project': project_value,
+            'assigned_to': assigned_to_value,
+            'target_date': str(target_date),
+            'description': description,
+            'priority': default_priority,
+            'flag': default_flag,
+            'error': error_message,
+            'error_fields': error_fields,
+        }
 
     def get_or_find_project(self, project_name):
         """
@@ -611,7 +617,7 @@ class ExcelTaskImporter:
         self.errors = []
         self.warnings = []
         self.created_tasks = []
-        self.draft_tasks = []
+        self.draft_rows = []
         upload_date = timezone.localdate()
 
         allowed_flags = {choice[0] for choice in Task.FLAG_CHOICES}
@@ -698,26 +704,24 @@ class ExcelTaskImporter:
                     print(f"✗ {error_msg}")
 
                     try:
-                        draft_task = self.build_draft_task(
+                        draft_row = self.build_draft_row(
                             row,
                             column_mapping,
                             row_idx,
-                            assigned_by,
                             error_message=error_msg,
                             default_flag=normalized_flag,
                             default_priority=normalized_priority,
                             upload_date=upload_date,
                         )
-                        draft_task.save()
-                        self.draft_tasks.append(draft_task)
-                        print(f"↳ Row {idx}: Draft task created - {draft_task.title}")
+                        self.draft_rows.append(draft_row)
+                        print(f"↳ Row {idx}: Draft row prepared")
                     except Exception as draft_error:
                         draft_msg = f"Row {idx}: Draft creation failed - {str(draft_error)}"
                         self.warnings.append(draft_msg)
                         print(f"✗ {draft_msg}")
 
             tasks_created_count = len(self.created_tasks)
-            drafts_created_count = len(self.draft_tasks)
+            drafts_created_count = len(self.draft_rows)
             # Treat draft creation as a successful import outcome to avoid hard-failing the request.
             success = (tasks_created_count + drafts_created_count) > 0
 
@@ -728,8 +732,8 @@ class ExcelTaskImporter:
                 'partial_success': drafts_created_count > 0 and tasks_created_count == 0,
                 'errors': self.errors,
                 'warnings': self.warnings,
-                'task_ids': [t.task_id for t in self.created_tasks]
-                , 'draft_task_ids': [t.task_id for t in self.draft_tasks]
+                'task_ids': [t.task_id for t in self.created_tasks],
+                'draft_rows': self.draft_rows,
             }
 
         except Exception as e:
