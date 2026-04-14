@@ -2116,16 +2116,13 @@ const EmployeeDashboard = () => {
           backendErrors,
           warnings: response.data.warnings
         });
-        // Keep mapping open when there are row-level errors so fields can be corrected quickly.
-        if (backendErrors.length > 0) {
-          setMappingStep(true);
-        } else {
-          setMappingStep(false);
-          setExcelPreview(null);
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        }
+        // On success (including draft fallback), close and refresh so created drafts appear in assigned tasks.
+        setMappingStep(false);
+        setExcelPreview(null);
+        setShowExcelImportModal(false);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       } else {
         const backendErrors = response.data.errors || [];
         const inferredFields = inferErrorFields(backendErrors);
@@ -3209,25 +3206,11 @@ const EmployeeDashboard = () => {
                     )}
 
                     {excelUploadStatus?.backendErrors?.length > 0 && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-2">Errors</p>
-                        <ul className="text-xs font-semibold text-red-700 space-y-1 list-disc pl-5">
-                          {excelUploadStatus.backendErrors.map((err, idx) => (
-                            <li key={idx}>{typeof err === 'string' ? err : JSON.stringify(err)}</li>
-                          ))}
-                        </ul>
-                      </div>
+                      <div className="hidden" />
                     )}
 
                     {excelUploadStatus?.warnings?.length > 0 && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                        <p className="text-xs font-black uppercase tracking-widest text-amber-700 mb-2">Warnings</p>
-                        <ul className="text-xs font-semibold text-amber-700 space-y-1 list-disc pl-5">
-                          {excelUploadStatus.warnings.map((warn, idx) => (
-                            <li key={idx}>{typeof warn === 'string' ? warn : JSON.stringify(warn)}</li>
-                          ))}
-                        </ul>
-                      </div>
+                      <div className="hidden" />
                     )}
 
                     {excelUploadStatus?.loading && (
