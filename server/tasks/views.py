@@ -639,7 +639,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                 print(f"DEBUG: Import result: {result}")
                 
                 # Return result with appropriate status
-                response_status = status.HTTP_201_CREATED if result['success'] else status.HTTP_400_BAD_REQUEST
+                has_any_created = (result.get('tasks_created', 0) + result.get('drafts_created', 0)) > 0
+                response_status = status.HTTP_201_CREATED if has_any_created else status.HTTP_400_BAD_REQUEST
                 return Response(result, status=response_status)
                 
             finally:

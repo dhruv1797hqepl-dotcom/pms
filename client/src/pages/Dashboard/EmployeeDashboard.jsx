@@ -91,6 +91,7 @@ const EmployeeDashboard = () => {
   const [mappingStep, setMappingStep] = useState(false); // true = show mapping UI, false = show upload UI
   const [excelImportFlag, setExcelImportFlag] = useState('none');
   const [excelImportPriority, setExcelImportPriority] = useState('LOW');
+  const [excelErrorFields, setExcelErrorFields] = useState([]);
 
   // FORM STATES FOR TASK COMPLETION
 
@@ -2066,6 +2067,19 @@ const EmployeeDashboard = () => {
     }
 
     setExcelUploadStatus({ loading: true });
+    setExcelErrorFields([]);
+
+    const inferErrorFields = (errors = []) => {
+      const joined = errors.map((item) => String(item || '')).join(' ').toLowerCase();
+      const fields = [];
+      if (joined.includes('task')) fields.push('task');
+      if (joined.includes('client')) fields.push('client');
+      if (joined.includes('project')) fields.push('project');
+      if (joined.includes('assigned to') || joined.includes('assignee') || joined.includes('user')) fields.push('assigned_to');
+      if (joined.includes('date') || joined.includes('target_date') || joined.includes('target date')) fields.push('target_date');
+      if (joined.includes('description') || joined.includes('remarks') || joined.includes('notes')) fields.push('description');
+      return Array.from(new Set(fields));
+    };
 
     try {
       const formData = new FormData();
@@ -2089,35 +2103,55 @@ const EmployeeDashboard = () => {
       );
 
       if (response.data.success) {
+        const backendErrors = response.data.errors || [];
+        const inferredFields = inferErrorFields(backendErrors);
+        setExcelErrorFields(inferredFields);
+
         setExcelUploadStatus({
           success: true,
           tasksCreated: response.data.tasks_created,
+          draftsCreated: response.data.drafts_created || 0,
           taskIds: response.data.task_ids,
+          draftTaskIds: response.data.draft_task_ids || [],
+          backendErrors,
           warnings: response.data.warnings
         });
-        setMappingStep(false);
-        setExcelPreview(null);
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        // Keep mapping open when there are row-level errors so fields can be corrected quickly.
+        if (backendErrors.length > 0) {
+          setMappingStep(true);
+        } else {
+          setMappingStep(false);
+          setExcelPreview(null);
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
       } else {
+        const backendErrors = response.data.errors || [];
+        const inferredFields = inferErrorFields(backendErrors);
+        setExcelErrorFields(inferredFields);
         setExcelUploadStatus({
           error: response.data.error || 'Import failed',
-          backendErrors: response.data.errors || [],
+          backendErrors,
           warnings: response.data.warnings || [],
-          tasksCreated: response.data.tasks_created || 0
+          tasksCreated: response.data.tasks_created || 0,
+          draftsCreated: response.data.drafts_created || 0,
         });
-        setMappingStep(false);
+        setMappingStep(true);
       }
     } catch (err) {
       console.error('Import error:', err);
+      const backendErrors = err.response?.data?.errors || [];
+      const inferredFields = inferErrorFields(backendErrors);
+      setExcelErrorFields(inferredFields);
       setExcelUploadStatus({
-        error: err.response?.data?.error || err.message || "Import failed",
-        backendErrors: err.response?.data?.errors || [],
-        warnings: err.response?.data?.warnings || []
+        error: err.response?.data?.error || backendErrors[0] || err.message || "Import failed",
+        backendErrors,
+        warnings: err.response?.data?.warnings || [],
+        tasksCreated: err.response?.data?.tasks_created || 0,
+        draftsCreated: err.response?.data?.drafts_created || 0,
       });
-      setMappingStep(false);
+      setMappingStep(true);
     }
   };
 
@@ -2128,6 +2162,7 @@ const EmployeeDashboard = () => {
     setExcelUploadStatus(null);
     setExcelImportFlag('none');
     setExcelImportPriority('LOW');
+    setExcelErrorFields([]);
   };
 
   return (
@@ -3054,6 +3089,11 @@ const EmployeeDashboard = () => {
                     {excelUploadStatus?.success && (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
                         Imported {excelUploadStatus.tasksCreated || 0} task(s) successfully.
+                        {(excelUploadStatus.draftsCreated || 0) > 0 && (
+                          <span className="block mt-1 text-amber-700">
+                            {excelUploadStatus.draftsCreated} task(s) were saved as draft with errors.
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3070,9 +3110,11 @@ const EmployeeDashboard = () => {
                           { key: 'assigned_to', label: 'Assigned To' },
                           { key: 'target_date', label: 'Target Date' },
                           { key: 'description', label: 'Description' },
-                        ].map((field) => (
+                        ].map((field) => {
+                          const hasFieldError = excelErrorFields.includes(field.key);
+                          return (
                           <div key={field.key} className="grid grid-cols-2 items-center gap-3">
-                            <label className="text-xs font-bold text-slate-700">
+                            <label className={`text-xs font-bold ${hasFieldError ? 'text-red-600' : 'text-slate-700'}`}>
                               {field.label} {field.required && <span className="text-red-500">*</span>}
                             </label>
                             <select
@@ -3084,7 +3126,7 @@ const EmployeeDashboard = () => {
                                   [field.key]: value === '' ? '' : Number(value),
                                 }));
                               }}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300"
+                              className={`w-full bg-slate-50 border rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300 ${hasFieldError ? 'border-red-400 bg-red-50/60' : 'border-slate-200'}`}
                             >
                               <option value="">Not mapped</option>
                               {(excelPreview?.columns || []).map((col, idx) => (
@@ -3094,7 +3136,8 @@ const EmployeeDashboard = () => {
                               ))}
                             </select>
                           </div>
-                        ))}
+                        );
+                        })}
 
                         <div className="pt-3 mt-2 border-t border-slate-200 space-y-3">
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">

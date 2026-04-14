@@ -309,7 +309,7 @@ class ExcelTaskImporter:
         task_title = ''
         if 'task' in column_mapping:
             try:
-                task_title = str(row.iloc[column_mapping['task']]).strip()
+                task_title = str(row.iloc[column_mapping['task']]).strip()[:255]
             except Exception:
                 task_title = ''
 
@@ -365,7 +365,7 @@ class ExcelTaskImporter:
             target_date = upload_date or timezone.localdate()
 
         task = Task(
-            title=task_title or f"Draft Task Row {row_number}",
+            title=(task_title or f"Draft Task Row {row_number}")[:255],
             description=description,
             project=project_obj,
             client_org=client_obj if 'client' in column_mapping else None,
@@ -457,7 +457,7 @@ class ExcelTaskImporter:
             if task_title_col is None:
                 raise ValueError("Task title column not found")
             
-            task_title = str(row.iloc[task_title_col]).strip()
+            task_title = str(row.iloc[task_title_col]).strip()[:255]
             print(f"DEBUG Row {row_number}: task_title = {task_title}")
             if not task_title or pd.isna(task_title):
                 raise ValueError("Task title is empty")
@@ -716,14 +716,16 @@ class ExcelTaskImporter:
                         self.warnings.append(draft_msg)
                         print(f"✗ {draft_msg}")
 
-            # Determine success: true if at least some tasks were created
-            # (even if some rows had errors - it's a partial import)
-            success = len(self.created_tasks) > 0
+            tasks_created_count = len(self.created_tasks)
+            drafts_created_count = len(self.draft_tasks)
+            # Treat draft creation as a successful import outcome to avoid hard-failing the request.
+            success = (tasks_created_count + drafts_created_count) > 0
 
             return {
                 'success': success,
-                'tasks_created': len(self.created_tasks),
-                'drafts_created': len(self.draft_tasks),
+                'tasks_created': tasks_created_count,
+                'drafts_created': drafts_created_count,
+                'partial_success': drafts_created_count > 0 and tasks_created_count == 0,
                 'errors': self.errors,
                 'warnings': self.warnings,
                 'task_ids': [t.task_id for t in self.created_tasks]
