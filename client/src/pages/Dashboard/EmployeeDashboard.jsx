@@ -3119,6 +3119,16 @@ const EmployeeDashboard = () => {
                             </select>
                           </div>
                         </div>
+
+                        <div className="pt-3 mt-2 border-t border-slate-200">
+                          <a
+                            href="/TestExcel.xlsx"
+                            download
+                            className="inline-flex items-center gap-2 w-full justify-center bg-slate-900 text-white rounded-lg px-4 py-2 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
+                          >
+                            <Download size={14} /> Download Sample Excel
+                          </a>
+                        </div>
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 p-4 space-y-3 overflow-auto">
