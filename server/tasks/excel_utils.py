@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from projects.models import Project
 from clients.models import Client
 from .models import Task
@@ -349,7 +350,7 @@ class ExcelTaskImporter:
         # No match found
         raise ValueError(f"Client '{client_name}' not found (no similar matches)")
 
-    def process_row(self, row, column_mapping, row_number, assigned_by):
+    def process_row(self, row, column_mapping, row_number, assigned_by, default_flag='none', default_priority='LOW', upload_date=None):
         """
         Process a single row from Excel and create Task object (not saved yet).
         
@@ -471,6 +472,9 @@ class ExcelTaskImporter:
                 if not pd.isna(desc_val):
                     description = str(desc_val).strip()
 
+            # All imported tasks use the upload date as start_date.
+            task_start_date = upload_date or timezone.localdate()
+
             # Create Task object (not saved yet)
             task = Task(
                 title=task_title,
@@ -479,8 +483,11 @@ class ExcelTaskImporter:
                 client_org=client_obj if 'client' in column_mapping else None,
                 assigned_to=assigned_to_user,
                 assigned_by=assigned_by,
+                start_date=task_start_date,
                 target_date=target_date,
                 status='In Progress',
+                priority=default_priority,
+                flag=default_flag,
                 is_repeatable=False,
                 source_module='EXCEL_IMPORT'
             )
@@ -490,7 +497,7 @@ class ExcelTaskImporter:
         except Exception as e:
             raise ValueError(f"Row {row_number} error: {str(e)}")
 
-    def import_tasks(self, file_path, assigned_by, column_mapping=None):
+    def import_tasks(self, file_path, assigned_by, column_mapping=None, default_flag='none', default_priority='LOW'):
         """
         Main import function: Read Excel file and create tasks.
         
@@ -510,6 +517,21 @@ class ExcelTaskImporter:
         self.errors = []
         self.warnings = []
         self.created_tasks = []
+        upload_date = timezone.localdate()
+
+        allowed_flags = {choice[0] for choice in Task.FLAG_CHOICES}
+        allowed_priorities = {choice[0] for choice in Task.PRIORITY_CHOICES}
+
+        normalized_flag = str(default_flag or 'none').strip().lower()
+        normalized_priority = str(default_priority or 'LOW').strip().upper()
+
+        if normalized_flag not in allowed_flags:
+            self.warnings.append(f"Invalid flag '{default_flag}' provided. Falling back to 'none'.")
+            normalized_flag = 'none'
+
+        if normalized_priority not in allowed_priorities:
+            self.warnings.append(f"Invalid priority '{default_priority}' provided. Falling back to 'LOW'.")
+            normalized_priority = 'LOW'
 
         try:
             # Read Excel file
@@ -563,7 +585,15 @@ class ExcelTaskImporter:
             # Process each row
             for idx, (row_idx, row) in enumerate(df.iterrows(), start=2):  # Start at row 2 (skip header)
                 try:
-                    task = self.process_row(row, column_mapping, row_idx, assigned_by)
+                    task = self.process_row(
+                        row,
+                        column_mapping,
+                        row_idx,
+                        assigned_by,
+                        default_flag=normalized_flag,
+                        default_priority=normalized_priority,
+                        upload_date=upload_date,
+                    )
                     task.save()  # Save the task
                     self.created_tasks.append(task)
                     print(f"✓ Row {idx}: Task created successfully - {task.title}")

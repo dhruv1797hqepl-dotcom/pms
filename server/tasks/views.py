@@ -604,6 +604,10 @@ class TaskViewSet(viewsets.ModelViewSet):
                         {"success": False, "error": "Invalid column mapping format"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+
+            # Optional manual defaults from frontend dropdowns
+            import_flag = request.POST.get('flag', 'none')
+            import_priority = request.POST.get('priority', 'LOW')
             
             # Save to temporary file
             temp_file_path = None
@@ -627,7 +631,9 @@ class TaskViewSet(viewsets.ModelViewSet):
                 result = importer.import_tasks(
                     temp_file_path,
                     assigned_by=request.user,
-                    column_mapping=column_mapping
+                    column_mapping=column_mapping,
+                    default_flag=import_flag,
+                    default_priority=import_priority,
                 )
                 
                 print(f"DEBUG: Import result: {result}")

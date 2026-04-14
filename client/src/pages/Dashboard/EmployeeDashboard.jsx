@@ -89,6 +89,8 @@ const EmployeeDashboard = () => {
   const [excelPreview, setExcelPreview] = useState(null); // { columns: [], rows: [] }
   const [columnMapping, setColumnMapping] = useState({}); // { 'task': 0, 'assigned_to': 2, etc }
   const [mappingStep, setMappingStep] = useState(false); // true = show mapping UI, false = show upload UI
+  const [excelImportFlag, setExcelImportFlag] = useState('none');
+  const [excelImportPriority, setExcelImportPriority] = useState('LOW');
 
   // FORM STATES FOR TASK COMPLETION
 
@@ -2077,6 +2079,8 @@ const EmployeeDashboard = () => {
         }
       });
       formData.append('column_mapping', JSON.stringify(backendMapping));
+      formData.append('flag', excelImportFlag || 'none');
+      formData.append('priority', excelImportPriority || 'LOW');
 
       const response = await api.post(
         'tasks/import_tasks_from_excel/',
@@ -2122,6 +2126,8 @@ const EmployeeDashboard = () => {
     setExcelPreview(null);
     setColumnMapping({});
     setExcelUploadStatus(null);
+    setExcelImportFlag('none');
+    setExcelImportPriority('LOW');
   };
 
   return (
@@ -3081,6 +3087,38 @@ const EmployeeDashboard = () => {
                             </select>
                           </div>
                         ))}
+
+                        <div className="pt-3 mt-2 border-t border-slate-200 space-y-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                            Import Defaults (Not From Excel)
+                          </p>
+
+                          <div className="grid grid-cols-2 items-center gap-3">
+                            <label className="text-xs font-bold text-slate-700">Flag</label>
+                            <select
+                              value={excelImportFlag}
+                              onChange={(e) => setExcelImportFlag(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300"
+                            >
+                              {taskFlagOptions.map((flagOption) => (
+                                <option key={flagOption.value} value={flagOption.value}>{flagOption.label}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-2 items-center gap-3">
+                            <label className="text-xs font-bold text-slate-700">Priority</label>
+                            <select
+                              value={excelImportPriority}
+                              onChange={(e) => setExcelImportPriority(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300"
+                            >
+                              {taskPriorityOptions.map((priorityOption) => (
+                                <option key={priorityOption.value} value={priorityOption.value}>{priorityOption.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 p-4 space-y-3 overflow-auto">
