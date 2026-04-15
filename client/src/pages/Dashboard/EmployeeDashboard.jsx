@@ -190,7 +190,8 @@ const EmployeeDashboard = () => {
     if (!task?.id) return false;
 
     const sourceModule = String(task?.source_module || '').trim().toUpperCase();
-    if (sourceModule && sourceModule !== 'DIRECT') return false;
+    const nonDeletableModules = ['DDFMS', 'ACTION_PLAN'];
+    if (nonDeletableModules.includes(sourceModule)) return false;
 
     return Number(task?.assigned_by) === Number(currentUser?.id);
   };
@@ -3682,7 +3683,8 @@ const Table = ({
     if (!task?.id) return;
 
     const sourceModule = String(task?.source_module || '').trim().toUpperCase();
-    if (sourceModule && sourceModule !== 'DIRECT') return;
+    const nonDeletableModules = ['DDFMS', 'ACTION_PLAN'];
+    if (nonDeletableModules.includes(sourceModule)) return;
 
     if (Number(task?.assigned_by) !== Number(currentUser?.id)) return;
 
