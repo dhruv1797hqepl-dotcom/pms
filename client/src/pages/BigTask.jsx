@@ -1351,11 +1351,9 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                     <tbody className="divide-y divide-slate-300">
                         {processedTasks.map((task, index) => {
                             const isSubtask = Boolean(task._isSubtask);
-                            const parentId = task._parentTaskId || task.id;
-                            const subtaskDraft = subtaskDrafts[parentId];
-                            const parentTaskObj = isSubtask
-                                ? tasks.find((t) => String(t.id) === String(parentId))
-                                : task;
+                            const rowTaskId = task.id;
+                            const subtaskDraft = subtaskDrafts[rowTaskId];
+                            const parentTaskObj = task;
                             const maxTargetDateForTask = isSubtask
                                 ? (parentTaskObj?.targetDate || parentTaskObj?.target_date || project?.end_date)
                                 : project?.end_date;
