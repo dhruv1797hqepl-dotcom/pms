@@ -305,6 +305,130 @@ class ExcelTaskImporter:
         print(f"DEBUG: ✗ No user match found for '{identifier}'")
         return None
 
+    def _build_scoped_candidate_users(self, project_obj=None, client_obj=None):
+        """
+        Build assignee candidates from the current project/client context.
+        This keeps name matching aligned with who is actually part of that scope.
+        """
+        scoped_users = []
+        seen_ids = set()
+
+        def add_user(user_obj):
+            if not user_obj:
+                return
+            user_id = getattr(user_obj, 'id', None)
+            if not user_id or user_id in seen_ids:
+                return
+            seen_ids.add(user_id)
+            scoped_users.append(user_obj)
+
+        if project_obj:
+            add_user(project_obj.assigned_sgm)
+            add_user(project_obj.assigned_hqepl)
+            add_user(project_obj.external_lead)
+
+            for employee in project_obj.assigned_employees.select_related('user').all():
+                add_user(employee.user)
+
+            for external_member in project_obj.external_team.all():
+                add_user(external_member)
+
+            for senior_member in project_obj.senior_team.all():
+                add_user(senior_member)
+
+        if client_obj:
+            for internal_member in client_obj.internal_team.all():
+                add_user(internal_member)
+
+            for sgm in client_obj.assigned_sgms.all():
+                add_user(sgm)
+
+            for hqepl in client_obj.assigned_hqepls.all():
+                add_user(hqepl)
+
+            for external_record in client_obj.external_members.select_related('user').all():
+                add_user(external_record.user)
+
+        return scoped_users
+
+    def resolve_assignee_user(self, identifier, project_obj=None, client_obj=None):
+        """
+        Resolve assignee by exact, case-insensitive match.
+        Matching order:
+        1) email, 2) username, 3) shortform, 4) full name.
+
+        If multiple users share the same normalized full name, return ambiguity so
+        caller can draft the row for explicit selection.
+
+        Returns:
+            tuple(User|None, str|None)
+            - (user, None) on success
+            - (None, error_message) on failure/ambiguity
+        """
+        if not identifier or pd.isna(identifier):
+            return None, "Assigned to value is missing"
+
+        identifier_text = str(identifier).strip()
+        normalized_identifier = self._normalize_lookup_text(identifier_text)
+
+        scoped_users = self._build_scoped_candidate_users(project_obj=project_obj, client_obj=client_obj)
+        user_pool = scoped_users if scoped_users else list(User.objects.all())
+
+        def match_exact(pool, accessor):
+            matches = []
+            for user_obj in pool:
+                value = accessor(user_obj)
+                if self._normalize_lookup_text(value) == normalized_identifier:
+                    matches.append(user_obj)
+            return matches
+
+        # 1) Email exact (case-insensitive)
+        email_matches = match_exact(user_pool, lambda u: u.email)
+        if len(email_matches) == 1:
+            return email_matches[0], None
+        if len(email_matches) > 1:
+            return None, f"Assigned to '{identifier_text}' is ambiguous (multiple email matches)"
+
+        # 2) Username exact (case-insensitive)
+        username_matches = match_exact(user_pool, lambda u: u.username)
+        if len(username_matches) == 1:
+            return username_matches[0], None
+        if len(username_matches) > 1:
+            return None, f"Assigned to '{identifier_text}' is ambiguous (multiple username matches)"
+
+        # 3) Shortform exact (case-insensitive)
+        shortform_matches = match_exact(user_pool, lambda u: getattr(u, 'shortform', ''))
+        if len(shortform_matches) == 1:
+            return shortform_matches[0], None
+        if len(shortform_matches) > 1:
+            return None, f"Assigned to '{identifier_text}' is ambiguous (multiple shortform matches)"
+
+        # 4) Full-name exact (case-insensitive, whitespace-normalized)
+        full_name_matches = match_exact(
+            user_pool,
+            lambda u: f"{u.first_name or ''} {u.last_name or ''}"
+        )
+        if len(full_name_matches) == 1:
+            return full_name_matches[0], None
+        if len(full_name_matches) > 1:
+            return None, (
+                f"Assigned to '{identifier_text}' is ambiguous "
+                f"({len(full_name_matches)} users share this name)"
+            )
+
+        # Fallback to full userbase only when scoped pool exists and gave no result.
+        if scoped_users:
+            fallback_user, fallback_error = self.resolve_assignee_user(
+                identifier_text,
+                project_obj=None,
+                client_obj=None,
+            )
+            if fallback_user:
+                return fallback_user, None
+            return None, fallback_error
+
+        return None, f"Assigned to user '{identifier_text}' not found"
+
     def build_draft_row(self, row, column_mapping, row_number, error_message, default_flag='none', default_priority='LOW', upload_date=None):
         task_title = ''
         client_value = ''
@@ -527,13 +651,17 @@ class ExcelTaskImporter:
                     assignee_str = str(assignee_val).strip()
                     print(f"  Processed value: '{assignee_str}'")
                     print(f"  Looking up user...")
-                    assigned_to_user = self.get_or_find_user(assignee_str)
+                    assigned_to_user, assignee_error = self.resolve_assignee_user(
+                        assignee_str,
+                        project_obj=project_obj,
+                        client_obj=client_obj,
+                    )
                     if assigned_to_user:
                         print(f"  ✓ SUCCESS: Found user = {assigned_to_user.email} (ID: {assigned_to_user.id})")
                     else:
                         # Email was provided but user not found - this is an ERROR
                         print(f"  ✗ ERROR: User not found for '{assignee_str}'")
-                        row_issues.append(f"Assigned to user '{assignee_str}' not found")
+                        row_issues.append(assignee_error or f"Assigned to user '{assignee_str}' not found")
                 else:
                     print(f"  Column exists but is empty/NaN - will use default (assigned_by)")
                     row_issues.append("Assigned to value is missing")
