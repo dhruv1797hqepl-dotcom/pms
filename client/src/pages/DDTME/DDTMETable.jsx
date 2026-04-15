@@ -267,7 +267,8 @@ const DDTMETable = () => {
             : (Array.isArray(tasksPayload?.results)
               ? tasksPayload.results
               : (Array.isArray(tasksPayload?.data) ? tasksPayload.data : []));
-          setClientBigTasks(sortByProject(tasksData));
+          const leafTasks = filterToLeafTasks(tasksData);
+          setClientBigTasks(sortByProject(leafTasks));
 
           // Fallback to task-level SGM only if client-level assignment is unavailable.
           if (!resolvedSgmName && tasksData.length > 0 && tasksData[0].sgm_name && tasksData[0].sgm_name !== '-') {
@@ -334,7 +335,8 @@ const DDTMETable = () => {
           // 1.5 Fetch Additional Tasks
           const addTasksRes = await api.get(`ddtme/additional-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
           const addTasksData = Array.isArray(addTasksRes.data) ? addTasksRes.data : (addTasksRes.data.results || []);
-          setAdditionalTasks(sortByProject(addTasksData));
+          const leafAdditionalTasks = filterToLeafTasks(addTasksData);
+          setAdditionalTasks(sortByProject(leafAdditionalTasks));
 
           // 1.8 Fetch Objectives
           const objRes = await api.get(`ddtme/monthly-objectives/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
@@ -569,6 +571,17 @@ const DDTMETable = () => {
     [...tasks].sort((a, b) =>
       (a.project_name || '').localeCompare(b.project_name || '')
     );
+
+  const filterToLeafTasks = (tasks) => {
+    // Build set of parent task IDs
+    const parentTaskIds = new Set(
+      tasks
+        .filter((task) => task.parent_task)
+        .map((task) => task.parent_task)
+    );
+    // Filter to only include tasks that are not parents (leaf tasks)
+    return tasks.filter((task) => !parentTaskIds.has(task.id));
+  };
 
   const getZeroHourDeliverables = () => {
     const allDeliverables = [
