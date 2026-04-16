@@ -831,6 +831,14 @@ class ExcelTaskImporter:
             if not target_date:
                 target_date = datetime.now().date()
 
+            # For Excel imports, do not auto-create live tasks in the past.
+            # Past-dated rows should go to draft flow so users can review/edit them.
+            comparison_date = upload_date or timezone.localdate()
+            if target_date < comparison_date:
+                row_issues.append(
+                    f"Target date '{target_date}' is before today's date '{comparison_date}'"
+                )
+
             # Description (optional)
             if 'description' in column_mapping:
                 desc_val = row.iloc[column_mapping['description']]
