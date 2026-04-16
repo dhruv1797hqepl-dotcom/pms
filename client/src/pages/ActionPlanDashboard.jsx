@@ -1273,7 +1273,7 @@ const ActionPlanDashboard = () => {
                                         ? projectMembers.filter((m) => String(m.type || '').toUpperCase() === 'INTERNAL')
                                         : projectMembers
                                       ).map((m) => (
-                                        <option key={m.id} value={String(m.id)}>{m.username || m.email} ({m.email})</option>
+                                        <option key={m.id} value={String(m.id)}>{`${m.first_name || ''} ${m.last_name || ''}`.trim() || m.username}</option>
                                       ))}
                                     </select>
                                     {task.importError && String(task.importError).includes('Assignee') && (
