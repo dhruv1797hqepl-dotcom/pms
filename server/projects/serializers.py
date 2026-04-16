@@ -396,6 +396,15 @@ class ActionTaskSerializer(serializers.ModelSerializer):
         allow_blank=True,
         default='none',
     )
+    priority = serializers.ChoiceField(
+        choices=[
+            ('HIGH', 'High'),
+            ('MEDIUM', 'Medium'),
+            ('LOW', 'Low'),
+        ],
+        required=False,
+        default='LOW',
+    )
 
     class Meta:
         model = ActionTask
@@ -444,4 +453,6 @@ class ActionTaskSerializer(serializers.ModelSerializer):
             attrs['flag'] = 'none'
         elif attrs.get('flag') == 'discuss':
             attrs['flag'] = 'document'
+        if not attrs.get('priority'):
+            attrs['priority'] = 'LOW'
         return attrs
