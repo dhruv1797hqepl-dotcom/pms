@@ -99,6 +99,10 @@ const ActionPlanDashboard = () => {
 
   const normalizeHeader = (header) => String(header || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+  const isInternalMarker = (value) => String(value || '').trim().toLowerCase() === 'internal';
+
+  const isBlankValue = (value) => String(value || '').trim() === '';
+
   const findProjectByLabel = (label) => {
     const needle = String(label || '').trim().toLowerCase();
     if (!needle) return null;
@@ -109,11 +113,15 @@ const ActionPlanDashboard = () => {
     return projectOptions.find((p) => String(p.name || '').trim().toLowerCase().includes(needle)) || null;
   };
 
-  const findMemberByIdentifier = (identifier) => {
+  const findMemberByIdentifier = (identifier, { internalOnly = false } = {}) => {
     const needle = String(identifier || '').trim().toLowerCase();
     if (!needle) return null;
 
-    const match = projectMembers.find((m) => {
+    const sourceMembers = internalOnly
+      ? projectMembers.filter((m) => String(m.type || '').toUpperCase() === 'INTERNAL')
+      : projectMembers;
+
+    const match = sourceMembers.find((m) => {
       const username = String(m.username || '').trim().toLowerCase();
       const email = String(m.email || '').trim().toLowerCase();
       const fullName = String(m.full_name || `${m.first_name || ''} ${m.last_name || ''}` || '').trim().toLowerCase();
@@ -162,21 +170,27 @@ const ActionPlanDashboard = () => {
           const taskText = String(getRowValueByAliases(row, ['task', 'action', 'action task', 'action/task', 'task title']) || '').trim();
           if (!taskText) return null;
 
+          const clientText = String(getRowValueByAliases(row, ['client', 'client name']) || '').trim();
           const projectText = String(getRowValueByAliases(row, ['project', 'project name']) || '').trim();
           const assigneeText = String(getRowValueByAliases(row, ['assigned to', 'assigned_to', 'assignee', 'user', 'employee']) || '').trim();
           const startRaw = getRowValueByAliases(row, ['start date', 'start_date']);
           const targetRaw = getRowValueByAliases(row, ['target date', 'target_date', 'due date', 'deadline', 'date']);
           const flagRaw = String(getRowValueByAliases(row, ['flag', 'task flag']) || 'none').trim().toLowerCase();
 
+          const isInternal =
+            (isBlankValue(clientText) && isBlankValue(projectText))
+            || isInternalMarker(clientText)
+            || isInternalMarker(projectText);
+
           const projectMatch = findProjectByLabel(projectText);
-          const memberMatch = findMemberByIdentifier(assigneeText);
+          const memberMatch = findMemberByIdentifier(assigneeText, { internalOnly: isInternal });
 
           const normalizedStartDate = normalizeDateInput(startRaw) || minTaskDate;
           const normalizedTargetDate = normalizeDateInput(targetRaw) || minTaskDate;
           const normalizedFlag = ['none', 'document', 'training', 'resource', 'discuss'].includes(flagRaw) ? flagRaw : 'none';
 
           let importError = '';
-          if (!projectMatch && projectText) importError = 'Project not matched';
+          if (!isInternal && !projectMatch && projectText) importError = 'Project not matched';
           if (!memberMatch && assigneeText) importError = importError ? `${importError}; Assignee not matched` : 'Assignee not matched';
 
           return {
@@ -187,6 +201,8 @@ const ActionPlanDashboard = () => {
             startDate: normalizedStartDate,
             targetDate: normalizedTargetDate,
             flag: normalizedFlag === 'discuss' ? 'document' : normalizedFlag,
+            isInternal,
+            rawClient: clientText,
             rawProject: projectText,
             rawAssignedTo: assigneeText,
             importError,
@@ -1204,7 +1220,10 @@ const ActionPlanDashboard = () => {
                                     className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5"
                                   >
                                     <option value="">Select Member</option>
-                                    {projectMembers.map((m) => (
+                                    {(task.isInternal
+                                      ? projectMembers.filter((m) => String(m.type || '').toUpperCase() === 'INTERNAL')
+                                      : projectMembers
+                                    ).map((m) => (
                                       <option key={m.id} value={String(m.id)}>{m.username || m.email} ({m.email})</option>
                                     ))}
                                   </select>
@@ -1251,6 +1270,8 @@ const ActionPlanDashboard = () => {
                                 <td className="px-3 py-2 min-w-[240px]">
                                   {isPastDate ? (
                                     <span className="text-[11px] font-bold text-amber-700">Past date: kept as draft</span>
+                                  ) : task.isInternal ? (
+                                    <span className="text-[11px] font-bold text-blue-700">Internal row</span>
                                   ) : task.importError ? (
                                     <span className="text-[11px] font-bold text-red-600">{task.importError}</span>
                                   ) : (

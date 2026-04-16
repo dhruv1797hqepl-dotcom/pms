@@ -3792,7 +3792,7 @@ const Table = ({
                 <th className="px-4 py-3">Task</th>
                 {mode !== "assigned" && <th className="px-4 py-3">Project / Client</th>}
                 {mode === "assigned" && <th className="px-4 py-3">Assigned To</th>}
-                <th className="px-4 py-3">Assigned By</th>
+                {mode !== "assigned" && <th className="px-4 py-3">Assigned By</th>}
                 {mode === "overview" && <th className="px-4 py-3">Start Date</th>}
                 {mode === "overview" && (
                   <th className="px-4 py-3">
@@ -3842,9 +3842,11 @@ const Table = ({
 
                     {mode !== "assigned" && <td className="px-4 py-3 text-[11px] font-medium text-slate-500 italic">{getProjectClientLabel(t)}</td>}
                     {mode === "assigned" && <td className="px-4 py-3 text-xs font-medium">{t.assigned_to_name}</td>}
-                    <td className="px-4 py-3 text-xs font-semibold text-slate-700">
-                      {getAssignedByLabel(t)}
-                    </td>
+                    {mode !== "assigned" && (
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-700">
+                        {getAssignedByLabel(t)}
+                      </td>
+                    )}
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-violet-700 whitespace-nowrap">{t.start_date ? formatDateDDMMYYYY(t.start_date, "—") : "—"}</td>}
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{formatDateDDMMYYYY(t.target_date, "—")}</td>}
                     {mode === "completed" && <td className="px-4 py-3 text-[11px] font-bold text-emerald-500 whitespace-nowrap">{formatDateDDMMYYYY(t.completion_date, "—")}</td>}
