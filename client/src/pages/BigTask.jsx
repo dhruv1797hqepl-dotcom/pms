@@ -104,7 +104,79 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
         return mapping;
     };
 
+    const inferExcelColumnMappingFromData = (rows = [], existingHeaders = []) => {
+        const columnCount = Math.max(existingHeaders.length, ...rows.map((row) => (Array.isArray(row) ? row.length : 0)), 0);
+        const columnStats = Array.from({ length: columnCount }, (_, index) => ({
+            index,
+            dateCount: 0,
+            textCount: 0,
+            shortTextCount: 0,
+            totalTextLength: 0,
+        }));
+
+        rows.slice(0, 12).forEach((row) => {
+            if (!Array.isArray(row)) return;
+
+            row.forEach((cell, index) => {
+                const value = String(cell ?? '').trim();
+                if (!value) return;
+
+                const stats = columnStats[index];
+                if (!stats) return;
+
+                const parsedDate = parseExcelDateValue(cell);
+                if (parsedDate) {
+                    stats.dateCount += 1;
+                    return;
+                }
+
+                stats.textCount += 1;
+                stats.totalTextLength += value.length;
+                if (value.length <= 5) stats.shortTextCount += 1;
+            });
+        });
+
+        const dateColumns = columnStats
+            .filter((stats) => stats.dateCount >= 2)
+            .sort((left, right) => right.dateCount - left.dateCount || left.index - right.index);
+
+        const textColumns = columnStats
+            .filter((stats) => stats.textCount >= 2)
+            .sort((left, right) => {
+                const leftAvg = left.textCount ? left.totalTextLength / left.textCount : 0;
+                const rightAvg = right.textCount ? right.totalTextLength / right.textCount : 0;
+                return rightAvg - leftAvg || right.textCount - left.textCount || left.index - right.index;
+            });
+
+        const mapping = {};
+
+        if (dateColumns[0]) mapping.start_date = dateColumns[0].index;
+        if (dateColumns[1]) mapping.target_date = dateColumns[1].index;
+
+        const filteredTextColumns = textColumns.filter((stats) => !dateColumns.some((dateStats) => dateStats.index === stats.index));
+        if (filteredTextColumns[0]) mapping.title = filteredTextColumns[0].index;
+
+        return mapping;
+    };
+
     const isNonEmptyExcelRow = (row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== '');
+
+    const buildMergedExcelHeaders = (rows = [], headerRowIndex = 0) => {
+        const primary = Array.isArray(rows[headerRowIndex]) ? rows[headerRowIndex] : [];
+        const secondary = Array.isArray(rows[headerRowIndex + 1]) ? rows[headerRowIndex + 1] : [];
+        const columnCount = Math.max(primary.length, secondary.length);
+
+        return Array.from({ length: columnCount }, (_, index) => {
+            const first = String(primary[index] ?? '').trim();
+            const second = String(secondary[index] ?? '').trim();
+
+            if (first && second && normalizeExcelHeader(first) !== normalizeExcelHeader(second)) {
+                return `${first} ${second}`.trim();
+            }
+
+            return first || second || '';
+        });
+    };
 
     const detectExcelHeaderRowIndex = (rows = []) => {
         let bestIndex = 0;
@@ -117,12 +189,19 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                 const normalized = normalizeExcelHeader(cell);
                 if (!normalized) return total;
 
-                if (normalized.includes('deliverable')) return total + 4;
-                if (normalized.includes('task') || normalized.includes('title')) return total + 3;
-                if (normalized.includes('start date') || normalized.includes('target date')) return total + 3;
+                if (normalized.includes('deliverable')) return total + 5;
+                if (normalized.includes('start date') || normalized.includes('target date')) return total + 5;
+                if (normalized.includes('task') || normalized.includes('title')) return total + 4;
                 if (normalized.includes('priority') || normalized.includes('plan')) return total + 1;
                 return total + 0.25;
             }, 0);
+
+            const normalizedRow = row.map(normalizeExcelHeader).join(' ');
+            if (normalizedRow.includes('deliverable') && (normalizedRow.includes('start date') || normalizedRow.includes('target date'))) {
+                bestIndex = index;
+                bestScore = Number.POSITIVE_INFINITY;
+                return;
+            }
 
             if (score > bestScore) {
                 bestScore = score;
@@ -671,11 +750,13 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                         return;
                     }
                     const headerRowIndex = detectExcelHeaderRowIndex(rows);
-                    const headers = rows[headerRowIndex] || [];
+                    const headers = buildMergedExcelHeaders(rows, headerRowIndex);
                     const allDataRows = rows.slice(headerRowIndex + 1).filter(isNonEmptyExcelRow);
                     const dataRows = allDataRows.slice(0, 5);
+                    const headerMapping = inferExcelColumnMapping(headers);
+                    const dataMapping = inferExcelColumnMappingFromData(allDataRows, headers);
                     setExcelPreview({ columns: headers, rows: dataRows, allRows: allDataRows, file });
-                    setColumnMapping(inferExcelColumnMapping(headers));
+                    setColumnMapping({ ...dataMapping, ...headerMapping });
                     setMappingStep(true);
                     setExcelUploadStatus(null);
                 } catch (err) {
