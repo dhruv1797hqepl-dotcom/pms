@@ -161,16 +161,65 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     const isNonEmptyExcelRow = (row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== '');
 
+    const isLikelyExcelHeaderRow = (row = []) => {
+        if (!Array.isArray(row) || row.length === 0) return false;
+
+        let keywordHits = 0;
+        let textCells = 0;
+        let dateLikeCells = 0;
+        let numericLikeCells = 0;
+
+        row.forEach((cell) => {
+            const value = String(cell ?? '').trim();
+            if (!value) return;
+
+            const normalized = normalizeExcelHeader(value);
+            const parsedDate = parseExcelDateValue(value);
+            const numericValue = Number(value);
+
+            if (normalized) {
+                textCells += 1;
+                if (
+                    normalized.includes('deliverable') ||
+                    normalized.includes('task') ||
+                    normalized.includes('title') ||
+                    normalized.includes('start date') ||
+                    normalized.includes('target date') ||
+                    normalized.includes('priority') ||
+                    normalized.includes('plan') ||
+                    normalized.includes('actual') ||
+                    normalized.includes('sr no') ||
+                    normalized.includes('serial')
+                ) {
+                    keywordHits += 1;
+                }
+            }
+
+            if (parsedDate) dateLikeCells += 1;
+            if (!Number.isNaN(numericValue) && value !== '') numericLikeCells += 1;
+        });
+
+        const populatedCells = textCells + dateLikeCells + numericLikeCells;
+        if (populatedCells === 0) return false;
+
+        const headerRatio = keywordHits / populatedCells;
+        const textRatio = textCells / populatedCells;
+        const dataRatio = (dateLikeCells + numericLikeCells) / populatedCells;
+
+        return keywordHits >= 2 || (textRatio >= 0.7 && dataRatio <= 0.25 && keywordHits >= 1);
+    };
+
     const buildMergedExcelHeaders = (rows = [], headerRowIndex = 0) => {
         const primary = Array.isArray(rows[headerRowIndex]) ? rows[headerRowIndex] : [];
         const secondary = Array.isArray(rows[headerRowIndex + 1]) ? rows[headerRowIndex + 1] : [];
-        const columnCount = Math.max(primary.length, secondary.length);
+        const shouldMergeSecondary = isLikelyExcelHeaderRow(secondary);
+        const columnCount = Math.max(primary.length, shouldMergeSecondary ? secondary.length : 0);
 
         return Array.from({ length: columnCount }, (_, index) => {
             const first = String(primary[index] ?? '').trim();
             const second = String(secondary[index] ?? '').trim();
 
-            if (first && second && normalizeExcelHeader(first) !== normalizeExcelHeader(second)) {
+            if (shouldMergeSecondary && first && second && normalizeExcelHeader(first) !== normalizeExcelHeader(second)) {
                 return `${first} ${second}`.trim();
             }
 
@@ -179,37 +228,37 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     };
 
     const detectExcelHeaderRowIndex = (rows = []) => {
-        let bestIndex = 0;
-        let bestScore = -1;
+        let fallbackIndex = 0;
 
-        rows.slice(0, 20).forEach((row, index) => {
-            if (!isNonEmptyExcelRow(row)) return;
+        for (let index = 0; index < Math.min(rows.length, 20); index += 1) {
+            const row = rows[index];
+            if (!isNonEmptyExcelRow(row)) continue;
 
-            const score = row.reduce((total, cell) => {
-                const normalized = normalizeExcelHeader(cell);
-                if (!normalized) return total;
+            const normalizedValues = row.map(normalizeExcelHeader).filter(Boolean);
+            const keywordHits = normalizedValues.filter((value) => (
+                value.includes('deliverable') ||
+                value.includes('start date') ||
+                value.includes('target date') ||
+                value.includes('task') ||
+                value.includes('title') ||
+                value.includes('priority') ||
+                value.includes('sr no') ||
+                value.includes('serial') ||
+                value.includes('plan')
+            )).length;
 
-                if (normalized.includes('deliverable')) return total + 5;
-                if (normalized.includes('start date') || normalized.includes('target date')) return total + 5;
-                if (normalized.includes('task') || normalized.includes('title')) return total + 4;
-                if (normalized.includes('priority') || normalized.includes('plan')) return total + 1;
-                return total + 0.25;
-            }, 0);
+            const hasCoreHeaders = normalizedValues.some((value) => value.includes('deliverable') || value.includes('start date') || value.includes('target date'));
 
-            const normalizedRow = row.map(normalizeExcelHeader).join(' ');
-            if (normalizedRow.includes('deliverable') && (normalizedRow.includes('start date') || normalizedRow.includes('target date'))) {
-                bestIndex = index;
-                bestScore = Number.POSITIVE_INFINITY;
-                return;
+            if (hasCoreHeaders && keywordHits >= 2) {
+                return index;
             }
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestIndex = index;
+            if (fallbackIndex === 0) {
+                fallbackIndex = index;
             }
-        });
+        }
 
-        return bestIndex;
+        return fallbackIndex;
     };
 
     // --- STATE ---
