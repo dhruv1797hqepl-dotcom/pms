@@ -399,8 +399,7 @@ const MCTC = () => {
         const parsed = parsePlaceLabel(label);
         if (!parsed.isPlace) return String(label || "");
 
-        const placeText = parsed.mode === "visit" ? (parsed.companyName || "Visit") : "Office";
-        return `${parsed.halfLabel}: ${placeText}`;
+        return parsed.mode === "visit" ? (parsed.companyName || "Visit") : "Office";
     };
 
     const isPlaceEntry = (entry) => parsePlaceLabel(entry?.label).isPlace;
@@ -540,10 +539,12 @@ const MCTC = () => {
         }
     };
 
-    const completeTask = async (dayKey, index) => {
-        if (!canCompleteTasks) return;
-        const dayTasks = tasks[dayKey] || [];
-        const selectedTask = dayTasks[index];
+    const completeTask = async (dayKey, taskId) => {
+        if (!canCompleteTasks || !taskId) return;
+        const currentDayTasks = tasks[dayKey] || [];
+        const taskIndex = currentDayTasks.findIndex(t => t.id === taskId);
+        if (taskIndex === -1) return;
+        const selectedTask = currentDayTasks[taskIndex];
         if (!selectedTask?.linkedTaskId) return;
 
         try {
@@ -558,18 +559,19 @@ const MCTC = () => {
             }, requestConfig);
 
             setTasks((prev) => {
-                const currentDayTasks = [...(prev[dayKey] || [])];
-                if (!currentDayTasks[index]) return prev;
+                const dayTasksCopy = [...(prev[dayKey] || [])];
+                const updatedIndex = dayTasksCopy.findIndex(t => t.id === taskId);
+                if (updatedIndex === -1) return prev;
 
-                currentDayTasks[index] = {
-                    ...currentDayTasks[index],
+                dayTasksCopy[updatedIndex] = {
+                    ...dayTasksCopy[updatedIndex],
                     linkedTaskStatus: response?.data?.status || "Completed",
                     linkedTaskCompletionDate: response?.data?.completion_date || today,
                 };
 
                 return {
                     ...prev,
-                    [dayKey]: currentDayTasks,
+                    [dayKey]: dayTasksCopy,
                 };
             });
         } catch (error) {
@@ -580,20 +582,16 @@ const MCTC = () => {
         }
     };
 
-    const removeTask = async (dayKey, index) => {
-        if (!canManageEntries) return;
-        const dayTasks = tasks[dayKey] || [];
-        const selectedTask = dayTasks[index];
-        if (!selectedTask?.id) return;
+    const removeTask = async (dayKey, taskId) => {
+        if (!canManageEntries || !taskId) return;
 
         try {
             setIsSaving(true);
-            await api.delete(`/mctc/entries/${selectedTask.id}/`);
+            await api.delete(`/mctc/entries/${taskId}/`);
 
             setTasks((prev) => {
                 const currentDayTasks = prev[dayKey] || [];
-                const newDayTasks = [...currentDayTasks];
-                newDayTasks.splice(index, 1);
+                const newDayTasks = currentDayTasks.filter((t) => t.id !== taskId);
 
                 return {
                     ...prev,
@@ -666,20 +664,15 @@ const MCTC = () => {
 
                                     const key = cell.key;
                                     const dayTasks = isSunday ? [] : getVisibleDayEntries(key);
-                                    const visibleDayTasks = dayTasks.slice(0, 2);
-                                    const hiddenTaskCount = Math.max(dayTasks.length - visibleDayTasks.length, 0);
+                                    const visibleDayTasks = headerView === "place" ? dayTasks : dayTasks.slice(0, 2);
+                                    const hiddenTaskCount = headerView === "place" ? 0 : Math.max(dayTasks.length - visibleDayTasks.length, 0);
 
                                     return (
                                         <div
                                             key={key}
                                             onClick={() => {
                                                 if (isSunday) return;
-
-                                                if (headerView === "place") {
-                                                    openPlacePopup(key);
-                                                } else {
-                                                    openDayPopup(key);
-                                                }
+                                                openDayPopup(key);
                                             }}
                                             className={`flex h-full min-h-0 flex-col ${cellBorderClass} ${isSunday ? "bg-red-50/40" : "cursor-pointer bg-white hover:bg-slate-50/50"}`}
                                         >
@@ -720,7 +713,7 @@ const MCTC = () => {
                                                                                 <button
                                                                                     onClick={(event) => {
                                                                                         event.stopPropagation();
-                                                                                        completeTask(key, idx);
+                                                                                        completeTask(key, task.id);
                                                                                     }}
                                                                                     disabled={isSaving || taskCompleted}
                                                                                     className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[8px] font-black uppercase text-white disabled:bg-slate-200"
@@ -732,7 +725,7 @@ const MCTC = () => {
                                                                                 <button
                                                                                     onClick={(event) => {
                                                                                         event.stopPropagation();
-                                                                                        removeTask(key, idx);
+                                                                                        removeTask(key, task.id);
                                                                                     }}
                                                                                     disabled={task.isDashboardTask}
                                                                                     className="p-0.5 text-slate-400 transition-colors hover:text-red-500"
@@ -935,7 +928,7 @@ const MCTC = () => {
                                                 <div className="flex shrink-0 items-center gap-2">
                                                     {canCompleteTasks && task.type === "task" && task.linkedTaskId && (
                                                         <button
-                                                            onClick={() => completeTask(activeDayPopup, idx)}
+                                                            onClick={() => completeTask(activeDayPopup, task.id)}
                                                             disabled={isSaving || taskCompleted}
                                                             className="rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase text-white disabled:bg-slate-200 whitespace-nowrap"
                                                         >
@@ -945,7 +938,7 @@ const MCTC = () => {
 
                                                     {canManageEntries && (
                                                         <button
-                                                            onClick={() => removeTask(activeDayPopup, idx)}
+                                                            onClick={() => removeTask(activeDayPopup, task.id)}
                                                             disabled={task.isDashboardTask}
                                                             className="rounded-md bg-slate-100 p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-red-500"
                                                         >
@@ -1207,7 +1200,6 @@ const MCTC = () => {
                 </div>
 
                 {renderDayPopup()}
-                {renderPlacePopup()}
             </main>
         </div>
     );

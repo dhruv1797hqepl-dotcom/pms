@@ -22,7 +22,7 @@ class MCTCEntry(models.Model):
     entry_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=TYPE_NORMAL)
     linked_task = models.ForeignKey(
         Task,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name='linked_mctc_entries'
