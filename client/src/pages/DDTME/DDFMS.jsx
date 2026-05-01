@@ -1368,8 +1368,7 @@ const DDFMS = () => {
           if (!taskTargetDate) return;
 
           const step7DateKey = `${deliverable.id}-6-date`;
-          const hasBackendStep7 = loadedStepKeySet.has(step7DateKey);
-          if (!hasBackendStep7 && loadedTableData[step7DateKey] !== taskTargetDate) {
+          if (!loadedTableData[step7DateKey] && taskTargetDate) {
             loadedTableData[step7DateKey] = taskTargetDate;
             pendingChangedKeysRef.current.add(step7DateKey);
           }
@@ -1380,9 +1379,6 @@ const DDFMS = () => {
 
           computedStepDates.forEach((computedDate, index) => {
             const computedDateKey = `${deliverable.id}-${index}-date`;
-            if (loadedStepKeySet.has(computedDateKey)) {
-              return;
-            }
 
             if (!loadedTableData[computedDateKey] && computedDate) {
               loadedTableData[computedDateKey] = computedDate;
