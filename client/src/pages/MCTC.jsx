@@ -105,23 +105,35 @@ const MCTC = () => {
             { type: "task", label: "" },
             { type: "reminder", label: "" },
         ]);
-        setPlacePopupType("onsite");
-        setPlacePopupRows([
-            { halfLabel: "Half 1", mode: "office", companyName: "" },
-            { halfLabel: "Half 2", mode: "office", companyName: "" },
-        ]);
-    };
+        
+        const dayEntries = tasks[dayKey] || [];
+        const placeEntries = dayEntries.filter(entry => isPlaceEntry(entry));
+        
+        let initialType = "onsite";
+        let initialRows = [
+            { halfLabel: "Half 1", mode: "office", companyName: "", id: null, originalLabel: "" },
+            { halfLabel: "Half 2", mode: "office", companyName: "", id: null, originalLabel: "" },
+        ];
 
-    const openPlacePopup = (dayKey) => {
-        if (!dayKey || isSundayDayKey(dayKey)) return;
+        if (placeEntries.length > 0) {
+            placeEntries.forEach(entry => {
+                const parsed = parsePlaceLabel(entry.label);
+                if (parsed.dayType) {
+                    initialType = parsed.dayType;
+                }
+                const rowIndex = parsed.halfLabel === "Half 2" ? 1 : 0;
+                initialRows[rowIndex] = {
+                    halfLabel: parsed.halfLabel,
+                    mode: parsed.mode,
+                    companyName: parsed.companyName,
+                    id: entry.id,
+                    originalLabel: entry.label
+                };
+            });
+        }
 
-        setActivePlacePopupDay(dayKey);
-        setPlacePopupStage("choice");
-        setPlacePopupType("onsite");
-        setPlacePopupRows([
-            { halfLabel: "Half 1", mode: "office", companyName: "" },
-            { halfLabel: "Half 2", mode: "office", companyName: "" },
-        ]);
+        setPlacePopupType(initialType);
+        setPlacePopupRows(initialRows);
     };
 
     const closeDayPopup = () => {
@@ -129,16 +141,6 @@ const MCTC = () => {
         setPopupDraftRows([
             { type: "task", label: "" },
             { type: "reminder", label: "" },
-        ]);
-    };
-
-    const closePlacePopup = () => {
-        setActivePlacePopupDay(null);
-        setPlacePopupStage("choice");
-        setPlacePopupType("onsite");
-        setPlacePopupRows([
-            { halfLabel: "Half 1", mode: "office", companyName: "" },
-            { halfLabel: "Half 2", mode: "office", companyName: "" },
         ]);
     };
 
@@ -522,7 +524,21 @@ const MCTC = () => {
 
             for (const row of normalizedPlaceRows) {
                 const placeLabel = buildPlaceEntryLabel(placePopupType, row);
-                await addTask(activeDayPopup, placeLabel, "normal");
+                if (row.id) {
+                    if (row.originalLabel !== placeLabel) {
+                        await api.patch(`/mctc/entries/${row.id}/`, { label: placeLabel });
+                        setTasks((prev) => {
+                            const dayTasks = [...(prev[activeDayPopup] || [])];
+                            const idx = dayTasks.findIndex(t => t.id === row.id);
+                            if (idx !== -1) {
+                                dayTasks[idx] = { ...dayTasks[idx], label: placeLabel };
+                            }
+                            return { ...prev, [activeDayPopup]: dayTasks };
+                        });
+                    }
+                } else {
+                    await addTask(activeDayPopup, placeLabel, "normal");
+                }
             }
 
             for (const draft of normalizedDrafts) {
