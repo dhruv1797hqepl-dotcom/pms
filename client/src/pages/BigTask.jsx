@@ -83,6 +83,27 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
         return null;
     };
 
+    const normalizeExcelHeader = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+
+    const inferExcelColumnMapping = (headers = []) => {
+        const mapping = {};
+
+        headers.forEach((header, index) => {
+            const normalized = normalizeExcelHeader(header);
+            if (!normalized) return;
+
+            const isTaskTitle = normalized.includes('deliverable') || normalized.includes('task title') || normalized === 'task' || normalized.includes('task ') || normalized.includes('title') || normalized.includes('description');
+            const isStartDate = normalized.includes('start date') || normalized === 'start' || normalized.includes('start');
+            const isTargetDate = normalized.includes('target date') || normalized.includes('due date') || normalized.includes('end date') || normalized.includes('finish date') || normalized.includes('deadline');
+
+            if (isTaskTitle && mapping.title === undefined) mapping.title = index;
+            if (isStartDate && mapping.start_date === undefined) mapping.start_date = index;
+            if (isTargetDate && mapping.target_date === undefined) mapping.target_date = index;
+        });
+
+        return mapping;
+    };
+
     // --- STATE ---
     const [tasks, setTasks] = useState([]);
     const [project, setProject] = useState(null);
@@ -621,9 +642,10 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                         return;
                     }
                     const headers = rows[0] || [];
-                    const dataRows = rows.slice(1, 6);
-                    setExcelPreview({ columns: headers, rows: dataRows, allRows: rows.slice(1), file });
-                    setColumnMapping({});
+                    const allDataRows = rows.slice(1).filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''));
+                    const dataRows = allDataRows.slice(0, 5);
+                    setExcelPreview({ columns: headers, rows: dataRows, allRows: allDataRows, file });
+                    setColumnMapping(inferExcelColumnMapping(headers));
                     setMappingStep(true);
                     setExcelUploadStatus(null);
                 } catch (err) {
@@ -1688,7 +1710,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
             {showExcelModal && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeExcelModal} />
-                    <div className="relative bg-white w-full max-w-lg rounded-xl p-5 md:p-8 shadow-2xl border border-slate-100 max-h-[80vh] overflow-y-auto">
+                    <div className="relative bg-white w-full max-w-[95vw] sm:max-w-lg rounded-xl p-5 md:p-8 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">
                                 {mappingStep ? 'Map Excel Columns' : 'Upload Excel File'}
@@ -1724,14 +1746,14 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                 </div>
 
                                 {[{ key: 'title', label: 'Task Title', required: true }, { key: 'start_date', label: 'Start Date' }, { key: 'target_date', label: 'Target Date' }].map(field => (
-                                    <div key={field.key} className="flex items-center justify-between gap-4">
-                                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider min-w-[120px]">
+                                    <div key={field.key} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider sm:min-w-30">
                                             {field.label} {field.required && <span className="text-red-500">*</span>}
                                         </label>
                                         <select
                                             value={columnMapping[field.key] ?? ''}
                                             onChange={e => setColumnMapping(prev => ({ ...prev, [field.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                            className="w-full min-w-0 flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-200"
                                         >
                                             <option value="">— Skip —</option>
                                             {excelPreview.columns.map((colName, colIdx) => (
