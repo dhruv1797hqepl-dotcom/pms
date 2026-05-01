@@ -48,7 +48,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
         if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
             const wholeDays = Math.floor(rawValue);
-            if (wholeDays <= 0) return null;
+            if (wholeDays < 20000 || wholeDays > 60000) return null;
 
             // Convert Excel serial date without local timezone drift.
             const excelEpochMs = Date.UTC(1899, 11, 30);
