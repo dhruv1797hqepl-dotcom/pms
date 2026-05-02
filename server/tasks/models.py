@@ -25,7 +25,7 @@ class Task(models.Model):
     ]
 
     task_id = models.CharField(max_length=20, unique=True, editable=False)
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=1000)
     description = models.TextField(blank=True, null=True)
     
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='project_tasks', null=True, blank=True)

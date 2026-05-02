@@ -58,7 +58,7 @@ class DDFMSDeliverable(models.Model):
     source_type = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
     source_id = models.PositiveIntegerField(null=True, blank=True)
 
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=1000)
     start_date = models.DateField(null=True, blank=True)
     target_date = models.DateField(null=True, blank=True)
     order_index = models.PositiveIntegerField(default=0)
