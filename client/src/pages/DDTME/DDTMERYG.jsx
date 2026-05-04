@@ -65,6 +65,8 @@ const DDTMERYG = () => {
 	const [isDownloading, setIsDownloading] = useState(false);
 	const [error, setError] = useState("");
 	const [saveError, setSaveError] = useState("");
+	const [lastSavedActivityIndex, setLastSavedActivityIndex] = useState(null);
+	const [lastSavedObjectiveIndex, setLastSavedObjectiveIndex] = useState(null);
 
 	const title = `${buildMonthLabel(selectedMonth, selectedYear)} Deliverable Plan`;
 
@@ -154,6 +156,8 @@ const DDTMERYG = () => {
 			await api.patch(`ddtme/monthly-objectives/${objectiveId}/`, {
 				is_completed: newValue === "G"
 			});
+			setLastSavedObjectiveIndex(index);
+			setTimeout(() => setLastSavedObjectiveIndex(null), 2000);
 		} catch (saveErr) {
 			const rollback = [...updated];
 			rollback[index].ryg = previousValue;
@@ -181,6 +185,8 @@ const DDTMERYG = () => {
 			await api.patch(`ddtme/big-tasks/${rowId}/`, {
 				status: getBigTaskStatusFromRyg(newValue)
 			});
+			setLastSavedActivityIndex(index);
+			setTimeout(() => setLastSavedActivityIndex(null), 2000);
 		} catch (saveErr) {
 			const rollback = [...updated];
 			rollback[index].ryg = previousValue;
@@ -514,17 +520,22 @@ const DDTMERYG = () => {
 												</td>
 												<td className="p-2 border text-center">
 													{objective ? (
-														<select
-															value={objective.ryg}
-															onChange={(e) => handleObjectiveRygChange(index, e.target.value)}
-															className={`${getRygClass(objective.ryg)} rounded-lg px-2 py-1 font-bold cursor-pointer whitespace-nowrap`}
-														>
-															{rgyOptions.map(opt => (
-																<option key={opt.value} value={opt.value} className="text-slate-900">
-																	{opt.label}
-																</option>
-															))}
-														</select>
+														<div className="flex items-center justify-center gap-2">
+															<select
+																value={objective.ryg}
+																onChange={(e) => handleObjectiveRygChange(index, e.target.value)}
+																className={`${getRygClass(objective.ryg)} rounded-lg px-2 py-1 font-bold cursor-pointer whitespace-nowrap`}
+															>
+																{rgyOptions.map(opt => (
+																	<option key={opt.value} value={opt.value} className="text-slate-900">
+																		{opt.label}
+																	</option>
+																))}
+															</select>
+															{lastSavedObjectiveIndex === index && (
+																<div className="text-green-600 text-sm font-bold animate-pulse">✓</div>
+															)}
+														</div>
 													) : (
 														<span className="text-slate-300">-</span>
 													)}
@@ -633,18 +644,23 @@ const DDTMERYG = () => {
 														</div>
 													)}
 													</td>
-													<td className="p-2 border">
-														<select
-															value={row.ryg}
-															onChange={(e) => handleActivityRygChange(index, e.target.value)}
-															className={`w-full rounded-lg px-2 py-1 font-bold ${getRygClass(row.ryg)}`}
-														>
-															{rgyOptions.map(opt => (
-																<option key={opt.value} value={opt.value} className="text-slate-900">
-																	{opt.label}
-																</option>
-															))}
-														</select>
+													<td className="p-2 border relative">
+														<div className="flex items-center gap-2">
+															<select
+																value={row.ryg}
+																onChange={(e) => handleActivityRygChange(index, e.target.value)}
+																className={`flex-1 rounded-lg px-2 py-1 font-bold ${getRygClass(row.ryg)}`}
+															>
+																{rgyOptions.map(opt => (
+																	<option key={opt.value} value={opt.value} className="text-slate-900">
+																		{opt.label}
+																	</option>
+																))}
+															</select>
+															{lastSavedActivityIndex === index && (
+																<div className="text-green-600 text-sm font-bold animate-pulse">✓</div>
+															)}
+														</div>
 													</td>
 													<td className="p-2 border">
 														<input
