@@ -34,6 +34,23 @@ const buildLongMonthLabel = (month, year) => {
 	return date.toLocaleString("default", { month: "long", year: "numeric" }).toUpperCase();
 };
 
+const formatWeekDate = (value) => {
+	if (!value) return "";
+	if (typeof value === "string") {
+		const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+		if (match) {
+			return `${match[3]}-${match[2]}-${match[1]}`;
+		}
+	}
+
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+	const day = String(date.getDate()).padStart(2, "0");
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const year = date.getFullYear();
+	return `${day}-${month}-${year}`;
+};
+
 const DDTMERYG = () => {
 	const { clientId } = useParams();
 	const navigate = useNavigate();
@@ -241,18 +258,25 @@ const DDTMERYG = () => {
 
 			const activityBody = activityRows
 				.filter((row) => row.type === "row")
-				.map((row, index) => [index + 1, row.activity, row.week || "", row.ryg, row.remarks || ""]);
+				.map((row, index) => [
+					index + 1,
+					row.activity,
+					row.projectName || "",
+					formatWeekDate(row.week),
+					row.ryg,
+					row.remarks || ""
+				]);
 
 			autoTable(pdf, {
 				startY: (pdf.lastAutoTable?.finalY || 32) + 8,
-				head: [["Sr.", "Activity", "Week", "RYG", "Remarks"]],
+				head: [["Sr.", "Activity", "Project", "Week", "RYG", "Remarks"]],
 				body: activityBody,
 				theme: "grid",
 				headStyles: { fillColor: [30, 41, 59] },
 				styles: { fontSize: 8 },
 				didParseCell: (data) => {
 					if (data.section !== "body") return;
-					const rygValue = data.row.raw?.[3];
+					const rygValue = data.row.raw?.[4];
 					if (rygPdfRowColor[rygValue]) {
 						data.cell.styles.fillColor = rygPdfRowColor[rygValue];
 					}
@@ -318,6 +342,7 @@ const DDTMERYG = () => {
 					taskType: "big",
 					type: "row",
 					activity: task.title,
+					projectName: task.project_name || task.project?.name || "",
 					week: task.target_date || "",
 					ryg: getRygFromStatus(task.status),
 					remarks: ""
@@ -327,6 +352,7 @@ const DDTMERYG = () => {
 					taskType: "additional",
 					type: "row",
 					activity: task.title,
+					projectName: task.project_name || task.project?.name || "",
 					week: task.target_date || "",
 					ryg: "Y",
 					remarks: ""
@@ -522,6 +548,7 @@ const DDTMERYG = () => {
 										<tr className="bg-slate-800 text-white">
 											<th className="p-2 border">Sr. No.</th>
 											<th className="p-2 border">Activity</th>
+											<th className="p-2 border">Project</th>
 											<th className="p-2 border">Week</th>
 											<th className="p-2 border">RYG Status</th>
 											<th className="p-2 border">Remarks</th>
@@ -533,7 +560,7 @@ const DDTMERYG = () => {
 												return (
 													<tr key={`section-${index}`} className="bg-slate-900 text-white">
 														<td className="p-2 border font-bold text-center">-</td>
-														<td className="p-2 border" colSpan={4}>
+														<td className="p-2 border" colSpan={5}>
 															<input
 																value={row.title}
 																readOnly
@@ -558,7 +585,14 @@ const DDTMERYG = () => {
 													</td>
 													<td className="p-2 border">
 														<input
-															value={row.week}
+															value={row.projectName || ""}
+															readOnly
+															className="w-full bg-transparent outline-none"
+														/>
+													</td>
+													<td className="p-2 border">
+														<input
+															value={formatWeekDate(row.week)}
 															readOnly
 															className="w-full bg-transparent outline-none"
 														/>
