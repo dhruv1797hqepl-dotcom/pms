@@ -592,36 +592,55 @@ const DDTMERYG = () => {
 											srNoCounter += 1;
 
 											return (
-												<tr key={`row-${index}`} className="group hover:bg-black hover:text-white transition-colors duration-150">
+												<tr key={`row-${index}`} className="hover:bg-slate-50">
 													<td className="p-2 border text-center font-bold">{srNoCounter}</td>
-													<td className="p-2 border">
-														<input
-															value={row.activity}
-															readOnly
-															title={row.activity}
-															className="w-full bg-transparent outline-none group-hover:text-white"
-														/>
+												<td className="p-2 border relative group">
+													<input
+														value={row.activity}
+														readOnly
+														className="w-full bg-transparent outline-none truncate"
+														title={row.activity}
+													/>
+													{row.activity && (
+														<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-3 py-2 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+															{row.activity}
+															<div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+														</div>
+													)}
 													</td>
-													<td className="p-2 border">
-														<input
-															value={row.projectName || ""}
-															readOnly
-															title={row.projectName || ""}
-															className="w-full bg-transparent outline-none group-hover:text-white"
-														/>
+												<td className="p-2 border relative group">
+													<input
+														value={row.projectName || ""}
+														readOnly
+														className="w-full bg-transparent outline-none truncate"
+														title={row.projectName}
+													/>
+													{row.projectName && (
+														<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-3 py-2 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+															{row.projectName}
+															<div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+														</div>
+													)}
 													</td>
-													<td className="p-2 border">
-														<input
-															value={formatWeekDate(row.week)}
-															readOnly
-															className="w-full bg-transparent outline-none group-hover:text-white"
-														/>
+												<td className="p-2 border relative group">
+													<input
+														value={formatWeekDate(row.week)}
+														readOnly
+														className="w-full bg-transparent outline-none truncate"
+														title={formatWeekDate(row.week)}
+													/>
+													{row.week && (
+														<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-3 py-2 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+															{formatWeekDate(row.week)}
+															<div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+														</div>
+													)}
 													</td>
 													<td className="p-2 border">
 														<select
 															value={row.ryg}
 															onChange={(e) => handleActivityRygChange(index, e.target.value)}
-															className={`w-full rounded-lg px-2 py-1 font-bold transition-colors duration-150 group-hover:bg-black group-hover:text-white ${getRygClass(row.ryg)}`}
+															className={`w-full rounded-lg px-2 py-1 font-bold ${getRygClass(row.ryg)}`}
 														>
 															{rgyOptions.map(opt => (
 																<option key={opt.value} value={opt.value} className="text-slate-900">
@@ -634,7 +653,7 @@ const DDTMERYG = () => {
 														<input
 															value={row.remarks}
 															readOnly
-															className="w-full bg-transparent outline-none group-hover:text-white"
+															className="w-full bg-transparent outline-none"
 														/>
 													</td>
 												</tr>
