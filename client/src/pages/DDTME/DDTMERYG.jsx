@@ -592,34 +592,36 @@ const DDTMERYG = () => {
 											srNoCounter += 1;
 
 											return (
-												<tr key={`row-${index}`} className="hover:bg-slate-50">
+												<tr key={`row-${index}`} className="group hover:bg-black hover:text-white transition-colors duration-150">
 													<td className="p-2 border text-center font-bold">{srNoCounter}</td>
 													<td className="p-2 border">
 														<input
 															value={row.activity}
 															readOnly
-															className="w-full bg-transparent outline-none"
+															title={row.activity}
+															className="w-full bg-transparent outline-none group-hover:text-white"
 														/>
 													</td>
 													<td className="p-2 border">
 														<input
 															value={row.projectName || ""}
 															readOnly
-															className="w-full bg-transparent outline-none"
+															title={row.projectName || ""}
+															className="w-full bg-transparent outline-none group-hover:text-white"
 														/>
 													</td>
 													<td className="p-2 border">
 														<input
 															value={formatWeekDate(row.week)}
 															readOnly
-															className="w-full bg-transparent outline-none"
+															className="w-full bg-transparent outline-none group-hover:text-white"
 														/>
 													</td>
 													<td className="p-2 border">
 														<select
 															value={row.ryg}
 															onChange={(e) => handleActivityRygChange(index, e.target.value)}
-															className={`w-full rounded-lg px-2 py-1 font-bold ${getRygClass(row.ryg)}`}
+															className={`w-full rounded-lg px-2 py-1 font-bold transition-colors duration-150 group-hover:bg-black group-hover:text-white ${getRygClass(row.ryg)}`}
 														>
 															{rgyOptions.map(opt => (
 																<option key={opt.value} value={opt.value} className="text-slate-900">
@@ -632,7 +634,7 @@ const DDTMERYG = () => {
 														<input
 															value={row.remarks}
 															readOnly
-															className="w-full bg-transparent outline-none"
+															className="w-full bg-transparent outline-none group-hover:text-white"
 														/>
 													</td>
 												</tr>
