@@ -1487,10 +1487,10 @@ const DDTMETable = () => {
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-slate-900 text-white">
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-10">SR</th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-10">Deliverable</th>
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Project</th>
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Target</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-10 w-[32px] sm:w-10 min-w-[32px] sm:min-w-[40px] max-w-[32px] sm:max-w-[40px]">SR</th>
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-10 w-[280px] min-w-[280px] max-w-[280px]">Deliverable</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[312px] sm:left-[320px] bg-slate-900 z-10 w-[120px] min-w-[120px] max-w-[120px]">Project</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[432px] sm:left-[440px] bg-slate-900 z-10 w-[100px] min-w-[100px] max-w-[100px]">Target</th>
                 {showRowRemarks && (
                   <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Comments</th>
                 )}
@@ -1516,8 +1516,8 @@ const DDTMETable = () => {
               <tr className="bg-slate-800 text-white">
                 <th className="sticky left-0 bg-slate-800 z-10"></th>
                 <th className="sticky left-[32px] sm:left-10 bg-slate-800 z-10"></th>
-                <th></th>
-                <th></th>
+                <th className="sticky left-[312px] sm:left-[320px] bg-slate-800 z-10"></th>
+                <th className="sticky left-[432px] sm:left-[440px] bg-slate-800 z-10"></th>
                 {showRowRemarks && <th></th>}
                 {tablePeople.map((person) => (
                   <React.Fragment key={`sub-${person.id}`}>
@@ -1532,8 +1532,8 @@ const DDTMETable = () => {
               {/* BIG TASKS */}
               {visibleBigTasks.map((task, idx) => (
                 <tr key={task.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50">{idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50 w-[320px] min-w-[200px] max-w-[320px]">
+                  <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{idx + 1}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
                     {editingDeliverableKey === `big_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1602,7 +1602,7 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase">
+                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
                     {editingDeliverableKey === `big_${task.id}` ? (
                       <select
                         value={deliverableDraft.projectId}
@@ -1618,7 +1618,7 @@ const DDTMETable = () => {
                       task.project_name
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs text-slate-600 font-mono">
+                  <td className="px-4 py-4 text-xs text-slate-600 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
                     {editingDeliverableKey === `big_${task.id}` ? (
                       <input
                         type="date"
@@ -1712,8 +1712,8 @@ const DDTMETable = () => {
               {/* ADDITIONAL TASKS */}
               {visibleAdditionalTasks.map((task, idx) => (
                 <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
-                  <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50">{visibleBigTasks.length + idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-10 bg-white group-hover:bg-slate-50 w-[320px] min-w-[200px] max-w-[320px]">
+                  <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{visibleBigTasks.length + idx + 1}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
                     {editingDeliverableKey === `add_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1782,7 +1782,7 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase">
+                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
                     {editingDeliverableKey === `add_${task.id}` ? (
                       <select
                         value={deliverableDraft.projectId}
@@ -1798,7 +1798,7 @@ const DDTMETable = () => {
                       task.project_name || '-'
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs text-slate-400 font-mono">
+                  <td className="px-4 py-4 text-xs text-slate-400 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
                     {editingDeliverableKey === `add_${task.id}` ? (
                       <input
                         type="date"
