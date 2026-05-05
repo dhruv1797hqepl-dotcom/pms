@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil, Download } from 'lucide-react';
 import api from '../../api';
 import { formatDateDDMMYYYY } from '../../utils/dateFormat';
+import * as XLSX from 'xlsx';
 
 
 const DDTMETable = () => {
@@ -1100,6 +1101,52 @@ const DDTMETable = () => {
     }
   }, [userRole, planStatus, clientId, selectedMonth, selectedYear]);
 
+  const handleDownloadExcel = () => {
+    const rows = [];
+    let sr = 1;
+
+    // Big Tasks
+    visibleBigTasks.forEach((task) => {
+      rows.push({
+        'SR': sr++,
+        'Deliverable': task.ddtme_title || task.title || '-',
+        'Project': task.project_name || '-',
+        'Target Date': task.target_date ? formatDateDDMMYYYY(task.target_date) : '-'
+      });
+    });
+
+    // Additional Tasks
+    visibleAdditionalTasks.forEach((task) => {
+      rows.push({
+        'SR': sr++,
+        'Deliverable': task.title || '-',
+        'Project': task.project_name || '-',
+        'Target Date': task.target_date ? formatDateDDMMYYYY(task.target_date) : '-'
+      });
+    });
+
+    if (rows.length === 0) {
+      alert('No deliverables to download.');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 6 },   // SR
+      { wch: 50 },  // Deliverable
+      { wch: 25 },  // Project
+      { wch: 15 },  // Target Date
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const monthLabel = months.find((m) => m.value === selectedMonth)?.label || selectedMonth;
+    XLSX.utils.book_append_sheet(wb, ws, `DDTME ${monthLabel} ${selectedYear}`);
+
+    XLSX.writeFile(wb, `DDTME_Deliverables_${monthLabel}_${selectedYear}.xlsx`);
+  };
+
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
 
@@ -1184,6 +1231,15 @@ const DDTMETable = () => {
 
           {/* Actions */}
           <div className="flex items-center gap-3">
+            {/* Download Excel Button */}
+            <button
+              onClick={handleDownloadExcel}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+              title="Download Deliverables Excel"
+            >
+              <Download size={14} />
+              Download
+            </button>
             {/* REJECTION REMARKS POPUP/IN-LINE */}
             {planStatus === 'REJECTED' && rejectionRemarksText && (
               <div className="hidden xl:block bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs max-w-[200px] truncate" title={rejectionRemarksText}>
