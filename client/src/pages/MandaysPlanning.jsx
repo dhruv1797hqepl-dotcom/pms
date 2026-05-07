@@ -120,6 +120,14 @@ const MandaysPlanning = () => {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
+  const getPreviousMonthPeriod = (month, year) => {
+    if (month === 1) {
+      return { month: 12, year: year - 1 };
+    }
+
+    return { month: month - 1, year };
+  };
+
   const selectedMonth = currentDate.getMonth() + 1;
   const selectedYear = currentDate.getFullYear();
 
@@ -244,7 +252,8 @@ const MandaysPlanning = () => {
 
         const employeeMap = new Map();
         const employeeProfileToUserId = new Map();
-        const nextHoursMatrix = {};
+        const currentHoursMatrix = {};
+        const previousHoursMatrix = {};
 
         // For HQEPL/Admin, include all assigned SGMs so SGM section renders fully.
         if (!isSgm && !isEmployee) {
@@ -467,7 +476,9 @@ const MandaysPlanning = () => {
         const employeeScopedProfileId = getResolvedEmployeeProfileId(currentUser)
           || String(currentUser?.employee_id || '').trim();
 
-        const manDayResults = await Promise.allSettled(
+        const { month: previousMonth, year: previousYear } = getPreviousMonthPeriod(selectedMonth, selectedYear);
+
+        const currentManDayResults = await Promise.allSettled(
           normalizedClients.map((client) => {
             let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}&approved_only=true`;
             if (isEmployee && employeeScopedProfileId) {
@@ -477,93 +488,122 @@ const MandaysPlanning = () => {
           })
         );
 
-        manDayResults.forEach((result, index) => {
-          if (result.status !== 'fulfilled') return;
-
-          const clientId = normalizedClients[index]?.id;
-          const entries = unwrapList(result.value.data).filter((entry) => (
-            Number(entry?.month) === Number(selectedMonth)
-            && Number(entry?.year) === Number(selectedYear)
-          ));
-
-          entries.forEach((entry) => {
-            const profileId = entry.employee;
-            let userId = profileId ? employeeProfileToUserId.get(String(profileId)) : null;
-            const isMlsEntry = String(entry.person_key || '').toLowerCase() === 'mls';
-
-            if (!userId && entry.employee_user_id) {
-              userId = String(entry.employee_user_id);
+        const previousManDayResults = await Promise.allSettled(
+          normalizedClients.map((client) => {
+            let query = `client_id=${client.id}&month=${previousMonth}&year=${previousYear}&approved_only=true`;
+            if (isEmployee && employeeScopedProfileId) {
+              query += `&employee_id=${employeeScopedProfileId}`;
             }
+            return api.get(`ddtme/man-day-entries/?${query}`);
+          })
+        );
 
-            const currentUserId = getResolvedUserId(currentUser)
-              || String(currentUser?.employee_id || '').trim();
-            const currentUserProfileId = employeeScopedProfileId;
+        const aggregateManDayResults = (results, matrixTarget, periodMonth, periodYear) => {
+          results.forEach((result, index) => {
+            if (result.status !== 'fulfilled') return;
 
-            if (!userId && isEmployee && currentUserId && currentUserProfileId) {
-              if (String(profileId) === currentUserProfileId) {
-                userId = currentUserId;
+            const clientId = normalizedClients[index]?.id;
+            const entries = unwrapList(result.value.data).filter((entry) => (
+              Number(entry?.month) === Number(periodMonth)
+              && Number(entry?.year) === Number(periodYear)
+            ));
+
+            entries.forEach((entry) => {
+              const profileId = entry.employee;
+              let userId = profileId ? employeeProfileToUserId.get(String(profileId)) : null;
+              const isMlsEntry = String(entry.person_key || '').toLowerCase() === 'mls';
+
+              if (!userId && entry.employee_user_id) {
+                userId = String(entry.employee_user_id);
               }
-            }
 
-            if (!userId) return;
+              const currentUserId = getResolvedUserId(currentUser)
+                || String(currentUser?.employee_id || '').trim();
+              const currentUserProfileId = employeeScopedProfileId;
 
-            if (isEmployee && currentUserId && String(userId) !== currentUserId) {
-              return;
-            }
+              if (!userId && isEmployee && currentUserId && currentUserProfileId) {
+                if (String(profileId) === currentUserProfileId) {
+                  userId = currentUserId;
+                }
+              }
 
-            let existingEmployee = employeeMap.get(String(userId));
-            if (!existingEmployee && isMlsEntry) {
-              const fallbackLabel = String(entry.employee_name || '').trim() || 'MLS';
-              existingEmployee = {
-                id: Number(userId) || userId,
-                user_id: Number(userId) || userId,
-                employee_id: Number(userId) || userId,
-                role: 'HQEPL',
-                username: fallbackLabel,
-                full_name: fallbackLabel,
-                is_mls: true,
+              if (!userId) return;
+
+              if (isEmployee && currentUserId && String(userId) !== currentUserId) {
+                return;
+              }
+
+              let existingEmployee = employeeMap.get(String(userId));
+              if (!existingEmployee && isMlsEntry) {
+                const fallbackLabel = String(entry.employee_name || '').trim() || 'MLS';
+                existingEmployee = {
+                  id: Number(userId) || userId,
+                  user_id: Number(userId) || userId,
+                  employee_id: Number(userId) || userId,
+                  role: 'HQEPL',
+                  username: fallbackLabel,
+                  full_name: fallbackLabel,
+                  is_mls: true,
+                };
+                employeeMap.set(String(userId), existingEmployee);
+              }
+
+              if (!existingEmployee && isEmployee) {
+                const fallbackLabel = String(entry.employee_name || '').trim() || currentUserDisplayName || 'Employee';
+                existingEmployee = {
+                  id: Number(userId) || userId,
+                  user_id: Number(userId) || userId,
+                  employee_id: Number(userId) || userId,
+                  role: 'EMPLOYEE',
+                  username: currentUser?.username || fallbackLabel,
+                  full_name: currentUserDisplayName || fallbackLabel,
+                  employee_name: fallbackLabel,
+                };
+                employeeMap.set(String(userId), existingEmployee);
+              }
+
+              if (!existingEmployee) {
+                return;
+              }
+
+              if (isMlsEntry) {
+                employeeMap.set(String(userId), {
+                  ...existingEmployee,
+                  is_mls: true,
+                });
+                existingEmployee = employeeMap.get(String(userId));
+              }
+
+              const normalizedEmployeeRole = normalizeRole(existingEmployee.role || '');
+              if (normalizedEmployeeRole === 'ADMIN') {
+                return;
+              }
+
+              const matrixKey = `${userId}_${clientId}`;
+              const currentValues = matrixTarget[matrixKey] || { on: 0, off: 0 };
+              matrixTarget[matrixKey] = {
+                on: currentValues.on + parseHours(entry.plan_hours),
+                off: currentValues.off + parseHours(entry.off_hours),
               };
-              employeeMap.set(String(userId), existingEmployee);
-            }
-
-            if (!existingEmployee && isEmployee) {
-              const fallbackLabel = String(entry.employee_name || '').trim() || currentUserDisplayName || 'Employee';
-              existingEmployee = {
-                id: Number(userId) || userId,
-                user_id: Number(userId) || userId,
-                employee_id: Number(userId) || userId,
-                role: 'EMPLOYEE',
-                username: currentUser?.username || fallbackLabel,
-                full_name: currentUserDisplayName || fallbackLabel,
-                employee_name: fallbackLabel,
-              };
-              employeeMap.set(String(userId), existingEmployee);
-            }
-
-            if (!existingEmployee) {
-              return;
-            }
-
-            if (isMlsEntry) {
-              employeeMap.set(String(userId), {
-                ...existingEmployee,
-                is_mls: true,
-              });
-              existingEmployee = employeeMap.get(String(userId));
-            }
-
-            const normalizedEmployeeRole = normalizeRole(existingEmployee.role || '');
-            if (normalizedEmployeeRole === 'ADMIN') {
-              return;
-            }
-
-            const matrixKey = `${userId}_${clientId}`;
-            const currentValues = nextHoursMatrix[matrixKey] || { on: 0, off: 0 };
-            nextHoursMatrix[matrixKey] = {
-              on: currentValues.on + parseHours(entry.plan_hours),
-              off: currentValues.off + parseHours(entry.off_hours),
-            };
+            });
           });
+        };
+
+        aggregateManDayResults(currentManDayResults, currentHoursMatrix, selectedMonth, selectedYear);
+        aggregateManDayResults(previousManDayResults, previousHoursMatrix, previousMonth, previousYear);
+
+        const nextHoursMatrix = {};
+        Object.entries(currentHoursMatrix).forEach(([matrixKey, currentValues]) => {
+          const previousValues = previousHoursMatrix[matrixKey] || { on: 0, off: 0 };
+          const adjustedOn = Math.max(0, parseHours(currentValues.on) - parseHours(previousValues.on));
+          const adjustedOff = Math.max(0, parseHours(currentValues.off) - parseHours(previousValues.off));
+
+          if (adjustedOn > 0 || adjustedOff > 0) {
+            nextHoursMatrix[matrixKey] = {
+              on: adjustedOn,
+              off: adjustedOff,
+            };
+          }
         });
 
         const baseEmployees = Array.from(employeeMap.values()).filter(
