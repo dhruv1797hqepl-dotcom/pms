@@ -1381,9 +1381,9 @@ const DDFMS = () => {
 
           if (normalizedTaskTargetDate) {
             if (loadedTableData[step7DateKey] !== normalizedTaskTargetDate) {
-              loadedTableData[step7DateKey] = normalizedTaskTargetDate;
               pendingChangedKeysRef.current.add(step7DateKey);
             }
+            loadedTableData[step7DateKey] = normalizedTaskTargetDate;
           } else if (!loadedTableData[step7DateKey]) {
             return;
           }
@@ -1395,9 +1395,12 @@ const DDFMS = () => {
           computedStepDates.forEach((computedDate, index) => {
             const computedDateKey = `${deliverable.id}-${index}-date`;
 
-            if (!loadedTableData[computedDateKey] && computedDate) {
-              loadedTableData[computedDateKey] = computedDate;
+            if (computedDate && loadedTableData[computedDateKey] !== computedDate) {
               pendingChangedKeysRef.current.add(computedDateKey);
+            }
+
+            if (computedDate) {
+              loadedTableData[computedDateKey] = computedDate;
             }
           });
         });
