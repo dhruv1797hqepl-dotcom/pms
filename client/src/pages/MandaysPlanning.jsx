@@ -505,6 +505,16 @@ const MandaysPlanning = () => {
           })
         );
 
+        const previousManDayResults = await Promise.allSettled(
+          normalizedClients.map((client) => {
+            let query = `client_id=${client.id}&month=${previousMonth}&year=${previousYear}`;
+            if (isEmployee && employeeScopedProfileId) {
+              query += `&employee_id=${employeeScopedProfileId}`;
+            }
+            return api.get(`ddtme/man-day-entries/?${query}`);
+          })
+        );
+
         const aggregateManDayResults = (results, matrixTarget, periodMonth, periodYear) => {
           const processedEntryIds = new Set();
           results.forEach((result, index) => {
@@ -600,8 +610,25 @@ const MandaysPlanning = () => {
           });
         };
 
+        const currentHoursMatrix = {};
+        const previousHoursMatrix = {};
+
         aggregateManDayResults(currentManDayResults, currentHoursMatrix, selectedMonth, selectedYear);
-        const nextHoursMatrix = currentHoursMatrix;
+        aggregateManDayResults(previousManDayResults, previousHoursMatrix, previousMonth, previousYear);
+
+        const nextHoursMatrix = {};
+        Object.entries(currentHoursMatrix).forEach(([matrixKey, currentValues]) => {
+          const previousValues = previousHoursMatrix[matrixKey] || { on: 0, off: 0 };
+          const adjustedOn = Math.max(0, parseHours(currentValues.on) - parseHours(previousValues.on));
+          const adjustedOff = Math.max(0, parseHours(currentValues.off) - parseHours(previousValues.off));
+
+          if (adjustedOn > 0 || adjustedOff > 0) {
+            nextHoursMatrix[matrixKey] = {
+              on: adjustedOn,
+              off: adjustedOff,
+            };
+          }
+        });
 
         const baseEmployees = Array.from(employeeMap.values()).filter(
           (employee) => normalizeRole(employee.role || '') !== 'ADMIN'
