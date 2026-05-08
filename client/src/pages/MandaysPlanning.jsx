@@ -65,6 +65,8 @@ const parseDays = (value) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
+const normalizeIdentityToken = (value) => String(value || '').trim().toLowerCase();
+
 const formatDaysValue = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '0';
@@ -774,8 +776,45 @@ const MandaysPlanning = () => {
     fetchPlanningData();
   }, [selectedMonth, selectedYear, currentUser, currentUserDisplayName, isCurrentUserLoading]);
 
+  const getRowHours = (employee, clientId) => {
+    if (!employee || clientId == null) return null;
+
+    const clientKey = String(clientId);
+    const aliasKeys = new Set();
+    const displayName = getEmployeeDisplayName(employee);
+
+    [
+      employee?.id,
+      employee?.user_id,
+      employee?.employee_id,
+      displayName ? `name:${normalizeIdentityToken(displayName)}` : null,
+      employee?.employee_name ? `name:${normalizeIdentityToken(employee.employee_name)}` : null,
+      employee?.full_name ? `name:${normalizeIdentityToken(employee.full_name)}` : null,
+      employee?.username ? `name:${normalizeIdentityToken(employee.username)}` : null,
+    ].forEach((candidate) => {
+      if (candidate === null || candidate === undefined || candidate === '') return;
+      aliasKeys.add(String(candidate));
+    });
+
+    for (const alias of aliasKeys) {
+      const matrix = hoursMatrix[`${alias}_${clientKey}`];
+      if (matrix) return matrix;
+    }
+
+    return null;
+  };
+
+  const findEmployeeById = (employeeId) => {
+    const key = String(employeeId || '');
+    return hrRows.find((employee) => String(employee?.id) === key)
+      || hrRows.find((employee) => String(employee?.user_id) === key)
+      || hrRows.find((employee) => String(employee?.employee_id) === key)
+      || null;
+  };
+
   const getDaysDisplay = (employeeId, clientId, field) => {
-    const rowHours = hoursMatrix[`${employeeId}_${clientId}`];
+    const employee = findEmployeeById(employeeId);
+    const rowHours = getRowHours(employee, clientId);
     if (!rowHours) return '-';
 
     const days = field === 'on' ? parseDays(rowHours.onDays) : parseDays(rowHours.offDays);
@@ -784,8 +823,11 @@ const MandaysPlanning = () => {
   };
 
   const getEmployeeTotalOnsiteDays = (employeeId) => {
+    const employee = findEmployeeById(employeeId);
+    if (!employee) return '0';
+
     const total = clients.reduce((sum, client) => {
-      const rowHours = hoursMatrix[`${employeeId}_${client.id}`];
+      const rowHours = getRowHours(employee, client.id);
       if (!rowHours) return sum;
       return sum + parseDays(rowHours.onDays);
     }, 0);
@@ -793,8 +835,11 @@ const MandaysPlanning = () => {
   };
 
   const getEmployeeTotalOffsiteDays = (employeeId) => {
+    const employee = findEmployeeById(employeeId);
+    if (!employee) return '0';
+
     const total = clients.reduce((sum, client) => {
-      const rowHours = hoursMatrix[`${employeeId}_${client.id}`];
+      const rowHours = getRowHours(employee, client.id);
       if (!rowHours) return sum;
       return sum + parseDays(rowHours.offDays);
     }, 0);
@@ -802,8 +847,11 @@ const MandaysPlanning = () => {
   };
 
   const getEmployeeTotalDays = (employeeId) => {
+    const employee = findEmployeeById(employeeId);
+    if (!employee) return '0';
+
     const total = clients.reduce((sum, client) => {
-      const rowHours = hoursMatrix[`${employeeId}_${client.id}`];
+      const rowHours = getRowHours(employee, client.id);
       if (!rowHours) return sum;
 
       const onsiteDays = parseDays(rowHours.onDays);
@@ -818,7 +866,7 @@ const MandaysPlanning = () => {
     const totals = hrRows.reduce(
       (accumulator, employee) => {
         clients.forEach((client) => {
-          const rowHours = hoursMatrix[`${employee.id}_${client.id}`];
+          const rowHours = getRowHours(employee, client.id);
           if (!rowHours) return;
 
           accumulator.onsite += parseDays(rowHours.onDays);
@@ -843,7 +891,7 @@ const MandaysPlanning = () => {
     return clients.reduce((accumulator, client) => {
       const totals = hrRows.reduce(
         (employeeAccumulator, employee) => {
-          const rowHours = hoursMatrix[`${employee.id}_${client.id}`];
+          const rowHours = getRowHours(employee, client.id);
           if (!rowHours) {
             return employeeAccumulator;
           }
