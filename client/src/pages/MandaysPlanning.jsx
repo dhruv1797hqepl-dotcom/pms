@@ -589,10 +589,11 @@ const MandaysPlanning = () => {
               }
 
               const matrixKey = `${userId}_${clientId}`;
-              const currentValues = matrixTarget[matrixKey] || { on: 0, off: 0 };
+              // Use the DDTME entry value directly for the cell (last-entry-wins),
+              // instead of summing multiple task entries which causes cumulative values.
               matrixTarget[matrixKey] = {
-                on: currentValues.on + parseHours(entry.plan_hours),
-                off: currentValues.off + parseHours(entry.off_hours),
+                on: parseHours(entry.plan_hours),
+                off: parseHours(entry.off_hours),
               };
             });
           });
