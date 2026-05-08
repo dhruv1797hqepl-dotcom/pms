@@ -497,7 +497,7 @@ const MandaysPlanning = () => {
 
         const currentManDayResults = await Promise.allSettled(
           normalizedClients.map((client) => {
-            let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}&approved_only=true`;
+            let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}`;
             if (isEmployee && employeeScopedProfileId) {
               query += `&employee_id=${employeeScopedProfileId}`;
             }
