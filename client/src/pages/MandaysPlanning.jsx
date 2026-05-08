@@ -493,21 +493,9 @@ const MandaysPlanning = () => {
         const employeeScopedProfileId = getResolvedEmployeeProfileId(currentUser)
           || String(currentUser?.employee_id || '').trim();
 
-        const { month: previousMonth, year: previousYear } = getPreviousMonthPeriod(selectedMonth, selectedYear);
-
         const currentManDayResults = await Promise.allSettled(
           normalizedClients.map((client) => {
             let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}`;
-            if (isEmployee && employeeScopedProfileId) {
-              query += `&employee_id=${employeeScopedProfileId}`;
-            }
-            return api.get(`ddtme/man-day-entries/?${query}`);
-          })
-        );
-
-        const previousManDayResults = await Promise.allSettled(
-          normalizedClients.map((client) => {
-            let query = `client_id=${client.id}&month=${previousMonth}&year=${previousYear}`;
             if (isEmployee && employeeScopedProfileId) {
               query += `&employee_id=${employeeScopedProfileId}`;
             }
@@ -611,21 +599,9 @@ const MandaysPlanning = () => {
         };
 
         aggregateManDayResults(currentManDayResults, currentHoursMatrix, selectedMonth, selectedYear);
-        aggregateManDayResults(previousManDayResults, previousHoursMatrix, previousMonth, previousYear);
 
-        const nextHoursMatrix = {};
-        Object.entries(currentHoursMatrix).forEach(([matrixKey, currentValues]) => {
-          const previousValues = previousHoursMatrix[matrixKey] || { on: 0, off: 0 };
-          const adjustedOn = Math.max(0, parseHours(currentValues.on) - parseHours(previousValues.on));
-          const adjustedOff = Math.max(0, parseHours(currentValues.off) - parseHours(previousValues.off));
-
-          if (adjustedOn > 0 || adjustedOff > 0) {
-            nextHoursMatrix[matrixKey] = {
-              on: adjustedOn,
-              off: adjustedOff,
-            };
-          }
-        });
+        // Use current month's values directly (no subtraction/merging with previous month)
+        const nextHoursMatrix = { ...currentHoursMatrix };
 
         const baseEmployees = Array.from(employeeMap.values()).filter(
           (employee) => normalizeRole(employee.role || '') !== 'ADMIN'
