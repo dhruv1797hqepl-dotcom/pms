@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Loader2, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Sidebar from '../components/Sidebar';
 import api from '../api';
 
@@ -136,7 +137,7 @@ const MandaysPlanning = () => {
     [currentDate]
   );
 
-  const srNoColumnWidth = 96;
+  const srNoColumnWidth = 80;
   const nameColumnWidth = 260;
 
   const totalColumnCount = useMemo(() => 5 + Math.max(clients.length, 1) * 2, [clients.length]);
@@ -282,6 +283,10 @@ const MandaysPlanning = () => {
                 full_name: existing.full_name || sgmUser.full_name || '',
                 shortform: existing.shortform || sgmUser.shortform || '',
               });
+
+              if (sgmUser.employee_profile_id) {
+                employeeProfileToUserId.set(String(sgmUser.employee_profile_id), key);
+              }
             });
           });
         }
@@ -311,6 +316,10 @@ const MandaysPlanning = () => {
               full_name: existing.full_name || hqeplUser.full_name || '',
               shortform: existing.shortform || hqeplUser.shortform || '',
             });
+
+            if (hqeplUser.employee_profile_id) {
+              employeeProfileToUserId.set(String(hqeplUser.employee_profile_id), key);
+            }
           });
         });
 
@@ -343,6 +352,10 @@ const MandaysPlanning = () => {
                   full_name: existing.full_name || mlsUser.full_name || '',
                   shortform: existing.shortform || mlsUser.shortform || '',
                 });
+
+                if (mlsUser.employee_profile_id) {
+                  employeeProfileToUserId.set(String(mlsUser.employee_profile_id), key);
+                }
               });
           } catch (hqeplError) {
             console.warn('Failed to fetch HQEPL list for MLS placement:', hqeplError);
@@ -466,6 +479,10 @@ const MandaysPlanning = () => {
                 username: existing.username || user.username || '',
                 email: existing.email || user.email || '',
               });
+
+              if (user.employee_profile_id) {
+                employeeProfileToUserId.set(String(user.employee_profile_id), key);
+              }
             });
           } catch (allUsersError) {
             console.warn('Failed to fetch global staff list for HQEPL/Admin:', allUsersError);
@@ -481,16 +498,6 @@ const MandaysPlanning = () => {
         const currentManDayResults = await Promise.allSettled(
           normalizedClients.map((client) => {
             let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}&approved_only=true`;
-            if (isEmployee && employeeScopedProfileId) {
-              query += `&employee_id=${employeeScopedProfileId}`;
-            }
-            return api.get(`ddtme/man-day-entries/?${query}`);
-          })
-        );
-
-        const previousManDayResults = await Promise.allSettled(
-          normalizedClients.map((client) => {
-            let query = `client_id=${client.id}&month=${previousMonth}&year=${previousYear}&approved_only=true`;
             if (isEmployee && employeeScopedProfileId) {
               query += `&employee_id=${employeeScopedProfileId}`;
             }
@@ -590,21 +597,8 @@ const MandaysPlanning = () => {
         };
 
         aggregateManDayResults(currentManDayResults, currentHoursMatrix, selectedMonth, selectedYear);
-        aggregateManDayResults(previousManDayResults, previousHoursMatrix, previousMonth, previousYear);
 
-        const nextHoursMatrix = {};
-        Object.entries(currentHoursMatrix).forEach(([matrixKey, currentValues]) => {
-          const previousValues = previousHoursMatrix[matrixKey] || { on: 0, off: 0 };
-          const adjustedOn = Math.max(0, parseHours(currentValues.on) - parseHours(previousValues.on));
-          const adjustedOff = Math.max(0, parseHours(currentValues.off) - parseHours(previousValues.off));
-
-          if (adjustedOn > 0 || adjustedOff > 0) {
-            nextHoursMatrix[matrixKey] = {
-              on: adjustedOn,
-              off: adjustedOff,
-            };
-          }
-        });
+        const nextHoursMatrix = currentHoursMatrix;
 
         const baseEmployees = Array.from(employeeMap.values()).filter(
           (employee) => normalizeRole(employee.role || '') !== 'ADMIN'
@@ -830,6 +824,93 @@ const MandaysPlanning = () => {
     }, {});
   }, [clients, hrRows, hoursMatrix]);
 
+  const handleDownloadExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    
+    // Header Row 1: Sr No, Name, [Clients...], Totals
+    const headerRow1 = ['Sr No', 'Name'];
+    clients.forEach(client => {
+      headerRow1.push(client.display_name, ''); // Colspan 2 effect in data
+    });
+    headerRow1.push('Total Onsite Days', 'Total Offsite Days', 'Total Days');
+
+    // Header Row 2: (Empty), (Empty), [OnSite, OffSite...], (Empty)
+    const headerRow2 = ['', ''];
+    clients.forEach(() => {
+      headerRow2.push('OnSite Days', 'Offsite Days');
+    });
+    headerRow2.push('', '', '');
+
+    const data = [headerRow1, headerRow2];
+
+    // Employee Rows
+    hrRows.forEach((row, index) => {
+      const excelRow = [index + 1, getEmployeeDisplayName(row)];
+      clients.forEach(client => {
+        excelRow.push(
+          getDaysDisplay(row.id, client.id, 'on'),
+          getDaysDisplay(row.id, client.id, 'off')
+        );
+      });
+      excelRow.push(
+        getEmployeeTotalOnsiteDays(row.id),
+        getEmployeeTotalOffsiteDays(row.id),
+        getEmployeeTotalDays(row.id)
+      );
+      data.push(excelRow);
+    });
+
+    // Total (All Employees) Row
+    const totalRow = ['-', 'Total (All Employees)'];
+    clients.forEach(client => {
+      totalRow.push(
+        clientWiseTotals[String(client.id)]?.onsite || '0',
+        clientWiseTotals[String(client.id)]?.offsite || '0'
+      );
+    });
+    totalRow.push(allEmployeesTotals.onsite, allEmployeesTotals.offsite, allEmployeesTotals.total);
+    data.push(totalRow);
+
+    // Overall Days Row
+    const overallRow = ['-', 'Overall Days'];
+    clients.forEach(client => {
+      const clientTotal = (parseFloat(clientWiseTotals[String(client.id)]?.onsite) || 0) + (parseFloat(clientWiseTotals[String(client.id)]?.offsite) || 0);
+      const formattedTotal = (Math.round((clientTotal + Number.EPSILON) * 100) / 100).toFixed(2);
+      overallRow.push(formattedTotal, ''); // Use colSpan conceptually
+    });
+    overallRow.push('-', '-', allEmployeesTotals.total);
+    data.push(overallRow);
+
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+    // Apply merges for headers and overall row
+    const merges = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // Sr No
+      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // Name
+      { s: { r: 0, c: data[0].length - 3 }, e: { r: 1, c: data[0].length - 3 } }, // Total Onsite
+      { s: { r: 0, c: data[0].length - 2 }, e: { r: 1, c: data[0].length - 2 } }, // Total Offsite
+      { s: { r: 0, c: data[0].length - 1 }, e: { r: 1, c: data[0].length - 1 } }, // Total Days
+    ];
+
+    // Client merges in header
+    clients.forEach((_, idx) => {
+      const colStart = 2 + idx * 2;
+      merges.push({ s: { r: 0, c: colStart }, e: { r: 0, c: colStart + 1 } });
+    });
+
+    // Overall Days merges
+    const overallRowIdx = data.length - 1;
+    clients.forEach((_, idx) => {
+      const colStart = 2 + idx * 2;
+      merges.push({ s: { r: overallRowIdx, c: colStart }, e: { r: overallRowIdx, c: colStart + 1 } });
+    });
+
+    worksheet['!merges'] = merges;
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Mandays Planning');
+    XLSX.writeFile(workbook, `Mandays_Planning_${monthLabel.replace(' ', '_')}.xlsx`);
+  };
+
   return (
     <div className="h-screen w-screen bg-slate-50 font-sans text-slate-800 flex overflow-hidden">
       <Sidebar />
@@ -870,6 +951,14 @@ const MandaysPlanning = () => {
                 <ChevronRight size={18} className="mx-auto" />
               </button>
             </div>
+
+            <button
+              onClick={handleDownloadExcel}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md active:scale-95"
+            >
+              <Download size={18} />
+              <span>Download Excel</span>
+            </button>
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -877,7 +966,7 @@ const MandaysPlanning = () => {
               <table className="w-full border-collapse" style={{ minWidth: minTableWidth }}>
                 <thead>
                   <tr className="bg-slate-100 text-slate-800 text-xs">
-                    <th rowSpan={2} className="sticky left-0 z-40 border border-slate-300 px-2 py-2 text-left font-black bg-slate-100 w-20 min-w-20">
+                    <th rowSpan={2} className="sticky left-0 z-40 border border-slate-300 px-2 py-2 text-left font-black bg-slate-100" style={{ width: `${srNoColumnWidth}px`, minWidth: `${srNoColumnWidth}px` }}>
                       Sr No
                     </th>
                     <th
@@ -926,7 +1015,7 @@ const MandaysPlanning = () => {
                     <>
                       {hrRows.map((row, index) => (
                         <tr key={`row-${row.id}`} className="group bg-white hover:bg-slate-50 transition-colors text-xs">
-                          <td className="sticky left-0 z-30 border border-slate-200 px-2 py-2 font-bold text-slate-600 bg-white group-hover:bg-slate-50 w-20 min-w-20">
+                          <td className="sticky left-0 z-30 border border-slate-200 px-2 py-2 font-bold text-slate-600 bg-white group-hover:bg-slate-50" style={{ width: `${srNoColumnWidth}px`, minWidth: `${srNoColumnWidth}px` }}>
                             {index + 1}
                           </td>
                           <td
@@ -958,7 +1047,7 @@ const MandaysPlanning = () => {
                       ))}
 
                       <tr className="bg-slate-100 text-xs">
-                        <td className="sticky left-0 z-30 border border-slate-300 px-2 py-2 font-black text-slate-700 bg-slate-100 w-20 min-w-20">
+                        <td className="sticky left-0 z-30 border border-slate-300 px-2 py-2 font-black text-slate-700 bg-slate-100" style={{ width: `${srNoColumnWidth}px`, minWidth: `${srNoColumnWidth}px` }}>
                           -
                         </td>
                         <td
@@ -989,7 +1078,7 @@ const MandaysPlanning = () => {
                       </tr>
 
                       <tr className="bg-blue-50 text-xs">
-                        <td className="sticky left-0 z-30 border border-slate-300 px-2 py-2 font-black text-blue-700 bg-blue-50 w-20 min-w-20">
+                        <td className="sticky left-0 z-30 border border-slate-300 px-2 py-2 font-black text-blue-700 bg-blue-50" style={{ width: `${srNoColumnWidth}px`, minWidth: `${srNoColumnWidth}px` }}>
                           -
                         </td>
                         <td
