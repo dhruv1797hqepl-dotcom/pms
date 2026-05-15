@@ -4,6 +4,7 @@ import {
   Activity
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import PerformanceAnalytics from '../components/PerformanceAnalytics';
 import api from '../api';
 
 // Pure helper: mirrors dashboard_stats OTC & ATS formulas
@@ -808,6 +809,9 @@ const WeeklyScore = () => {
               </div>
             </div>
           )}
+
+          {/* PERFORMANCE ANALYTICS SECTION */}
+          <PerformanceAnalytics teamData={teamData} displayPeriods={displayPeriods} />
 
           {/* TABLE */}
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
