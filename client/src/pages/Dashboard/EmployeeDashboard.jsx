@@ -3641,10 +3641,6 @@ const Table = ({
       const hasPdfExt = /\.pdf$/i.test(currentPath);
 
       let normalizedPath = currentPath;
-      if (normalizedPath.includes("/image/upload/")) {
-        normalizedPath = normalizedPath.replace("/image/upload/", "/raw/upload/");
-      }
-
       if (!hasPdfExt) {
         normalizedPath = `${normalizedPath}.pdf`;
       }
