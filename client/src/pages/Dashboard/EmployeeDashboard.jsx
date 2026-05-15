@@ -3603,16 +3603,22 @@ const Table = ({
     if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
 
     const configuredBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+    const path = String(fileUrl).startsWith("/") ? String(fileUrl) : `/${String(fileUrl)}`;
+
     if (configuredBaseUrl) {
       try {
         const origin = new URL(configuredBaseUrl).origin;
-        return `${origin}${String(fileUrl).startsWith("/") ? "" : "/"}${fileUrl}`;
+        return `${origin}${path}`;
       } catch {
         // Fall through to returning the original value.
       }
     }
 
-    return fileUrl;
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return `${window.location.origin}${path}`;
+    }
+
+    return path;
   };
 
   const getDownloadFileName = (fileUrl, fallbackName) => {
