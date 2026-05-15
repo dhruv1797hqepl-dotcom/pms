@@ -14,7 +14,9 @@ API.interceptors.request.use(
   (config) => {
     if (config.url && !/^https?:\/\//i.test(config.url)) {
       const normalized = config.url.startsWith("/") ? config.url : `/${config.url}`;
-      config.url = normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
+      const isApiPath = normalized.startsWith("/api/");
+      const isMediaOrStaticPath = normalized.startsWith("/media/") || normalized.startsWith("/static/");
+      config.url = (isApiPath || isMediaOrStaticPath) ? normalized : `/api${normalized}`;
     }
 
     const token = localStorage.getItem("access_token") || localStorage.getItem("token") || localStorage.getItem("access");
@@ -32,14 +34,31 @@ API.interceptors.request.use(
 
 API.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      console.error("[API] 401 Unauthorized - Token may be expired or invalid");
-      console.error("[API] Response:", error.response.data);
-      // Optionally redirect to login
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("token");
-      localStorage.removeItem("refresh_token");
+      const requestUrl = String(error.config?.url || "");
+      const isApiRequest = requestUrl.includes("/api/");
+      const isBlobResponse = error.config?.responseType === "blob";
+
+      console.error("[API] 401 Unauthorized - request:", requestUrl);
+
+      if (isBlobResponse && error.response?.data instanceof Blob) {
+        try {
+          const blobText = await error.response.data.text();
+          console.error("[API] Blob error payload:", blobText);
+        } catch {
+          console.error("[API] Response:", error.response.data);
+        }
+      } else {
+        console.error("[API] Response:", error.response.data);
+      }
+
+      // Clear token only for authenticated API endpoints; avoid clearing on media/static failures.
+      if (isApiRequest) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("token");
+        localStorage.removeItem("refresh_token");
+      }
     }
     return Promise.reject(error);
   }
