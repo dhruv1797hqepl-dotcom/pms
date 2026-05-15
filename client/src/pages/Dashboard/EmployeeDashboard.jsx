@@ -3634,6 +3634,29 @@ const Table = ({
     if (!resolvedUrl) return;
 
     try {
+      const resolvedOrigin = (() => {
+        try {
+          return new URL(resolvedUrl).origin;
+        } catch {
+          return "";
+        }
+      })();
+      const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
+      const isExternalFile = Boolean(resolvedOrigin) && resolvedOrigin !== appOrigin;
+
+      // Cross-origin downloads (e.g. Cloudinary) should be opened directly instead of using
+      // XHR/axios blob requests, which can fail with CORS/auth edge cases.
+      if (isExternalFile) {
+        const directLink = document.createElement("a");
+        directLink.href = resolvedUrl;
+        directLink.target = "_blank";
+        directLink.rel = "noopener noreferrer";
+        document.body.appendChild(directLink);
+        directLink.click();
+        directLink.remove();
+        return;
+      }
+
       const normalizedFileUrl = String(fileUrl || "").toLowerCase();
       const isMediaFile = normalizedFileUrl.includes("/media/") || resolvedUrl.toLowerCase().includes("/media/");
 
