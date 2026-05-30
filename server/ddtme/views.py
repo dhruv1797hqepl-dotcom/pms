@@ -300,6 +300,24 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             'additional_task__client',
         ).filter(month=month, year=year)
 
+        # Only include entries where the associated client's DDTME submission
+        # for the same month/year is Approved. This ensures mandays planning
+        # shows only approved hours, irrespective of task completion status.
+        approved_filter = (
+            models.Q(
+                big_task__project__client__ddtme_submissions__month=month,
+                big_task__project__client__ddtme_submissions__year=year,
+                big_task__project__client__ddtme_submissions__status='Approved'
+            ) |
+            models.Q(
+                additional_task__client__ddtme_submissions__month=month,
+                additional_task__client__ddtme_submissions__year=year,
+                additional_task__client__ddtme_submissions__status='Approved'
+            )
+        )
+
+        queryset = queryset.filter(approved_filter).distinct()
+
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
 
