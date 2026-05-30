@@ -48,59 +48,32 @@ const formatDateTime = (isoString) => {
   });
 };
 
-// Saturday section shows Mon-Sat of the current week (e.g. if today is Tuesday, shows Monday-Saturday)
-const getSatWindow = (today) => {
+// Thursday-Wednesday cycle starts on the active Thursday for the current date.
+const getWedWindow = (today) => {
   const d = new Date(today);
   const dayOfWeek = d.getDay();
+  const daysSinceThursday = (dayOfWeek - 4 + 7) % 7;
+  const thursday = new Date(d);
+  thursday.setDate(d.getDate() - daysSinceThursday);
 
-  // Calculate days back to Monday of current week
-  // If today is Sunday (0), go back 6 days to Monday
-  // If today is Monday (1), go back 0 days (today is Monday)
-  // If today is Tuesday (2), go back 1 day to Monday
-  // etc.
-  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const mon = new Date(d);
-  mon.setDate(d.getDate() - daysToMonday);
-
-  return Array.from({ length: 6 }, (_, i) => {
-    const date = new Date(mon);
-    date.setDate(mon.getDate() + i);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(thursday);
+    date.setDate(thursday.getDate() + i);
     return date;
   });
 };
 
-// Wednesday section shows Thu-Fri-Sat-Mon-Tue-Wed (Sunday excluded)
-const getWedWindow = (today) => {
-  const d = new Date(today);
-  const dayOfWeek = d.getDay();
+// Monday-Saturday window is linked to the active Thursday-Wednesday cycle.
+const getSatWindow = (today) => {
+  const thursdayWindow = getWedWindow(today);
+  const linkedMonday = new Date(thursdayWindow[0]);
+  linkedMonday.setDate(thursdayWindow[0].getDate() + 4);
 
-  // Calculate days back to Monday of current week
-  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - daysToMonday);
-
-  // Thursday is 3 days after Monday
-  const thursday = new Date(monday);
-  thursday.setDate(monday.getDate() + 3);
-
-  // Return Thu-Fri-Sat and then Mon-Tue-Wed (skip Sunday)
-  const result = [];
-
-  // Thu, Fri, Sat
-  for (let i = 0; i < 3; i += 1) {
-    const date = new Date(thursday);
-    date.setDate(thursday.getDate() + i);
-    result.push(date);
-  }
-
-  // Mon, Tue, Wed (4,5,6 days after Thursday)
-  for (let i = 4; i <= 6; i += 1) {
-    const date = new Date(thursday);
-    date.setDate(thursday.getDate() + i);
-    result.push(date);
-  }
-
-  return result;
+  return Array.from({ length: 6 }, (_, i) => {
+    const date = new Date(linkedMonday);
+    date.setDate(linkedMonday.getDate() + i);
+    return date;
+  });
 };
 
 const formatRange = (dates) => {
@@ -639,10 +612,21 @@ const PlanSheet = ({
 const RC7 = () => {
   const location = useLocation();
   const currentRole = (localStorage.getItem('role') || '').toUpperCase();
-  const today = useMemo(() => new Date(), []);
-  const todayDay = today.getDay();
+  const [today, setToday] = useState(() => new Date());
   const isSatCycleActive = true; // Always editable
   const isWedCycleActive = true; // Always editable
+
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+
+    const timeoutId = window.setTimeout(() => {
+      setToday(new Date());
+    }, Math.max(0, nextMidnight.getTime() - now.getTime()));
+
+    return () => window.clearTimeout(timeoutId);
+  }, [today]);
 
   const memberViewContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
