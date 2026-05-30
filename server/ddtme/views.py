@@ -109,6 +109,11 @@ User = get_user_model()
 
 def _reviewer_can_view_ddtme_payload(request, client_id, month, year):
     role = str(getattr(request.user, 'role', '') or '').upper()
+    view_context = str(request.query_params.get('view', '') or '').strip().lower()
+
+    if view_context == 'mandays':
+        return True
+
     # SGM can access draft payloads to collaborate on editing.
     # Keep HQEPL gated to submitted/approved/rejected periods.
     if role != 'HQEPL':

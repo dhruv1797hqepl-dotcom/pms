@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, Loader2, Download } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import api from '../api';
+import { subscribeToDdtmePlanningRefresh } from '../utils/ddtmePlanningRefresh';
 import * as XLSX from 'xlsx';
 
 const unwrapList = (payload) => {
@@ -116,18 +117,11 @@ const MandaysPlanning = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [isCurrentUserLoading, setIsCurrentUserLoading] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-
-  const getPreviousMonthPeriod = (month, year) => {
-    if (month === 1) {
-      return { month: 12, year: year - 1 };
-    }
-
-    return { month: month - 1, year };
-  };
 
   const selectedMonth = currentDate.getMonth() + 1;
   const selectedYear = currentDate.getFullYear();
@@ -199,6 +193,12 @@ const MandaysPlanning = () => {
   }, [currentUser]);
 
   useEffect(() => {
+    return subscribeToDdtmePlanningRefresh(() => {
+      setRefreshTick((value) => value + 1);
+    });
+  }, []);
+
+  useEffect(() => {
     const fetchPlanningData = async () => {
       try {
         setIsLoading(true);
@@ -254,7 +254,6 @@ const MandaysPlanning = () => {
         const employeeMap = new Map();
         const employeeProfileToUserId = new Map();
         const currentHoursMatrix = {};
-        const previousHoursMatrix = {};
 
         // For HQEPL/Admin, include all assigned SGMs so SGM section renders fully.
         if (!isSgm && !isEmployee) {
@@ -473,25 +472,13 @@ const MandaysPlanning = () => {
           }
         }
 
-        // Fetch man days for all clients
+        // Fetch man days for all clients for the selected month only.
         const employeeScopedProfileId = getResolvedEmployeeProfileId(currentUser)
           || String(currentUser?.employee_id || '').trim();
 
-        const { month: previousMonth, year: previousYear } = getPreviousMonthPeriod(selectedMonth, selectedYear);
-
         const currentManDayResults = await Promise.allSettled(
           normalizedClients.map((client) => {
-            let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}&approved_only=true`;
-            if (isEmployee && employeeScopedProfileId) {
-              query += `&employee_id=${employeeScopedProfileId}`;
-            }
-            return api.get(`ddtme/man-day-entries/?${query}`);
-          })
-        );
-
-        const previousManDayResults = await Promise.allSettled(
-          normalizedClients.map((client) => {
-            let query = `client_id=${client.id}&month=${previousMonth}&year=${previousYear}&approved_only=true`;
+            let query = `client_id=${client.id}&month=${selectedMonth}&year=${selectedYear}&view=mandays`;
             if (isEmployee && employeeScopedProfileId) {
               query += `&employee_id=${employeeScopedProfileId}`;
             }
@@ -591,21 +578,8 @@ const MandaysPlanning = () => {
         };
 
         aggregateManDayResults(currentManDayResults, currentHoursMatrix, selectedMonth, selectedYear);
-        aggregateManDayResults(previousManDayResults, previousHoursMatrix, previousMonth, previousYear);
 
-        const nextHoursMatrix = {};
-        Object.entries(currentHoursMatrix).forEach(([matrixKey, currentValues]) => {
-          const previousValues = previousHoursMatrix[matrixKey] || { on: 0, off: 0 };
-          const adjustedOn = Math.max(0, parseHours(currentValues.on) - parseHours(previousValues.on));
-          const adjustedOff = Math.max(0, parseHours(currentValues.off) - parseHours(previousValues.off));
-
-          if (adjustedOn > 0 || adjustedOff > 0) {
-            nextHoursMatrix[matrixKey] = {
-              on: adjustedOn,
-              off: adjustedOff,
-            };
-          }
-        });
+        const nextHoursMatrix = currentHoursMatrix;
 
         const baseEmployees = Array.from(employeeMap.values()).filter(
           (employee) => normalizeRole(employee.role || '') !== 'ADMIN'
@@ -621,13 +595,6 @@ const MandaysPlanning = () => {
             if (!key || seen.has(key)) return false;
             seen.add(key);
             return true;
-          });
-        };
-
-        const hasAnyActivity = (employeeId) => {
-          return normalizedClients.some((client) => {
-            const matrix = nextHoursMatrix[`${employeeId}_${client.id}`];
-            return matrix && (parseHours(matrix.on) > 0 || parseHours(matrix.off) > 0);
           });
         };
 
@@ -675,25 +642,6 @@ const MandaysPlanning = () => {
             });
           }
 
-          if (mergedEmployees.length) {
-            const selfRow = mergedEmployees[0];
-            const selfKey = String(selfRow.user_id || selfRow.id || selfRow.employee_id || '');
-            const workedClientIds = new Set(
-              normalizedClients
-                .filter((client) => {
-                  const matrix = nextHoursMatrix[`${selfKey}_${client.id}`];
-                  if (!matrix) return false;
-                  return parseHours(matrix.on) > 0 || parseHours(matrix.off) > 0;
-                })
-                .map((client) => String(client.id))
-            );
-
-            if (workedClientIds.size > 0) {
-              finalClients = normalizedClients.filter((client) => workedClientIds.has(String(client.id)));
-            } else {
-              finalClients = normalizedClients;
-            }
-          }
         } else if (isSgm) {
           const selfId = String(currentUser?.id || '');
           const mlsRows = baseEmployees.filter((emp) => isMlsIdentity(emp)).sort(byDisplayName);
@@ -737,7 +685,7 @@ const MandaysPlanning = () => {
     };
 
     fetchPlanningData();
-  }, [selectedMonth, selectedYear, currentUser, currentUserDisplayName, isCurrentUserLoading]);
+  }, [selectedMonth, selectedYear, currentUser, currentUserDisplayName, isCurrentUserLoading, refreshTick]);
 
   const getDaysDisplay = (employeeId, clientId, field) => {
     const rowHours = hoursMatrix[`${employeeId}_${clientId}`];

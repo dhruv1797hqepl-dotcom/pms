@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil, Download } from 'lucide-react';
 import api from '../../api';
 import { formatDateDDMMYYYY } from '../../utils/dateFormat';
+import { broadcastDdtmePlanningRefresh } from '../../utils/ddtmePlanningRefresh';
 import * as XLSX from 'xlsx';
 
 
@@ -666,6 +667,9 @@ const DDTMETable = () => {
         }
         return false;
       }
+
+      broadcastDdtmePlanningRefresh();
+
       if (showAlerts) {
         alert("Saved successfully!");
       }
