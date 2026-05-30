@@ -295,7 +295,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             return Response({"error": "Missing month or year"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not _reviewer_can_view_ddtme_payload(request, client_id, month, year):
-            return Response([], status=status.HTTP_200_OK)
+            return Response({"clients": [], "employees": []}, status=status.HTTP_200_OK)
 
         try:
             m = int(month)
@@ -306,26 +306,26 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         # ----------------------------------------------------------------
         # Step 1: Collect approved client IDs with a flat, separate query
         # ----------------------------------------------------------------
-        approved_client_ids = set(
-            DDTMESubmission.objects.filter(
-                month=m,
-                year=y,
-                status='Approved',
-            ).values_list('client_id', flat=True)
-        )
+        from clients.models import Client
+        approved_submissions = DDTMESubmission.objects.filter(
+            month=m, year=y, status='Approved',
+        ).select_related('client')
+
+        approved_client_ids = set()
+        client_name_map = {}
+        for sub in approved_submissions:
+            approved_client_ids.add(sub.client_id)
+            client_name_map[str(sub.client_id)] = sub.client.company_name if sub.client else f'Client {sub.client_id}'
 
         print(f"\n[Mandays Summary] === DEBUG START for month={m}, year={y} ===")
         print(f"[Mandays Summary] Approved client IDs: {sorted(approved_client_ids)}")
 
         if not approved_client_ids:
             print("[Mandays Summary] No approved clients found - returning empty.")
-            return Response([], status=status.HTTP_200_OK)
+            return Response({"clients": [], "employees": []}, status=status.HTTP_200_OK)
 
         # ----------------------------------------------------------------
         # Step 2: Collect IDs of tasks that actually belong to this month.
-        #
-        # AdditionalTasks have their own month/year fields — match exactly.
-        # BigTasks use date ranges — check overlap with the month.
         # ----------------------------------------------------------------
         import calendar
         from datetime import date
@@ -334,33 +334,27 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         month_start = date(y, m, 1)
         month_end = date(y, m, last_day)
 
-        # AdditionalTask IDs that belong to this exact month AND are from approved clients
         valid_addtask_ids = set(
             DDTMEAdditionalTask.objects.filter(
-                month=m,
-                year=y,
-                client_id__in=approved_client_ids,
+                month=m, year=y, client_id__in=approved_client_ids,
             ).values_list('id', flat=True)
         )
 
-        # BigTask IDs that overlap this month AND belong to approved clients
         valid_bigtask_ids = set(
             BigTask.objects.filter(
                 project__client_id__in=approved_client_ids,
             ).filter(
-                # Task date range overlaps the month
                 models.Q(start_date__lte=month_end, target_date__gte=month_start)
                 | models.Q(start_date__isnull=True, target_date__range=(month_start, month_end))
                 | models.Q(target_date__isnull=True, start_date__range=(month_start, month_end))
             ).values_list('id', flat=True)
         )
 
-        print(f"[Mandays Summary] Valid AdditionalTask IDs for this month: {len(valid_addtask_ids)}")
-        print(f"[Mandays Summary] Valid BigTask IDs for this month: {len(valid_bigtask_ids)}")
+        print(f"[Mandays Summary] Valid AdditionalTask IDs: {len(valid_addtask_ids)}")
+        print(f"[Mandays Summary] Valid BigTask IDs: {len(valid_bigtask_ids)}")
 
         # ----------------------------------------------------------------
-        # Step 3: Query ManDayEntry rows for this month/year, restricted
-        #         to only tasks that belong to this month.
+        # Step 3: Query ManDayEntry rows for this month/year
         # ----------------------------------------------------------------
         queryset = ManDayEntry.objects.select_related(
             'employee__user',
@@ -368,7 +362,6 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             'additional_task__client',
         ).filter(month=m, year=y)
 
-        # Only include entries linked to valid tasks for this month
         queryset = queryset.filter(
             models.Q(big_task_id__in=valid_bigtask_ids)
             | models.Q(additional_task_id__in=valid_addtask_ids)
@@ -384,18 +377,16 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             )
 
         # ------------------------------------------------------------------
-        # Step 4: Aggregate at the entry level.  Track IDs to detect any
-        # duplicates that might exist in the database itself.
+        # Step 4: Aggregate per employee AND per client
         # ------------------------------------------------------------------
         raw_count = queryset.count()
-        print(f"[Mandays Summary] Raw ManDayEntry rows (before dedup): {raw_count}")
+        print(f"[Mandays Summary] Raw ManDayEntry rows: {raw_count}")
 
         seen_ids = set()
         duplicate_ids = []
-        skipped_wrong_month = 0
+        # grouped[employee_key] = { info..., 'per_client': { client_key: {plan, off} } }
         grouped = {}
-        total_plan_hours = 0
-        total_off_hours = 0
+        clients_seen = {}  # client_key -> client_name
 
         for entry in queryset.order_by('employee_id', 'id'):
             entry_id = entry.id
@@ -413,6 +404,9 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             if not client_key:
                 continue
 
+            if client_key not in clients_seen:
+                clients_seen[client_key] = client_name_map.get(client_key, getattr(client_obj, 'company_name', f'Client {client_key}'))
+
             employee_user = getattr(entry.employee, 'user', None)
             employee_key = str(getattr(employee_user, 'id', None) or entry.employee_id)
             if not employee_key:
@@ -429,63 +423,75 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             if not current_group:
                 current_group = {
                     'employee_id': employee_key,
-                    'employee_user_id': employee_key,
                     'employee_name': employee_label,
-                    'person_key': 'mls' if employee_user and str(getattr(employee_user, 'role', '') or '').upper() == 'MLS' else f'u-{employee_key}',
                     'month': m,
                     'year': y,
-                    'plan_hours': 0,
-                    'off_hours': 0,
+                    'per_client': {},
+                    'total_plan_hours': 0,
+                    'total_off_hours': 0,
                     'records': 0,
-                    'record_ids': [],
-                    'clients': [],
                 }
                 grouped[employee_key] = current_group
 
+            # Per-client accumulation
+            pc = current_group['per_client'].get(client_key)
+            if not pc:
+                pc = {'plan_hours': 0, 'off_hours': 0}
+                current_group['per_client'][client_key] = pc
+
             plan_hours = float(entry.plan_hours or 0)
             off_hours = float(entry.off_hours or 0)
-            current_group['plan_hours'] += plan_hours
-            current_group['off_hours'] += off_hours
+            pc['plan_hours'] += plan_hours
+            pc['off_hours'] += off_hours
+            current_group['total_plan_hours'] += plan_hours
+            current_group['total_off_hours'] += off_hours
             current_group['records'] += 1
-            current_group['record_ids'].append(entry.id)
-            if client_key not in current_group['clients']:
-                current_group['clients'].append(client_key)
 
-            total_plan_hours += plan_hours
-            total_off_hours += off_hours
+        # Build clients list sorted by name
+        clients_list = sorted(
+            [{'id': cid, 'name': cname} for cid, cname in clients_seen.items()],
+            key=lambda c: c['name']
+        )
 
-        summary = list(grouped.values())
-        for item in summary:
-            item['client_ids'] = item.pop('clients', [])
-            item['client_count'] = len(item['client_ids'])
-            item['total_hours'] = float(item['plan_hours'] + item['off_hours'])
-            item['onsite_days'] = float(item['plan_hours'] / 6) if item['plan_hours'] else 0
-            item['offsite_days'] = float(item['off_hours'] / 7.5) if item['off_hours'] else 0
-            item['total_days'] = float(item['onsite_days'] + item['offsite_days'])
-            item['duplicate_record_ids'] = []
+        # Build employees list
+        employees_list = []
+        for emp in sorted(grouped.values(), key=lambda e: e['employee_name']):
+            per_client_out = {}
+            for cid, pc in emp['per_client'].items():
+                plan = pc['plan_hours']
+                off = pc['off_hours']
+                per_client_out[cid] = {
+                    'onsite_days': round(plan / 6, 2) if plan else 0,
+                    'offsite_days': round(off / 7.5, 2) if off else 0,
+                }
 
-        total_hours = total_plan_hours + total_off_hours
-        total_days = (total_plan_hours / 6) + (total_off_hours / 7.5)
+            total_plan = emp['total_plan_hours']
+            total_off = emp['total_off_hours']
+            onsite_days = round(total_plan / 6, 2) if total_plan else 0
+            offsite_days = round(total_off / 7.5, 2) if total_off else 0
 
-        # ----- Debug Logging -----
-        print(f"[Mandays Summary] Unique DDTME entry IDs processed: {len(seen_ids)}")
-        print(f"[Mandays Summary] Summary groups (employees): {len(summary)}")
-        print(f"[Mandays Summary] Total Hours: onsite={total_plan_hours}  offsite={total_off_hours}  total={total_hours}")
-        print(f"[Mandays Summary] Total Days:  onsite={total_plan_hours / 6 if total_plan_hours else 0:.2f}  offsite={total_off_hours / 7.5 if total_off_hours else 0:.2f}  total={total_days:.2f}")
+            employees_list.append({
+                'employee_id': emp['employee_id'],
+                'employee_name': emp['employee_name'],
+                'records': emp['records'],
+                'per_client': per_client_out,
+                'total_onsite_days': onsite_days,
+                'total_offsite_days': offsite_days,
+                'total_days': round(onsite_days + offsite_days, 2),
+            })
+
+        # Debug
+        print(f"[Mandays Summary] Clients: {len(clients_list)}, Employees: {len(employees_list)}")
         if duplicate_ids:
-            print(f"[Mandays Summary] WARNING: DUPLICATE ManDayEntry IDs detected (skipped): {sorted(set(duplicate_ids))}")
-        else:
-            print("[Mandays Summary] OK: No duplicate ManDayEntry IDs detected.")
-
-        # Per-employee breakdown for debugging
-        for item in summary:
-            print(f"[Mandays Summary]   Employee '{item['employee_name']}' (id={item['employee_id']}): "
-                  f"records={item['records']}  plan_hrs={item['plan_hours']}  off_hrs={item['off_hours']}  "
-                  f"total_days={item['total_days']:.2f}  clients={item['client_ids']}")
-
+            print(f"[Mandays Summary] WARNING: Duplicate IDs skipped: {sorted(set(duplicate_ids))}")
+        for emp in employees_list:
+            print(f"[Mandays Summary]   {emp['employee_name']}: total_days={emp['total_days']}")
         print(f"[Mandays Summary] === DEBUG END ===\n")
 
-        return Response(summary, status=status.HTTP_200_OK)
+        return Response({
+            "clients": clients_list,
+            "employees": employees_list,
+        }, status=status.HTTP_200_OK)
 
     def list(self, request, *args, **kwargs):
         print("\n=== ManDayEntry LIST called ===")
