@@ -311,6 +311,12 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             month=m, year=y, status='Approved',
         ).select_related('client')
 
+        user_role = str(getattr(request.user, 'role', '') or '').upper()
+        if user_role == 'SGM':
+            approved_submissions = approved_submissions.filter(
+                client__assigned_sgms=request.user
+            )
+
         approved_client_ids = set()
         client_name_map = {}
         for sub in approved_submissions:
@@ -419,11 +425,14 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             else:
                 employee_label = f'Employee {employee_key}'
 
+            role = str(getattr(employee_user, 'role', '') or '').upper() if employee_user else 'EMPLOYEE'
+
             current_group = grouped.get(employee_key)
             if not current_group:
                 current_group = {
                     'employee_id': employee_key,
                     'employee_name': employee_label,
+                    'employee_role': role,
                     'month': m,
                     'year': y,
                     'per_client': {},
@@ -455,7 +464,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
 
         # Build employees list
         employees_list = []
-        for emp in sorted(grouped.values(), key=lambda e: e['employee_name']):
+        for emp in grouped.values():
             per_client_out = {}
             for cid, pc in emp['per_client'].items():
                 plan = pc['plan_hours']
@@ -473,12 +482,28 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             employees_list.append({
                 'employee_id': emp['employee_id'],
                 'employee_name': emp['employee_name'],
+                'employee_role': emp['employee_role'],
                 'records': emp['records'],
                 'per_client': per_client_out,
                 'total_onsite_days': onsite_days,
                 'total_offsite_days': offsite_days,
                 'total_days': round(onsite_days + offsite_days, 2),
             })
+
+        # Role sorting priority: MLS (0), HQEPL (1), SGM (2), EMPLOYEE/others (3)
+        role_priority = {
+            'MLS': 0,
+            'HQEPL': 1,
+            'SGM': 2,
+            'EMPLOYEE': 3
+        }
+
+        def get_emp_sort_key(emp_item):
+            r_upper = str(emp_item.get('employee_role', '')).upper()
+            priority = role_priority.get(r_upper, 4)
+            return (priority, emp_item['employee_name'].lower())
+
+        employees_list = sorted(employees_list, key=get_emp_sort_key)
 
         # Debug
         print(f"[Mandays Summary] Clients: {len(clients_list)}, Employees: {len(employees_list)}")
