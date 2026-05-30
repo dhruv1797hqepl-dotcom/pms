@@ -297,38 +297,81 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         if not _reviewer_can_view_ddtme_payload(request, client_id, month, year):
             return Response([], status=status.HTTP_200_OK)
 
+        try:
+            m = int(month)
+            y = int(year)
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid month or year"}, status=status.HTTP_400_BAD_REQUEST)
+
         # ----------------------------------------------------------------
-        # FIX: Collect approved client IDs with a flat, separate query
-        # instead of deep JOINs through big_task__project__client__ddtme_submissions
-        # which caused row multiplication and inflated hours/days.
+        # Step 1: Collect approved client IDs with a flat, separate query
         # ----------------------------------------------------------------
         approved_client_ids = set(
             DDTMESubmission.objects.filter(
-                month=month,
-                year=year,
+                month=m,
+                year=y,
                 status='Approved',
             ).values_list('client_id', flat=True)
         )
 
-        print(f"\n[Mandays Summary] === DEBUG START for month={month}, year={year} ===")
+        print(f"\n[Mandays Summary] === DEBUG START for month={m}, year={y} ===")
         print(f"[Mandays Summary] Approved client IDs: {sorted(approved_client_ids)}")
 
         if not approved_client_ids:
-            print("[Mandays Summary] No approved clients found — returning empty.")
+            print("[Mandays Summary] No approved clients found - returning empty.")
             return Response([], status=status.HTTP_200_OK)
 
-        # Start with ManDayEntry rows strictly for the requested month/year.
+        # ----------------------------------------------------------------
+        # Step 2: Collect IDs of tasks that actually belong to this month.
+        #
+        # AdditionalTasks have their own month/year fields — match exactly.
+        # BigTasks use date ranges — check overlap with the month.
+        # ----------------------------------------------------------------
+        import calendar
+        from datetime import date
+
+        _, last_day = calendar.monthrange(y, m)
+        month_start = date(y, m, 1)
+        month_end = date(y, m, last_day)
+
+        # AdditionalTask IDs that belong to this exact month AND are from approved clients
+        valid_addtask_ids = set(
+            DDTMEAdditionalTask.objects.filter(
+                month=m,
+                year=y,
+                client_id__in=approved_client_ids,
+            ).values_list('id', flat=True)
+        )
+
+        # BigTask IDs that overlap this month AND belong to approved clients
+        valid_bigtask_ids = set(
+            BigTask.objects.filter(
+                project__client_id__in=approved_client_ids,
+            ).filter(
+                # Task date range overlaps the month
+                models.Q(start_date__lte=month_end, target_date__gte=month_start)
+                | models.Q(start_date__isnull=True, target_date__range=(month_start, month_end))
+                | models.Q(target_date__isnull=True, start_date__range=(month_start, month_end))
+            ).values_list('id', flat=True)
+        )
+
+        print(f"[Mandays Summary] Valid AdditionalTask IDs for this month: {len(valid_addtask_ids)}")
+        print(f"[Mandays Summary] Valid BigTask IDs for this month: {len(valid_bigtask_ids)}")
+
+        # ----------------------------------------------------------------
+        # Step 3: Query ManDayEntry rows for this month/year, restricted
+        #         to only tasks that belong to this month.
+        # ----------------------------------------------------------------
         queryset = ManDayEntry.objects.select_related(
             'employee__user',
             'big_task__project__client',
             'additional_task__client',
-        ).filter(month=month, year=year)
+        ).filter(month=m, year=y)
 
-        # Filter to only entries whose client is approved — using __in
-        # on pre-fetched IDs to avoid JOIN-based row duplication.
+        # Only include entries linked to valid tasks for this month
         queryset = queryset.filter(
-            models.Q(big_task__project__client__id__in=approved_client_ids)
-            | models.Q(additional_task__client__id__in=approved_client_ids)
+            models.Q(big_task_id__in=valid_bigtask_ids)
+            | models.Q(additional_task_id__in=valid_addtask_ids)
         )
 
         if employee_id:
@@ -341,15 +384,15 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             )
 
         # ------------------------------------------------------------------
-        # Aggregate at the entry level.  Track IDs to detect any duplicates
-        # that might exist in the database itself (unique constraint is
-        # currently commented out on ManDayEntry).
+        # Step 4: Aggregate at the entry level.  Track IDs to detect any
+        # duplicates that might exist in the database itself.
         # ------------------------------------------------------------------
         raw_count = queryset.count()
         print(f"[Mandays Summary] Raw ManDayEntry rows (before dedup): {raw_count}")
 
         seen_ids = set()
         duplicate_ids = []
+        skipped_wrong_month = 0
         grouped = {}
         total_plan_hours = 0
         total_off_hours = 0
@@ -389,8 +432,8 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
                     'employee_user_id': employee_key,
                     'employee_name': employee_label,
                     'person_key': 'mls' if employee_user and str(getattr(employee_user, 'role', '') or '').upper() == 'MLS' else f'u-{employee_key}',
-                    'month': int(month),
-                    'year': int(year),
+                    'month': m,
+                    'year': y,
                     'plan_hours': 0,
                     'off_hours': 0,
                     'records': 0,
@@ -430,9 +473,9 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         print(f"[Mandays Summary] Total Hours: onsite={total_plan_hours}  offsite={total_off_hours}  total={total_hours}")
         print(f"[Mandays Summary] Total Days:  onsite={total_plan_hours / 6 if total_plan_hours else 0:.2f}  offsite={total_off_hours / 7.5 if total_off_hours else 0:.2f}  total={total_days:.2f}")
         if duplicate_ids:
-            print(f"[Mandays Summary] ⚠ DUPLICATE ManDayEntry IDs detected (skipped): {sorted(set(duplicate_ids))}")
+            print(f"[Mandays Summary] WARNING: DUPLICATE ManDayEntry IDs detected (skipped): {sorted(set(duplicate_ids))}")
         else:
-            print("[Mandays Summary] ✓ No duplicate ManDayEntry IDs detected.")
+            print("[Mandays Summary] OK: No duplicate ManDayEntry IDs detected.")
 
         # Per-employee breakdown for debugging
         for item in summary:
