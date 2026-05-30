@@ -342,25 +342,22 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             else:
                 employee_label = f'Employee {employee_key}'
 
-            group_key = f'{employee_key}:{client_key}'
-            current_group = grouped.get(group_key)
+            current_group = grouped.get(employee_key)
             if not current_group:
                 current_group = {
                     'employee_id': employee_key,
                     'employee_user_id': employee_key,
                     'employee_name': employee_label,
                     'person_key': 'mls' if employee_user and str(getattr(employee_user, 'role', '') or '').upper() == 'MLS' else f'u-{employee_key}',
-                    'client_id': client_key,
-                    'client_name': client_obj.company_name,
-                    'task_type': 'mixed',
                     'month': int(month),
                     'year': int(year),
                     'plan_hours': 0,
                     'off_hours': 0,
                     'records': 0,
                     'record_ids': [],
+                    'clients': [],
                 }
-                grouped[group_key] = current_group
+                grouped[employee_key] = current_group
 
             plan_hours = float(entry.plan_hours or 0)
             off_hours = float(entry.off_hours or 0)
@@ -368,11 +365,21 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             current_group['off_hours'] += off_hours
             current_group['records'] += 1
             current_group['record_ids'].append(entry.id)
+            if client_key not in current_group['clients']:
+                current_group['clients'].append(client_key)
 
             total_plan_hours += plan_hours
             total_off_hours += off_hours
 
         summary = list(grouped.values())
+        for item in summary:
+            item['client_ids'] = item.pop('clients', [])
+            item['client_count'] = len(item['client_ids'])
+            item['total_hours'] = float(item['plan_hours'] + item['off_hours'])
+            item['onsite_days'] = float(item['plan_hours'] / 6) if item['plan_hours'] else 0
+            item['offsite_days'] = float(item['off_hours'] / 7.5) if item['off_hours'] else 0
+            item['total_days'] = float(item['onsite_days'] + item['offsite_days'])
+            item['duplicate_record_ids'] = []
         total_hours = total_plan_hours + total_off_hours
         total_days = (total_plan_hours / 6) + (total_off_hours / 7.5)
 
