@@ -1491,7 +1491,9 @@ const DDFMS = () => {
             desiredOwner = step14Owner?.value || fallbackStep14Sgm?.value || desiredOwner;
           }
 
-          if (!isCellUserEdited(ownerKey) && desiredOwner) {
+          const existingOwnerValue = loadedTableData[ownerKey];
+          const cellAlreadyHasOwner = existingOwnerValue && String(existingOwnerValue).trim() !== '';
+          if (!cellAlreadyHasOwner && !isCellUserEdited(ownerKey) && desiredOwner) {
             loadedTableData[ownerKey] = desiredOwner;
           }
         });
