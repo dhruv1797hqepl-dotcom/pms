@@ -60,6 +60,8 @@ const DDFMS = () => {
   const pendingChangedKeysRef = useRef(new Set());
   const autosaveTimeoutRef = useRef(null);
   const savedMonthStartDateRef = useRef('');
+  const initializedContextKeyRef = useRef('');
+  const initializationInFlightRef = useRef(false);
 
   const getMemberDisplayName = (member) => {
     const fullName = String(member?.full_name || '').trim();
@@ -1028,6 +1030,8 @@ const DDFMS = () => {
     const monthIndex = Number(approvedPeriod.month) - 1;
     if (Number.isNaN(year) || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return;
 
+    initializedContextKeyRef.current = '';
+    initializationInFlightRef.current = false;
     setMonthStartWorkingDate(getMonthStartWorkingDateSkippingSunday(year, monthIndex));
     setIsBackendReady(false);
     setActivePlanId(null);
@@ -1217,6 +1221,13 @@ const DDFMS = () => {
       if (!clientId || !approvedPeriod) {
         return;
       }
+
+      const contextKey = `${clientId}:${approvedPeriod.year}-${approvedPeriod.month}`;
+      if (initializationInFlightRef.current || initializedContextKeyRef.current === contextKey) {
+        return;
+      }
+
+      initializationInFlightRef.current = true;
 
       try {
         setIsBackendReady(false);
@@ -1458,6 +1469,7 @@ const DDFMS = () => {
         }
 
         setIsBackendReady(true);
+        initializedContextKeyRef.current = contextKey;
         setAutosaveState('saved');
       } catch (error) {
         console.error('Failed to initialize DDFMS autosave context', error);
@@ -1465,6 +1477,8 @@ const DDFMS = () => {
         setIsBackendReady(false);
         setAutosaveState('error');
         setAutosaveError('Auto-save unavailable. Please refresh and try again.');
+      } finally {
+        initializationInFlightRef.current = false;
       }
     };
 
@@ -1622,7 +1636,30 @@ const DDFMS = () => {
                 <span className="p-1.5 rounded-lg bg-slate-100 text-slate-700">
                   <Box size={16} />
                 </span>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">DDFMS Workspace</h1>
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-xl font-bold text-slate-900 tracking-tight">DDFMS Workspace</h1>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em]">
+                    <span
+                      className={`px-2 py-1 rounded-full border ${autosaveState === 'saving'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : autosaveState === 'error'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                    >
+                      {autosaveState === 'saving'
+                        ? 'Autosaving'
+                        : autosaveState === 'error'
+                          ? 'Save error'
+                          : 'Autosaved'}
+                    </span>
+                    {autosaveError && autosaveState === 'error' && (
+                      <span className="text-rose-500 tracking-normal font-semibold">
+                        {autosaveError}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
