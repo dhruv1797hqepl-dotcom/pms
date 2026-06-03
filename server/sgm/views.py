@@ -29,6 +29,9 @@ class SGMProjectListView(APIView):
     def get(self, request):
         # Source of truth is client assignment, so admin changes are reflected instantly.
         projects = Project.objects.filter(client__assigned_sgms=request.user).distinct()
+        client_id = request.query_params.get("client_id")
+        if client_id:
+            projects = projects.filter(client_id=client_id)
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data)
 

@@ -96,49 +96,56 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
         # ADMIN → All projects
         if user.role == "ADMIN":
-            return Project.objects.all()
+            queryset = Project.objects.all()
         
         # HQEPL → Projects of assigned clients only
-        if user.role == "HQEPL":
+        elif user.role == "HQEPL":
             from clients.models import Client
             assigned_clients = Client.objects.filter(assigned_hqepls=user).values_list('id', flat=True)
-            return Project.objects.filter(client_id__in=assigned_clients).distinct()
+            queryset = Project.objects.filter(client_id__in=assigned_clients).distinct()
 
         # SGM → Projects of assigned clients
-        if user.role == "SGM":
+        elif user.role == "SGM":
             # return Project.objects.filter(assigned_sgm=user)
             # NEW LOGIC: Any project belonging to a client assigned to this SGM
-            return Project.objects.filter(client__assigned_sgms=user).distinct()
+            queryset = Project.objects.filter(client__assigned_sgms=user).distinct()
 
         # CLIENT → Only their projects
-        if user.role == "CLIENT" and hasattr(user, "client_profile"):
-            return Project.objects.filter(client=user.client_profile)
+        elif user.role == "CLIENT" and hasattr(user, "client_profile"):
+            queryset = Project.objects.filter(client=user.client_profile)
 
         # EMPLOYEE / EXTERNAL / SENIOR → Projects where they are members
-        if user.role in ["EMPLOYEE", "EXTERNAL", "SENIOR"]:
+        elif user.role in ["EMPLOYEE", "EXTERNAL", "SENIOR"]:
             if user.role == "SENIOR":
                 # Seniors see ALL projects of the client(s) they belong to
                 from clients.models import ExternalTeam
                 client_ids = ExternalTeam.objects.filter(user=user).values_list('client_org_id', flat=True)
-                return Project.objects.filter(
+                queryset = Project.objects.filter(
                     client_id__in=client_ids
                 ).filter(client__status="active").distinct()
-            if user.role == "EXTERNAL":
+            elif user.role == "EXTERNAL":
                 # External users see only projects they are included in
-                return Project.objects.filter(
+                queryset = Project.objects.filter(
                     external_team=user
                 ).filter(client__status="active").distinct()
-            return Project.objects.filter(
-                Q(assigned_employees__user=user) |
-                Q(external_team=user) |
-                Q(assigned_sgm=user) |
-                Q(external_lead=user) |
-                Q(created_by=user) |
-                Q(sgm_team__internal_members=user) |
-                Q(sgm_team__external_members=user)
-            ).filter(client__status="active").distinct()
+            else:
+                queryset = Project.objects.filter(
+                    Q(assigned_employees__user=user) |
+                    Q(external_team=user) |
+                    Q(assigned_sgm=user) |
+                    Q(external_lead=user) |
+                    Q(created_by=user) |
+                    Q(sgm_team__internal_members=user) |
+                    Q(sgm_team__external_members=user)
+                ).filter(client__status="active").distinct()
+        else:
+            queryset = Project.objects.none()
 
-        return Project.objects.none()
+        client_id = self.request.query_params.get("client_id")
+        if client_id:
+            queryset = queryset.filter(client_id=client_id)
+
+        return queryset
 
     # ---------------------------------
     # CREATE PROJECT
