@@ -48,32 +48,33 @@ const formatDateTime = (isoString) => {
   });
 };
 
-// Thursday-Wednesday cycle starts on the active Thursday for the current date.
-const getWedWindow = (today) => {
-  const d = new Date(today);
-  const dayOfWeek = d.getDay();
-  const daysSinceThursday = (dayOfWeek - 4 + 7) % 7;
-  const thursday = new Date(d);
-  thursday.setDate(d.getDate() - daysSinceThursday);
+const startOfLocalDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  return Array.from({ length: 7 }, (_, i) => {
+// RC7 uses one shared Thursday anchor so both linked ranges roll over together.
+const getRc7CycleWindows = (today) => {
+  const normalizedToday = startOfLocalDay(today);
+  const dayOfWeek = normalizedToday.getDay();
+  const daysSinceThursday = (dayOfWeek - 4 + 7) % 7;
+
+  const thursday = startOfLocalDay(normalizedToday);
+  thursday.setDate(normalizedToday.getDate() - daysSinceThursday);
+
+  const wedDates = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(thursday);
     date.setDate(thursday.getDate() + i);
     return date;
   });
-};
 
-// Monday-Saturday window is linked to the active Thursday-Wednesday cycle.
-const getSatWindow = (today) => {
-  const thursdayWindow = getWedWindow(today);
-  const linkedMonday = new Date(thursdayWindow[0]);
-  linkedMonday.setDate(thursdayWindow[0].getDate() + 4);
+  const monday = startOfLocalDay(thursday);
+  monday.setDate(thursday.getDate() + 4);
 
-  return Array.from({ length: 6 }, (_, i) => {
-    const date = new Date(linkedMonday);
-    date.setDate(linkedMonday.getDate() + i);
+  const satDates = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
     return date;
   });
+
+  return { satDates, wedDates };
 };
 
 const formatRange = (dates) => {
@@ -618,8 +619,7 @@ const RC7 = () => {
 
   useEffect(() => {
     const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 0, 0);
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
     const timeoutId = window.setTimeout(() => {
       setToday(new Date());
@@ -652,8 +652,9 @@ const RC7 = () => {
 
   const { targetUserId, targetUserLabel, isMemberView } = memberViewContext;
 
-  const satDates = useMemo(() => getSatWindow(today), [today]);
-  const wedDates = useMemo(() => getWedWindow(today), [today]);
+  const rc7Cycle = useMemo(() => getRc7CycleWindows(today), [today]);
+  const satDates = rc7Cycle.satDates;
+  const wedDates = rc7Cycle.wedDates;
   const sharedDateKeys = useMemo(() => {
     const wedKeySet = new Set(wedDates.map(toDateKey));
     return satDates.map(toDateKey).filter((dateKey) => wedKeySet.has(dateKey));
