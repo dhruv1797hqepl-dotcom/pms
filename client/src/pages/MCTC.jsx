@@ -368,7 +368,7 @@ const MCTC = () => {
                 isPlace: true,
                 dayType: dayType === "offsite" ? "offsite" : "onsite",
                 halfLabel: halfKey === "half2" ? "Half 2" : "Half 1",
-                mode: mode === "visit" ? "visit" : "office",
+                mode: mode === "visit" ? "visit" : (mode === "leave" ? "leave" : "office"),
                 companyName: company || "",
             };
         }
@@ -378,13 +378,14 @@ const MCTC = () => {
             const [, typeText, halfLabel, placeText] = legacyMatch;
             const normalizedPlace = String(placeText || "").trim();
             const isOffice = normalizedPlace.toLowerCase() === "office";
+            const isLeave = normalizedPlace.toLowerCase() === "leave";
 
             return {
                 isPlace: true,
                 dayType: String(typeText).toLowerCase() === "offsite" ? "offsite" : "onsite",
                 halfLabel,
-                mode: isOffice ? "office" : "visit",
-                companyName: isOffice ? "" : normalizedPlace,
+                mode: isLeave ? "leave" : (isOffice ? "office" : "visit"),
+                companyName: isOffice || isLeave ? "" : normalizedPlace,
             };
         }
 
@@ -401,7 +402,9 @@ const MCTC = () => {
         const parsed = parsePlaceLabel(label);
         if (!parsed.isPlace) return String(label || "");
 
-        return parsed.mode === "visit" ? (parsed.companyName || "Visit") : "Office";
+        if (parsed.mode === "visit") return parsed.companyName || "Visit";
+        if (parsed.mode === "leave") return "Leave";
+        return "Office";
     };
 
     const isPlaceEntry = (entry) => parsePlaceLabel(entry?.label).isPlace;
@@ -429,7 +432,7 @@ const MCTC = () => {
 
     const buildPlaceEntryLabel = (dayType, row) => {
         const halfKey = row.halfLabel === "Half 2" ? "half2" : "half1";
-        const mode = row.mode === "visit" ? "visit" : "office";
+        const mode = ["visit", "leave"].includes(row.mode) ? row.mode : "office";
         const company = mode === "visit" ? String(row.companyName || "").trim() : "";
         return `${PLACE_PREFIX}|${dayType === "offsite" ? "offsite" : "onsite"}|${halfKey}|${mode}|${company}`;
     };
@@ -438,7 +441,7 @@ const MCTC = () => {
         setPlacePopupRows((prev) => prev.map((row, rowIndex) => {
             if (rowIndex !== index) return row;
 
-            if (field === "mode" && value === "office") {
+            if (field === "mode" && (value === "office" || value === "leave")) {
                 return { ...row, mode: value, companyName: "" };
             }
 
@@ -844,6 +847,7 @@ const MCTC = () => {
                                                 >
                                                     <option value="office">Office</option>
                                                     <option value="visit">Visit</option>
+                                                    <option value="leave">Leave</option>
                                                 </select>
 
                                                 {row.mode === "visit" && (
@@ -1101,6 +1105,7 @@ const MCTC = () => {
                                                 >
                                                     <option value="office">Office</option>
                                                     <option value="visit">Visit</option>
+                                                    <option value="leave">Leave</option>
                                                 </select>
                                             </label>
 
@@ -1119,7 +1124,7 @@ const MCTC = () => {
                                                 </label>
                                             ) : (
                                                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-500 self-end">
-                                                    Office will be shown in the calendar.
+                                                    {row.mode === "leave" ? "Leave" : "Office"} will be shown in the calendar.
                                                 </div>
                                             )}
                                         </div>
