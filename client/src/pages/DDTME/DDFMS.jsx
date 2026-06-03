@@ -261,6 +261,101 @@ const DDFMS = () => {
     return 'Request failed';
   };
 
+  const areAllDeliverablesSynced = () => {
+    if (deliverables.length === 0) return false;
+    return deliverables.every((deliverable) => Boolean(backendDeliverableMapRef.current[deliverable.id]));
+  };
+
+  const syncDeliverablesWithBackend = async (planId) => {
+    if (!planId || deliverables.length === 0) {
+      return { success: false, startDateMap: {}, submittedMap: {} };
+    }
+
+    try {
+      const deliverablesRes = await api.get(`ddfms/deliverables/?plan_id=${planId}`);
+      const backendDeliverables = getArrayFromResponse(deliverablesRes.data);
+      const existingBySignature = backendDeliverables.reduce((acc, item) => {
+        const signature = getSourceSignature(item?.source_type, item?.source_id);
+        acc[signature] = item;
+        return acc;
+      }, {});
+
+      const frontendToBackendMap = { ...backendDeliverableMapRef.current };
+      const frontendStartDateMap = { ...startDatesByDeliverableRef.current };
+      const frontendSubmittedMap = { ...submittedRows };
+
+      for (let index = 0; index < deliverables.length; index += 1) {
+        const deliverable = deliverables[index];
+        const signature = getSourceSignature(deliverable.sourceType, deliverable.sourceId);
+        let backendDeliverable = existingBySignature[signature];
+        const pendingStartDate = startDatesByDeliverableRef.current[deliverable.id] || '';
+        const rowStartDate = pendingStartDate || deliverable.startDate || '';
+        const normalizedRowStartDate = rowStartDate || null;
+
+        try {
+          const safeTitle = deliverable.title ? String(deliverable.title).substring(0, 200) : '';
+          if (!backendDeliverable) {
+            const createDeliverableRes = await api.post('ddfms/deliverables/', {
+              plan: planId,
+              source_type: deliverable.sourceType || 'MANUAL',
+              source_id: deliverable.sourceId,
+              title: safeTitle,
+              start_date: normalizedRowStartDate,
+              target_date: deliverable.targetDate || null,
+              order_index: index,
+            });
+            backendDeliverable = createDeliverableRes.data;
+            existingBySignature[signature] = backendDeliverable;
+          } else {
+            const backendStartDate = backendDeliverable?.start_date
+              ? String(backendDeliverable.start_date).slice(0, 10)
+              : '';
+
+            const needsDateUpdate = normalizedRowStartDate && backendStartDate !== normalizedRowStartDate;
+            const needsTitleUpdate = backendDeliverable.title !== safeTitle;
+
+            if (needsDateUpdate || needsTitleUpdate) {
+              const payload = {};
+              if (needsDateUpdate) payload.start_date = normalizedRowStartDate;
+              if (needsTitleUpdate) payload.title = safeTitle;
+
+              const updateDeliverableRes = await api.patch(`ddfms/deliverables/${backendDeliverable.id}/`, payload);
+              backendDeliverable = updateDeliverableRes.data;
+              existingBySignature[signature] = backendDeliverable;
+            }
+          }
+        } catch (itemError) {
+          console.error(`Failed to sync deliverable ${deliverable.id}`, itemError);
+          continue;
+        }
+
+        if (backendDeliverable?.id) {
+          frontendToBackendMap[deliverable.id] = backendDeliverable.id;
+        }
+
+        frontendStartDateMap[deliverable.id] = backendDeliverable?.start_date
+          ? String(backendDeliverable.start_date).slice(0, 10)
+          : (rowStartDate || '');
+
+        frontendSubmittedMap[deliverable.id] = Boolean(backendDeliverable?.is_submitted);
+      }
+
+      backendDeliverableMapRef.current = frontendToBackendMap;
+      setStartDatesByDeliverable(frontendStartDateMap);
+      setSubmittedRows(frontendSubmittedMap);
+
+      const success = deliverables.every((deliverable) => Boolean(frontendToBackendMap[deliverable.id]));
+      return {
+        success,
+        startDateMap: frontendStartDateMap,
+        submittedMap: frontendSubmittedMap,
+      };
+    } catch (error) {
+      console.error('Failed to sync DDFMS deliverables with backend', error);
+      return { success: false, startDateMap: {}, submittedMap: {} };
+    }
+  };
+
   const persistDeliverableStep = async (deliverableFrontendId, stepIndex) => {
     const backendDeliverableId = backendDeliverableMapRef.current[deliverableFrontendId];
     if (!backendDeliverableId) return false;
@@ -449,6 +544,21 @@ const DDFMS = () => {
 
     if (!confirm(`Are you sure you want to assign steps for all ${toSubmit.length} deliverables?`)) {
       return;
+    }
+
+    if (!areAllDeliverablesSynced()) {
+      if (!activePlanId) {
+        alert('DDFMS is still initializing. Please wait a moment and try again.');
+        return;
+      }
+
+      setIsBulkSubmitting(true);
+      const syncResult = await syncDeliverablesWithBackend(activePlanId);
+      if (!syncResult.success) {
+        setIsBulkSubmitting(false);
+        alert('Unable to sync deliverables with the server. Please refresh the page and try again.');
+        return;
+      }
     }
 
     setIsBulkSubmitting(true);
@@ -1393,12 +1503,16 @@ const DDFMS = () => {
         return;
       }
 
+      if (deliverables.length === 0) {
+        return;
+      }
+
       const contextKey = `${clientId}:${approvedPeriod.year}-${approvedPeriod.month}`;
       if (initializationInFlightRef.current) {
         return;
       }
 
-      const needsBackendInit = initializedContextKeyRef.current !== contextKey;
+      const needsBackendInit = initializedContextKeyRef.current !== contextKey || !areAllDeliverablesSynced();
 
       if (!needsBackendInit) {
         if (!isBackendReady || responsibleOptions.length === 0) {
@@ -1462,78 +1576,15 @@ const DDFMS = () => {
         setMonthStartWorkingDate(resolvedMonthStartDate);
         savedMonthStartDateRef.current = resolvedMonthStartDate;
 
-        const deliverablesRes = await api.get(`ddfms/deliverables/?plan_id=${planId}`);
-        const backendDeliverables = getArrayFromResponse(deliverablesRes.data);
-
-        const existingBySignature = backendDeliverables.reduce((acc, item) => {
-          const signature = getSourceSignature(item?.source_type, item?.source_id);
-          acc[signature] = item;
-          return acc;
-        }, {});
-
-        const frontendToBackendMap = {};
-        const frontendStartDateMap = {};
-        const frontendSubmittedMap = {};
-
-        for (let index = 0; index < deliverables.length; index += 1) {
-          const deliverable = deliverables[index];
-          const signature = getSourceSignature(deliverable.sourceType, deliverable.sourceId);
-          let backendDeliverable = existingBySignature[signature];
-          const pendingStartDate = startDatesByDeliverableRef.current[deliverable.id] || '';
-          const rowStartDate = pendingStartDate || deliverable.startDate || '';
-          const normalizedRowStartDate = rowStartDate || null;
-
-          try {
-            const safeTitle = deliverable.title ? String(deliverable.title).substring(0, 200) : '';
-            if (!backendDeliverable) {
-              const createDeliverableRes = await api.post('ddfms/deliverables/', {
-                plan: planId,
-                source_type: deliverable.sourceType || 'MANUAL',
-                source_id: deliverable.sourceId,
-                title: safeTitle,
-                start_date: normalizedRowStartDate,
-                target_date: deliverable.targetDate || null,
-                order_index: index,
-              });
-              backendDeliverable = createDeliverableRes.data;
-              existingBySignature[signature] = backendDeliverable;
-            } else {
-              const backendStartDate = backendDeliverable?.start_date
-                ? String(backendDeliverable.start_date).slice(0, 10)
-                : '';
-
-              const needsDateUpdate = normalizedRowStartDate && backendStartDate !== normalizedRowStartDate;
-              const needsTitleUpdate = backendDeliverable.title !== safeTitle;
-
-              if (needsDateUpdate || needsTitleUpdate) {
-                const payload = {};
-                if (needsDateUpdate) payload.start_date = normalizedRowStartDate;
-                if (needsTitleUpdate) payload.title = safeTitle;
-
-                const updateDeliverableRes = await api.patch(`ddfms/deliverables/${backendDeliverable.id}/`, payload);
-                backendDeliverable = updateDeliverableRes.data;
-                existingBySignature[signature] = backendDeliverable;
-              }
-            }
-          } catch (itemError) {
-            console.error(`Failed to sync deliverable ${deliverable.id}`, itemError);
-            continue; // Skip so we don't break the whole page
-          }
-
-          if (backendDeliverable?.id) {
-            frontendToBackendMap[deliverable.id] = backendDeliverable.id;
-          }
-
-          frontendStartDateMap[deliverable.id] = backendDeliverable?.start_date
-            ? String(backendDeliverable.start_date).slice(0, 10)
-            : (rowStartDate || '');
-
-          frontendSubmittedMap[deliverable.id] = Boolean(backendDeliverable?.is_submitted);
+        const syncResult = await syncDeliverablesWithBackend(planId);
+        if (!syncResult.success) {
+          throw new Error('Unable to sync all deliverables with the server');
         }
 
-        backendDeliverableMapRef.current = frontendToBackendMap;
-        setStartDatesByDeliverable(frontendStartDateMap);
-        setSubmittedRows(frontendSubmittedMap);
+        const frontendToBackendMap = backendDeliverableMapRef.current;
+        const frontendStartDateMap = syncResult.startDateMap;
+        const frontendSubmittedMap = syncResult.submittedMap;
+
         setEditingSubmittedRows({});
         setRowSubmitLoading({});
 
@@ -1595,7 +1646,9 @@ const DDFMS = () => {
         setTableData(loadedTableData);
 
         setIsBackendReady(true);
-        initializedContextKeyRef.current = contextKey;
+        if (areAllDeliverablesSynced()) {
+          initializedContextKeyRef.current = contextKey;
+        }
         setAutosaveState('saved');
       } catch (error) {
         console.error('Failed to initialize DDFMS autosave context', error);
@@ -2038,7 +2091,7 @@ const DDFMS = () => {
                       <td className="p-3 text-center">
                         <button
                           onClick={handleAssignAllSteps}
-                          disabled={isBulkSubmitting || deliverables.length === 0}
+                          disabled={isBulkSubmitting || deliverables.length === 0 || !isBackendReady || !areAllDeliverablesSynced()}
                           className={`w-full py-2.5 rounded-full text-xs font-black uppercase tracking-widest shadow-md transition-all transform active:scale-95 ${isBulkSubmitting || deliverables.length === 0
                             ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
                             : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:-translate-y-0.5 shadow-emerald-100'
