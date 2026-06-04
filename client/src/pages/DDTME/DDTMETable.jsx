@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil, Download } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, ChevronLeft, ChevronRight, Pencil, Download, Upload, X, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../../api';
 import { formatDateDDMMYYYY } from '../../utils/dateFormat';
 import { broadcastDdtmePlanningRefresh } from '../../utils/ddtmePlanningRefresh';
@@ -116,6 +116,18 @@ const DDTMETable = () => {
   });
   const [savingDeliverableKey, setSavingDeliverableKey] = useState(null);
   const [deletingDeliverableKey, setDeletingDeliverableKey] = useState(null);
+
+  // --- Upload Excel State ---
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadStep, setUploadStep] = useState(1); // 1=select file, 2=map columns, 3=result
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadHeaders, setUploadHeaders] = useState([]);
+  const [uploadPreview, setUploadPreview] = useState([]);
+  const [uploadMapping, setUploadMapping] = useState({ deliverable: '', project: '', client: '', target_date: '' });
+  const [isUploadingHeaders, setIsUploadingHeaders] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const uploadFileInputRef = useRef(null);
 
   const { clientId } = useParams();
   const navigate = useNavigate();
@@ -1151,6 +1163,109 @@ const DDTMETable = () => {
     XLSX.writeFile(wb, `DDTME_Deliverables_${monthLabel}_${selectedYear}.xlsx`);
   };
 
+  // --- Upload Excel Handlers ---
+
+  const handleOpenUploadModal = () => {
+    setShowUploadModal(true);
+    setUploadStep(1);
+    setUploadFile(null);
+    setUploadHeaders([]);
+    setUploadPreview([]);
+    setUploadMapping({ deliverable: '', project: '', client: '', target_date: '' });
+    setImportResult(null);
+  };
+
+  const handleCloseUploadModal = () => {
+    setShowUploadModal(false);
+    if (uploadFileInputRef.current) uploadFileInputRef.current.value = '';
+  };
+
+  const handleUploadFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+    setIsUploadingHeaders(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('ddtme/additional-tasks/upload_excel_headers/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const headers = res.data.headers || [];
+      const preview = res.data.preview || [];
+      setUploadHeaders(headers);
+      setUploadPreview(preview);
+
+      // Auto-map by guessing common column names
+      const autoMap = { deliverable: '', project: '', client: '', target_date: '' };
+      const deliverableAliases = ['deliverable', 'task', 'title', 'task name', 'task_name', 'deliverable name'];
+      const projectAliases = ['project', 'project name', 'project_name'];
+      const clientAliases = ['client', 'client name', 'client_name', 'organization', 'company'];
+      const dateAliases = ['target date', 'target_date', 'due date', 'due_date', 'deadline', 'date'];
+
+      headers.forEach((h) => {
+        const norm = h.trim().toLowerCase();
+        if (!autoMap.deliverable && deliverableAliases.includes(norm)) autoMap.deliverable = h;
+        if (!autoMap.project && projectAliases.includes(norm)) autoMap.project = h;
+        if (!autoMap.client && clientAliases.includes(norm)) autoMap.client = h;
+        if (!autoMap.target_date && dateAliases.includes(norm)) autoMap.target_date = h;
+      });
+      setUploadMapping(autoMap);
+      setUploadStep(2);
+    } catch (err) {
+      console.error('Error reading Excel headers', err);
+      const msg = err?.response?.data?.error || 'Failed to read Excel file';
+      alert(msg);
+    } finally {
+      setIsUploadingHeaders(false);
+    }
+  };
+
+  const handleImportExcel = async () => {
+    if (!uploadFile) return;
+    if (!uploadMapping.deliverable) {
+      alert('Please map the Deliverable column.');
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('client_id', clientId);
+      formData.append('month', selectedMonth);
+      formData.append('year', selectedYear);
+      formData.append('column_mapping', JSON.stringify(uploadMapping));
+
+      const res = await api.post('ddtme/additional-tasks/upload_excel_import/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportResult(res.data);
+      setUploadStep(3);
+    } catch (err) {
+      console.error('Error importing Excel', err);
+      const msg = err?.response?.data?.error || 'Failed to import Excel';
+      alert(msg);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleFinishUpload = () => {
+    handleCloseUploadModal();
+    // Re-fetch data to show newly imported tasks
+    // Trigger a re-render by toggling month (then reverting) — or just set state to force useEffect
+    setSelectedMonth((prev) => prev); // This won't trigger useEffect since value is same
+    // Force re-fetch by briefly toggling
+    const currentMonth = selectedMonth;
+    const currentYear = selectedYear;
+    setSelectedMonth(0);
+    setTimeout(() => {
+      setSelectedMonth(currentMonth);
+      setSelectedYear(currentYear);
+    }, 50);
+  };
+
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
 
@@ -1244,6 +1359,25 @@ const DDTMETable = () => {
               <Download size={14} />
               Download
             </button>
+            {/* Upload Excel Button */}
+            {canEdit && (
+              <button
+                onClick={handleOpenUploadModal}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+                title="Upload Excel to import deliverables"
+              >
+                <Upload size={14} />
+                Upload
+              </button>
+            )}
+            {/* Hidden file input for Excel upload */}
+            <input
+              ref={uploadFileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleUploadFileSelect}
+            />
             {/* REJECTION REMARKS POPUP/IN-LINE */}
             {planStatus === 'REJECTED' && rejectionRemarksText && (
               <div className="hidden xl:block bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs max-w-[200px] truncate" title={rejectionRemarksText}>
@@ -1997,6 +2131,301 @@ const DDTMETable = () => {
           </table>
         </div>
       </div>
+
+      {/* ---- Upload Excel Column Mapping Modal ---- */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-xl">
+                  <FileSpreadsheet size={20} className="text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {uploadStep === 1 && 'Upload Excel'}
+                    {uploadStep === 2 && 'Map Columns'}
+                    {uploadStep === 3 && 'Import Complete'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {uploadStep === 1 && 'Select an Excel file (.xlsx) to import deliverables'}
+                    {uploadStep === 2 && 'Map your Excel columns to DDTME fields'}
+                    {uploadStep === 3 && 'Review the import results below'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={handleCloseUploadModal} className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-all">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* Step 1: File Selection */}
+              {uploadStep === 1 && (
+                <div className="flex flex-col items-center justify-center py-12 space-y-5">
+                  <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                    <Upload size={36} className="text-indigo-400" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-bold text-slate-700">Drag & drop or click to select</p>
+                    <p className="text-xs text-slate-400">Supports .xlsx and .xls files</p>
+                  </div>
+                  <button
+                    onClick={() => uploadFileInputRef.current?.click()}
+                    disabled={isUploadingHeaders}
+                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-sm uppercase tracking-wider disabled:opacity-60"
+                  >
+                    {isUploadingHeaders ? 'Reading file...' : 'Choose File'}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: Column Mapping */}
+              {uploadStep === 2 && (
+                <>
+                  {/* Mapping Fields */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Column Mapping</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Deliverable (required) */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                          Deliverable <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={uploadMapping.deliverable}
+                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, deliverable: e.target.value }))}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
+                            uploadMapping.deliverable
+                              ? 'border-indigo-300 bg-indigo-50/50 focus:ring-indigo-200 text-slate-800'
+                              : 'border-red-300 bg-red-50/30 focus:ring-red-200 text-slate-500'
+                          }`}
+                        >
+                          <option value="">— Select Excel Column —</option>
+                          {uploadHeaders.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Project */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700">Project</label>
+                        <select
+                          value={uploadMapping.project}
+                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, project: e.target.value }))}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
+                            uploadMapping.project
+                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
+                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+                          }`}
+                        >
+                          <option value="">— Not Mapped —</option>
+                          {uploadHeaders.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Client */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700">Client</label>
+                        <select
+                          value={uploadMapping.client}
+                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, client: e.target.value }))}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
+                            uploadMapping.client
+                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
+                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+                          }`}
+                        >
+                          <option value="">— Not Mapped (use page client) —</option>
+                          {uploadHeaders.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Target Date */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700">Target Date</label>
+                        <select
+                          value={uploadMapping.target_date}
+                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, target_date: e.target.value }))}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
+                            uploadMapping.target_date
+                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
+                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+                          }`}
+                        >
+                          <option value="">— Not Mapped —</option>
+                          {uploadHeaders.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Data Preview */}
+                  {uploadPreview.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Data Preview (first {uploadPreview.length} rows)</p>
+                      <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-slate-100">
+                              {uploadHeaders.map((h) => {
+                                const isMapped = Object.values(uploadMapping).includes(h);
+                                return (
+                                  <th
+                                    key={h}
+                                    className={`px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap ${
+                                      isMapped ? 'text-indigo-700 bg-indigo-50' : 'text-slate-500'
+                                    }`}
+                                  >
+                                    {h}
+                                    {isMapped && (
+                                      <span className="ml-1 text-[9px] text-indigo-400 font-black">
+                                        ✓
+                                      </span>
+                                    )}
+                                  </th>
+                                );
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {uploadPreview.map((row, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50">
+                                {uploadHeaders.map((h) => {
+                                  const isMapped = Object.values(uploadMapping).includes(h);
+                                  return (
+                                    <td
+                                      key={h}
+                                      className={`px-3 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate ${
+                                        isMapped ? 'bg-indigo-50/30 font-medium' : ''
+                                      }`}
+                                    >
+                                      {row[h] || ''}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Step 3: Results */}
+              {uploadStep === 3 && importResult && (
+                <div className="space-y-4 py-4">
+                  <div className="flex items-center justify-center">
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
+                      importResult.created > 0 ? 'bg-green-100' : 'bg-amber-100'
+                    }`}>
+                      {importResult.created > 0
+                        ? <CheckCircle2 size={32} className="text-green-600" />
+                        : <AlertTriangle size={32} className="text-amber-600" />
+                      }
+                    </div>
+                  </div>
+
+                  <div className="text-center space-y-1">
+                    <p className="text-2xl font-black text-slate-900">
+                      {importResult.created} Deliverable{importResult.created !== 1 ? 's' : ''} Imported
+                    </p>
+                    {importResult.skipped > 0 && (
+                      <p className="text-sm text-amber-600 font-bold">
+                        {importResult.skipped} row{importResult.skipped !== 1 ? 's' : ''} skipped
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Errors */}
+                  {importResult.errors?.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
+                      <p className="text-[11px] font-black text-red-700 uppercase tracking-wider">Errors</p>
+                      <ul className="text-xs text-red-600 space-y-0.5 max-h-32 overflow-y-auto">
+                        {importResult.errors.map((err, i) => (
+                          <li key={i}>• {err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Warnings */}
+                  {importResult.warnings?.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+                      <p className="text-[11px] font-black text-amber-700 uppercase tracking-wider">Warnings</p>
+                      <ul className="text-xs text-amber-600 space-y-0.5 max-h-32 overflow-y-auto">
+                        {importResult.warnings.map((w, i) => (
+                          <li key={i}>• {w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <div className="text-[10px] text-slate-400 font-medium">
+                {uploadFile && (
+                  <span className="flex items-center gap-1.5">
+                    <FileSpreadsheet size={12} />
+                    {uploadFile.name}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {uploadStep === 2 && (
+                  <>
+                    <button
+                      onClick={() => { setUploadStep(1); setUploadFile(null); setUploadHeaders([]); setUploadPreview([]); if (uploadFileInputRef.current) uploadFileInputRef.current.value = ''; }}
+                      className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold text-[11px] uppercase tracking-wider transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleImportExcel}
+                      disabled={!uploadMapping.deliverable || isImporting}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-50 disabled:hover:translate-y-0"
+                    >
+                      {isImporting ? 'Importing...' : <><ArrowRight size={14} /> Import</>}
+                    </button>
+                  </>
+                )}
+                {uploadStep === 3 && (
+                  <button
+                    onClick={handleFinishUpload}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+                  >
+                    <CheckCircle2 size={14} /> Done
+                  </button>
+                )}
+                {uploadStep === 1 && (
+                  <button
+                    onClick={handleCloseUploadModal}
+                    className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold text-[11px] uppercase tracking-wider transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

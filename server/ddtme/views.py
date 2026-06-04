@@ -277,6 +277,80 @@ class DDTMEAdditionalTaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(year=year)
         return queryset
 
+    # ---- Excel Upload Actions ----
+
+    @action(detail=False, methods=['post'], url_path='upload_excel_headers')
+    def upload_excel_headers(self, request):
+        """
+        Step 1: Accept an uploaded .xlsx file and return its column headers
+        along with a preview of the first few rows.
+        The frontend uses this to let the user map Excel columns to DDTME fields.
+        """
+        from .ddtme_excel_utils import DDTMEExcelImporter
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = file.name.lower()
+        if not (name.endswith('.xlsx') or name.endswith('.xls')):
+            return Response({'error': 'Only .xlsx or .xls files are supported'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            headers = DDTMEExcelImporter.read_headers(file)
+            file.seek(0)
+            preview = DDTMEExcelImporter.read_preview_rows(file, max_rows=5)
+            return Response({
+                'headers': headers,
+                'preview': preview,
+            }, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='upload_excel_import')
+    def upload_excel_import(self, request):
+        """
+        Step 2: Accept the uploaded .xlsx again along with the column mapping
+        and import rows as DDTMEAdditionalTask entries.
+
+        Expected POST data (multipart/form-data):
+            file:           .xlsx file
+            client_id:      int
+            month:          int (1-12)
+            year:           int
+            column_mapping: JSON string e.g. {"deliverable":"Task Name","project":"Project"}
+        """
+        from .ddtme_excel_utils import DDTMEExcelImporter
+        import json
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        client_id = request.data.get('client_id')
+        month = request.data.get('month')
+        year = request.data.get('year')
+        mapping_raw = request.data.get('column_mapping', '{}')
+
+        if not (client_id and month and year):
+            return Response({'error': 'client_id, month, and year are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            column_mapping = json.loads(mapping_raw) if isinstance(mapping_raw, str) else mapping_raw
+        except (json.JSONDecodeError, TypeError):
+            return Response({'error': 'Invalid column_mapping JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not column_mapping.get('deliverable'):
+            return Response({'error': 'Deliverable column mapping is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = DDTMEExcelImporter.import_rows(file, column_mapping, client_id, month, year)
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
 
 class ManDayEntryViewSet(viewsets.ModelViewSet):
     serializer_class = ManDayEntrySerializer
