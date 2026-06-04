@@ -123,7 +123,7 @@ const DDTMETable = () => {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadHeaders, setUploadHeaders] = useState([]);
   const [uploadPreview, setUploadPreview] = useState([]);
-  const [uploadMapping, setUploadMapping] = useState({ deliverable: '', project: '', client: '', target_date: '' });
+  const [uploadMapping, setUploadMapping] = useState({ deliverable: '', project: '', target_date: '' });
   const [isUploadingHeaders, setIsUploadingHeaders] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -1171,7 +1171,7 @@ const DDTMETable = () => {
     setUploadFile(null);
     setUploadHeaders([]);
     setUploadPreview([]);
-    setUploadMapping({ deliverable: '', project: '', client: '', target_date: '' });
+    setUploadMapping({ deliverable: '', project: '', target_date: '' });
     setImportResult(null);
   };
 
@@ -1198,17 +1198,15 @@ const DDTMETable = () => {
       setUploadPreview(preview);
 
       // Auto-map by guessing common column names
-      const autoMap = { deliverable: '', project: '', client: '', target_date: '' };
+      const autoMap = { deliverable: '', project: '', target_date: '' };
       const deliverableAliases = ['deliverable', 'task', 'title', 'task name', 'task_name', 'deliverable name'];
       const projectAliases = ['project', 'project name', 'project_name'];
-      const clientAliases = ['client', 'client name', 'client_name', 'organization', 'company'];
       const dateAliases = ['target date', 'target_date', 'due date', 'due_date', 'deadline', 'date'];
 
       headers.forEach((h) => {
         const norm = h.trim().toLowerCase();
         if (!autoMap.deliverable && deliverableAliases.includes(norm)) autoMap.deliverable = h;
         if (!autoMap.project && projectAliases.includes(norm)) autoMap.project = h;
-        if (!autoMap.client && clientAliases.includes(norm)) autoMap.client = h;
         if (!autoMap.target_date && dateAliases.includes(norm)) autoMap.target_date = h;
       });
       setUploadMapping(autoMap);
@@ -2230,26 +2228,8 @@ const DDTMETable = () => {
                         </select>
                       </div>
 
-                      {/* Client */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700">Client</label>
-                        <select
-                          value={uploadMapping.client}
-                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, client: e.target.value }))}
-                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
-                            uploadMapping.client
-                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
-                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
-                          }`}
-                        >
-                          <option value="">— Not Mapped (use page client) —</option>
-                          {uploadHeaders.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
-
                       {/* Target Date */}
+
                       <div className="space-y-1">
                         <label className="text-[11px] font-bold text-slate-700">Target Date</label>
                         <select
