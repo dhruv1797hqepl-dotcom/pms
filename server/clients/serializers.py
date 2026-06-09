@@ -44,6 +44,25 @@ class ClientSerializer(serializers.ModelSerializer):
             })
         return data
 
+    def validate_email(self, value):
+        normalized_email = value.strip().lower()
+        queryset = User.objects.filter(email=normalized_email)
+        if self.instance and self.instance.user:
+            queryset = queryset.exclude(pk=self.instance.user.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return normalized_email
+
+    def validate_username(self, value):
+        username = value.strip()
+        if self.instance:
+            queryset = User.objects.filter(username=username)
+            if self.instance.user:
+                queryset = queryset.exclude(pk=self.instance.user.pk)
+            if queryset.exists():
+                raise serializers.ValidationError("A user with this username already exists.")
+        return username
+
     def to_representation(self, instance):
         ret = super().to_representation(instance)
 
