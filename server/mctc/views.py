@@ -1,11 +1,18 @@
 from django.db.models import Q
-from rest_framework import permissions, viewsets
+from django.utils import timezone
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from clients.models import Client
 from clients.models import ExternalTeam
 from employees.models import Employee
-from .models import MCTCEntry
-from .serializers import MCTCEntrySerializer
+from .models import MCTCEntry, MCTCEntryHistory
+from .serializers import (
+    MCTCEntrySerializer,
+    MCTCEntryMoveSerializer,
+    MCTCEntryHistorySerializer,
+)
 from projects.models import Project
 from sgm.models import ProjectTeam
 
@@ -114,3 +121,94 @@ class MCTCEntryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    # ── Drag-drop move ──────────────────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='move')
+    def move(self, request, pk=None):
+        """
+        Move an MCTC entry to a new date / half.
+
+        POST /api/mctc/entries/{id}/move/
+        Body: { "new_date": "2026-06-15", "new_half": "second_half" }
+
+        Steps:
+        1. Validate new_date and new_half
+        2. Create MCTCEntryHistory record
+        3. Increment revision_count
+        4. Update entry_date = new_date
+        5. Update half_type = new_half
+        6. Update last_revision_date = now
+        7. If linked_task exists, update task.target_date
+        8. Return updated entry
+        """
+        entry = self.get_object()
+        move_serializer = MCTCEntryMoveSerializer(data=request.data)
+        move_serializer.is_valid(raise_exception=True)
+
+        new_date = move_serializer.validated_data['new_date']
+        new_half = move_serializer.validated_data['new_half']
+
+        old_date = entry.entry_date
+        old_half = entry.half_type
+
+        # Skip if nothing changed
+        if old_date == new_date and old_half == new_half:
+            return Response(
+                MCTCEntrySerializer(entry).data,
+                status=status.HTTP_200_OK,
+            )
+
+        # Step 2: Create history record
+        MCTCEntryHistory.objects.create(
+            entry=entry,
+            old_date=old_date,
+            new_date=new_date,
+            old_half=old_half,
+            new_half=new_half,
+            moved_by=request.user,
+        )
+
+        # Step 3-6: Update entry
+        entry.entry_date = new_date
+        entry.half_type = new_half
+        entry.revision_count += 1
+        entry.last_revision_date = timezone.now()
+        entry.save()
+
+        # Step 7: Update linked task target_date if present
+        if entry.linked_task_id:
+            task = entry.linked_task
+            task.target_date = new_date
+            task.save()
+
+        # Also update any associated place entry label's half key
+        # (the place label encodes half1/half2 in the string)
+
+        return Response(
+            MCTCEntrySerializer(entry).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ── Movement history timeline ────────────────────────────────
+
+    @action(detail=True, methods=['get'], url_path='history')
+    def history(self, request, pk=None):
+        """
+        GET /api/mctc/entries/{id}/history/
+
+        Returns the full audit trail for an entry's movements.
+        """
+        entry = self.get_object()
+        history_qs = MCTCEntryHistory.objects.filter(entry=entry).order_by('moved_at')
+        serializer = MCTCEntryHistorySerializer(history_qs, many=True)
+
+        return Response({
+            'entry_id': entry.id,
+            'label': entry.label,
+            'original_date': entry.original_date,
+            'current_date': entry.entry_date,
+            'current_half': entry.half_type,
+            'revision_count': entry.revision_count,
+            'history': serializer.data,
+        })

@@ -88,6 +88,23 @@ const EmployeeDashboard = () => {
   const [draftStartDate, setDraftStartDate] = useState("");
   const [draftEndDate, setDraftEndDate] = useState("");
   const dateFilterRef = useRef(null);
+
+  // MCTC Calendar Enhancement States
+  const [originalStartDate, setOriginalStartDate] = useState("");
+  const [originalEndDate, setOriginalEndDate] = useState("");
+  const [currentStartDate, setCurrentStartDate] = useState("");
+  const [currentEndDate, setCurrentEndDate] = useState("");
+  const [draftOriginalStartDate, setDraftOriginalStartDate] = useState("");
+  const [draftOriginalEndDate, setDraftOriginalEndDate] = useState("");
+  const [draftCurrentStartDate, setDraftCurrentStartDate] = useState("");
+  const [draftCurrentEndDate, setDraftCurrentEndDate] = useState("");
+
+  const [revisionFilter, setRevisionFilter] = useState("all"); // "all", "revised", "ge2", "ge3"
+  const [showRevisionFilterDropdown, setShowRevisionFilterDropdown] = useState(false);
+  const revisionFilterRef = useRef(null);
+
+  const [historyPopup, setHistoryPopup] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   // MODAL STATES
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -1006,18 +1023,29 @@ const EmployeeDashboard = () => {
     return `${day}-${month}-${year}`;
   };
 
-  const hasAppliedDateFilter = Boolean(startDate || endDate);
+  const hasAppliedDateFilter = Boolean(
+    startDate || endDate || currentStartDate || currentEndDate || originalStartDate || originalEndDate
+  );
 
   const appliedDateFilterLabel = useMemo(() => {
     if (!hasAppliedDateFilter) return "";
-    if (startDate && endDate) {
-      return `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
+    const labels = [];
+    if (currentStartDate || currentEndDate || startDate || endDate) {
+      const cS = currentStartDate || startDate;
+      const cE = currentEndDate || endDate;
+      if (cS && cE) labels.push(`Current: ${formatDisplayDate(cS)} to ${formatDisplayDate(cE)}`);
+      else if (cS) labels.push(`Current from: ${formatDisplayDate(cS)}`);
+      else if (cE) labels.push(`Current to: ${formatDisplayDate(cE)}`);
     }
-    if (startDate) {
-      return `From ${formatDisplayDate(startDate)}`;
+    if (originalStartDate || originalEndDate) {
+      const oS = originalStartDate;
+      const oE = originalEndDate;
+      if (oS && oE) labels.push(`Original: ${formatDisplayDate(oS)} to ${formatDisplayDate(oE)}`);
+      else if (oS) labels.push(`Original from: ${formatDisplayDate(oS)}`);
+      else if (oE) labels.push(`Original to: ${formatDisplayDate(oE)}`);
     }
-    return `Until ${formatDisplayDate(endDate)}`;
-  }, [hasAppliedDateFilter, startDate, endDate]);
+    return labels.join(" | ");
+  }, [hasAppliedDateFilter, startDate, endDate, currentStartDate, currentEndDate, originalStartDate, originalEndDate]);
 
   const getTaskDate = (task) => {
     const dateCandidates = [task.target_date, task.completion_date, task.created_at, task.updated_at];
@@ -1033,19 +1061,39 @@ const EmployeeDashboard = () => {
   };
 
   const isTaskInDateRange = (task) => {
-    const start = parseYMDToDate(startDate);
-    const end = parseYMDToDate(endDate);
-    if (!start && !end) return true;
+    // 1. Check current target date range (falls back to legacy startDate/endDate if currentStartDate/currentEndDate are empty)
+    const currentStart = parseYMDToDate(currentStartDate || startDate);
+    const currentEnd = parseYMDToDate(currentEndDate || endDate);
+    if (currentStart || currentEnd) {
+      const taskDate = parseYMDToDate(task.target_date || task.targetDate);
+      if (!taskDate) return false;
+      if (currentStart && taskDate < currentStart) return false;
+      if (currentEnd && taskDate > currentEnd) return false;
+    }
 
-    const taskDate = getTaskDate(task);
-    if (!taskDate) return false;
+    // 2. Check original planned date range (MCTC tasks only)
+    const originalStart = parseYMDToDate(originalStartDate);
+    const originalEnd = parseYMDToDate(originalEndDate);
+    if (originalStart || originalEnd) {
+      if (task.source_module !== "MCTC") return false;
+      const origDate = parseYMDToDate(task.original_date);
+      if (!origDate) return false;
+      if (originalStart && origDate < originalStart) return false;
+      if (originalEnd && origDate > originalEnd) return false;
+    }
 
-    if (start && taskDate < start) return false;
-    if (end && taskDate > end) return false;
     return true;
   };
 
   const filterTasksByDateRange = (tasks) => tasks.filter(isTaskInDateRange);
+
+  const filterTasksByRevision = (tasks) => {
+    if (revisionFilter === "all") return tasks;
+    if (revisionFilter === "revised") return tasks.filter(t => t.source_module === "MCTC" && t.revision_count > 0);
+    if (revisionFilter === "ge2") return tasks.filter(t => t.source_module === "MCTC" && t.revision_count >= 2);
+    if (revisionFilter === "ge3") return tasks.filter(t => t.source_module === "MCTC" && t.revision_count >= 3);
+    return tasks;
+  };
 
   useEffect(() => {
     const closeStatusOnOutsideClick = (event) => {
@@ -1058,6 +1106,18 @@ const EmployeeDashboard = () => {
     document.addEventListener("mousedown", closeStatusOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeStatusOnOutsideClick);
   }, [showStatusFilterDropdown]);
+
+  useEffect(() => {
+    const closeRevisionOnOutsideClick = (event) => {
+      if (!showRevisionFilterDropdown) return;
+      if (revisionFilterRef.current && !revisionFilterRef.current.contains(event.target)) {
+        setShowRevisionFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeRevisionOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeRevisionOnOutsideClick);
+  }, [showRevisionFilterDropdown]);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -1074,6 +1134,10 @@ const EmployeeDashboard = () => {
   const handleApplyDateFilter = () => {
     setStartDate(draftStartDate);
     setEndDate(draftEndDate);
+    setCurrentStartDate(draftCurrentStartDate);
+    setCurrentEndDate(draftCurrentEndDate);
+    setOriginalStartDate(draftOriginalStartDate);
+    setOriginalEndDate(draftOriginalEndDate);
     setShowDateFilterDropdown(false);
   };
 
@@ -1082,12 +1146,22 @@ const EmployeeDashboard = () => {
     setEndDate("");
     setDraftStartDate("");
     setDraftEndDate("");
+    setCurrentStartDate("");
+    setCurrentEndDate("");
+    setDraftCurrentStartDate("");
+    setDraftCurrentEndDate("");
+    setOriginalStartDate("");
+    setOriginalEndDate("");
+    setDraftOriginalStartDate("");
+    setDraftOriginalEndDate("");
     setIncludeAllTasks(true);
     setSelectedClients(Object.keys(clientProjectMap));
     setSearchQuery("");
     setStatusFilter("All");
+    setRevisionFilter("all");
     setShowDateFilterDropdown(false);
     setShowStatusFilterDropdown(false);
+    setShowRevisionFilterDropdown(false);
   };
 
   const isDelayedTask = (task) => {
@@ -2362,6 +2436,136 @@ const EmployeeDashboard = () => {
     setExcelErrorFields([]);
   };
 
+  const openHistoryPopup = async (task) => {
+    if (!task?.mctc_entry_id) return;
+    try {
+      setHistoryLoading(true);
+      setHistoryPopup({ entry: task, history: [] });
+      const response = await api.get(`/mctc/entries/${task.mctc_entry_id}/history/`);
+      setHistoryPopup({
+        entry: task,
+        history: response.data.history || [],
+        original_date: response.data.original_date,
+        current_date: response.data.current_date,
+        current_half: response.data.current_half,
+        revision_count: response.data.revision_count,
+      });
+    } catch (error) {
+      console.error("Failed to load history:", error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const renderHistoryPopup = () => {
+    if (!historyPopup) return null;
+
+    const { entry, history, original_date, current_date, current_half, revision_count } = historyPopup;
+
+    return (
+      <div
+        className="fixed inset-0 z-[350] flex items-end sm:items-center justify-center bg-slate-950/45 p-2 sm:p-4 backdrop-blur-sm"
+        onClick={() => setHistoryPopup(null)}
+      >
+        <div
+          className="w-full sm:max-w-lg rounded-2xl md:rounded-3xl border border-slate-200/80 bg-white p-4 md:p-5 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.55)] max-h-[80vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-center justify-between gap-3 shrink-0">
+            <div className="min-w-0">
+              <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Task History</p>
+              <h3 className="text-base md:text-lg font-black text-slate-800 truncate">
+                {entry.title}
+              </h3>
+            </div>
+            <button
+              onClick={() => setHistoryPopup(null)}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 shrink-0"
+            >
+              <X size={16} strokeWidth={3} />
+            </button>
+          </div>
+
+          {/* Summary card */}
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Original Date</p>
+              <p className="mt-1 text-sm font-black text-slate-800">{formatDateDDMMYYYY(original_date || entry.original_date, "—")}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Current Date</p>
+              <p className="mt-1 text-sm font-black text-slate-800">{formatDateDDMMYYYY(current_date || entry.target_date, "—")}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Revision Count</p>
+              <p className="mt-1 text-sm font-black text-rose-600">{revision_count || entry.revision_count}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Current Half</p>
+              <p className="mt-1 text-sm font-black text-slate-800">{current_half === "second_half" ? "Half 2" : "Half 1"}</p>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 mb-3">Movement Timeline</p>
+
+            {historyLoading ? (
+              <p className="text-xs font-bold text-slate-400 text-center py-4">Loading history...</p>
+            ) : history.length === 0 ? (
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-6 text-center">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">No movements recorded</p>
+              </div>
+            ) : (
+              <div className="relative pl-6">
+                {/* Timeline line */}
+                <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-slate-200" />
+
+                {/* Created event */}
+                <div className="relative mb-4">
+                  <div className="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500">
+                    <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-600">Created</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">{formatDateDDMMYYYY(original_date || entry.original_date, "—")}</p>
+                  </div>
+                </div>
+
+                {/* Move events */}
+                {history.map((h, idx) => (
+                  <div key={h.id || idx} className="relative mb-4">
+                    <div className="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
+                      <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                    </div>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-600">
+                        Moved #{idx + 1}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-800">
+                        {formatDateDDMMYYYY(h.old_date, "—")} ({h.old_half === "second_half" ? "H2" : "H1"})
+                        {" → "}
+                        {formatDateDDMMYYYY(h.new_date, "—")} ({h.new_half === "second_half" ? "H2" : "H1"})
+                      </p>
+                      {h.moved_by_name && (
+                        <p className="mt-0.5 text-[9px] font-semibold text-slate-500">by {h.moved_by_name}</p>
+                      )}
+                      {h.moved_at && (
+                        <p className="text-[8px] font-semibold text-slate-400">
+                          {new Date(h.moved_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen w-screen bg-slate-50 relative flex overflow-hidden">
       <Sidebar />
@@ -2461,30 +2665,70 @@ const EmployeeDashboard = () => {
             </button>
 
             {showDateFilterDropdown && (
-              <div className="absolute right-0 md:right-0 mt-2 top-full w-[300px] md:w-[460px] bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-30">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Start Date</label>
-                    <input
-                      type="date"
-                      value={draftStartDate}
-                      onChange={(e) => setDraftStartDate(e.target.value)}
-                      className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      title="Start date"
-                    />
-                    <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftStartDate)}</p>
-                  </div>
+              <div className="absolute right-0 md:right-0 mt-2 top-full w-[300px] md:w-[460px] bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-[200]">
+                {/* SECTION 1: Current Date Range */}
+                <div className="mb-4">
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 border-b pb-1">Current planned date range</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Start Date</label>
+                      <input
+                        type="date"
+                        value={draftCurrentStartDate || draftStartDate}
+                        onChange={(e) => {
+                          setDraftCurrentStartDate(e.target.value);
+                          setDraftStartDate(e.target.value);
+                        }}
+                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        title="Current start date"
+                      />
+                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftCurrentStartDate || draftStartDate)}</p>
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">End Date</label>
-                    <input
-                      type="date"
-                      value={draftEndDate}
-                      onChange={(e) => setDraftEndDate(e.target.value)}
-                      className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      title="End date"
-                    />
-                    <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftEndDate)}</p>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">End Date</label>
+                      <input
+                        type="date"
+                        value={draftCurrentEndDate || draftEndDate}
+                        onChange={(e) => {
+                          setDraftCurrentEndDate(e.target.value);
+                          setDraftEndDate(e.target.value);
+                        }}
+                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        title="Current end date"
+                      />
+                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftCurrentEndDate || draftEndDate)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 2: Original Date Range */}
+                <div className="mb-4">
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 border-b pb-1">Original planned date range (MCTC)</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Start Date</label>
+                      <input
+                        type="date"
+                        value={draftOriginalStartDate}
+                        onChange={(e) => setDraftOriginalStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        title="Original start date"
+                      />
+                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftOriginalStartDate)}</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">End Date</label>
+                      <input
+                        type="date"
+                        value={draftOriginalEndDate}
+                        onChange={(e) => setDraftOriginalEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        title="Original end date"
+                      />
+                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftOriginalEndDate)}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -2614,6 +2858,41 @@ const EmployeeDashboard = () => {
               </div>
             )}
           </div>
+
+          {/* MCTC REVISION FILTER */}
+          <div className="relative" ref={revisionFilterRef}>
+            <MidBtn
+              label={revisionFilter === "all" ? "REVISIONS" : revisionFilter === "revised" ? "REVISED" : `REVS >= ${revisionFilter === "ge2" ? "2" : "3"}`}
+              icon={<Filter size={14} />}
+              onClick={() => setShowRevisionFilterDropdown(!showRevisionFilterDropdown)}
+              primary={revisionFilter !== "all"}
+            />
+            {showRevisionFilterDropdown && (
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="px-4 py-2 border-b border-slate-50 mb-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter By Revisions</p>
+                </div>
+                {[
+                  { value: "all", label: "All Tasks" },
+                  { value: "revised", label: "Revised Tasks Only" },
+                  { value: "ge2", label: "Revision Count >= 2" },
+                  { value: "ge3", label: "Revision Count >= 3" },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setRevisionFilter(option.value);
+                      setShowRevisionFilterDropdown(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors flex items-center justify-between ${revisionFilter === option.value ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+                  >
+                    {option.label}
+                    {revisionFilter === option.value && <CheckCircle size={12} className="text-emerald-400" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setShowSmartPasteModal(true)}
             className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-emerald-100 border border-emerald-300 text-emerald-700 shadow-sm hover:bg-emerald-200 transition-all active:scale-95"
@@ -2653,8 +2932,8 @@ const EmployeeDashboard = () => {
 
         {/* ===== TASK OVERVIEW TABLE (Tasks Assigned TO Me - Active) ===== */}
         <Table
-          title="My  Tasks"
-          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(myTasks))))}
+          title="My Tasks"
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(myTasks)))))}
           mode="overview"
           onQuickComplete={handleDirectComplete}
           onReportComplete={openCompletionModal}
@@ -2664,11 +2943,12 @@ const EmployeeDashboard = () => {
           onBulkComplete={handleBulkComplete}
           currentUserId={currentUser?.id}
           onDeleteTask={requestDeleteTask}
+          onViewHistory={openHistoryPopup}
         />
         {/* ===== UPCOMING 7 DAYS TASKS TABLE ===== */}
         <Table
           title="Upcoming 7 Days Tasks"
-          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(
             myTasks.filter(t => {
               if (!t.target_date) return false;
               const today = new Date();
@@ -2679,7 +2959,7 @@ const EmployeeDashboard = () => {
               sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
               return targetDate >= today && targetDate <= sevenDaysLater;
             })
-          ))))}
+          )))))}
           mode="overview"
           onQuickComplete={handleDirectComplete}
           onReportComplete={openCompletionModal}
@@ -2689,11 +2969,26 @@ const EmployeeDashboard = () => {
           onBulkComplete={handleBulkComplete}
           currentUserId={currentUser?.id}
           onDeleteTask={requestDeleteTask}
+          onViewHistory={openHistoryPopup}
         />
         {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
-        <Table title="Completed Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(completedTasks))))} mode="completed" currentUserId={currentUser?.id} onDeleteTask={requestDeleteTask} />
+        <Table
+          title="Completed Tasks"
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(completedTasks)))))}
+          mode="completed"
+          currentUserId={currentUser?.id}
+          onDeleteTask={requestDeleteTask}
+          onViewHistory={openHistoryPopup}
+        />
         {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
-        <Table title="Delegated Tasks" data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByClient(delegatedTasks))))} mode="assigned" currentUserId={currentUser?.id} onDeleteTask={requestDeleteTask} />
+        <Table
+          title="Delegated Tasks"
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(delegatedTasks)))))}
+          mode="assigned"
+          currentUserId={currentUser?.id}
+          onDeleteTask={requestDeleteTask}
+          onViewHistory={openHistoryPopup}
+        />
         {/* ========================================================== */}
         {/* TASK COMPLETION MODAL FORM */}
         {/* ========================================================== */}
@@ -3573,6 +3868,7 @@ const EmployeeDashboard = () => {
             </div>
           </div>
         )}
+        {renderHistoryPopup()}
       </main>
     </div>
   );
@@ -3590,7 +3886,8 @@ const Table = ({
   onToggleSelectAll,
   onBulkComplete,
   currentUserId,
-  onDeleteTask
+  onDeleteTask,
+  onViewHistory
 }) => {
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -3771,23 +4068,41 @@ const Table = ({
     return parsed;
   };
 
-  const toggleTargetDateSort = () => {
-    setSortField((prevField) => {
-      if (prevField !== "target_date") {
-        setSortDirection("asc");
-        return "target_date";
-      }
+  const getSortValue = (task, field) => {
+    if (field === "original_date") {
+      const raw = task?.original_date;
+      if (!raw) return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+      const parsed = new Date(raw).getTime();
+      return Number.isNaN(parsed) ? (sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : parsed;
+    }
+    if (field === "last_revision_date") {
+      const raw = task?.last_revision_date;
+      if (!raw) return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+      const parsed = new Date(raw).getTime();
+      return Number.isNaN(parsed) ? (sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : parsed;
+    }
+    if (field === "revision_count") {
+      return task?.revision_count || 0;
+    }
+    return getDateSortValue(task, field);
+  };
 
+  const handleSort = (field) => {
+    setSortField((prevField) => {
+      if (prevField !== field) {
+        setSortDirection("asc");
+        return field;
+      }
       setSortDirection((prevDirection) => (prevDirection === "asc" ? "desc" : "asc"));
       return prevField;
     });
   };
 
   const sortedData = useMemo(() => {
-    if (isOverviewMode && (sortField === "start_date" || sortField === "target_date")) {
+    if (sortField !== "default") {
       return [...data].sort((a, b) => {
-        const left = getDateSortValue(a, sortField);
-        const right = getDateSortValue(b, sortField);
+        const left = getSortValue(a, sortField);
+        const right = getSortValue(b, sortField);
 
         if (left === right) return 0;
         return sortDirection === "asc" ? left - right : right - left;
@@ -3795,7 +4110,7 @@ const Table = ({
     }
 
     return [...data].sort((a, b) => getTaskSortValue(b) - getTaskSortValue(a));
-  }, [data, isOverviewMode, sortDirection, sortField]);
+  }, [data, sortDirection, sortField]);
 
   const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE));
 
@@ -3957,7 +4272,7 @@ const Table = ({
                   <th className="px-4 py-3">
                     <button
                       type="button"
-                      onClick={toggleTargetDateSort}
+                      onClick={() => handleSort("target_date")}
                       className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
                       title="Sort by target date"
                     >
@@ -3969,6 +4284,48 @@ const Table = ({
                   </th>
                 )}
                 {mode === "completed" && <th className="px-4 py-3">Complete Date</th>}
+                
+                {/* MCTC Columns */}
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("original_date")}
+                    className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
+                    title="Sort by original date"
+                  >
+                    <span>Orig. Date</span>
+                    <span className="text-[11px] leading-none">
+                      {sortField === "original_date" ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
+                    </span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("revision_count")}
+                    className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
+                    title="Sort by revision count"
+                  >
+                    <span>Revs</span>
+                    <span className="text-[11px] leading-none">
+                      {sortField === "revision_count" ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
+                    </span>
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("last_revision_date")}
+                    className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
+                    title="Sort by last revised date"
+                  >
+                    <span>Last Revised</span>
+                    <span className="text-[11px] leading-none">
+                      {sortField === "last_revision_date" ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
+                    </span>
+                  </button>
+                </th>
+
                 <th className="px-4 py-3 text-center">Priority</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 {(mode === "overview" || mode === "assigned") && <th className="px-4 py-3 text-center">Assigned PDF</th>}
@@ -4009,6 +4366,33 @@ const Table = ({
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-violet-700 whitespace-nowrap">{t.start_date ? formatDateDDMMYYYY(t.start_date, "—") : "—"}</td>}
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{formatDateDDMMYYYY(t.target_date, "—")}</td>}
                     {mode === "completed" && <td className="px-4 py-3 text-[11px] font-bold text-emerald-500 whitespace-nowrap">{formatDateDDMMYYYY(t.completion_date, "—")}</td>}
+                    
+                    {/* MCTC Columns */}
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                      {t.source_module === "MCTC" && t.original_date ? formatDateDDMMYYYY(t.original_date, "—") : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {t.source_module === "MCTC" && t.revision_count > 0 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewHistory?.(t);
+                          }}
+                          className="inline-flex items-center rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700 cursor-pointer hover:bg-rose-200 transition-colors"
+                          title="Click to view movement timeline"
+                        >
+                          R{t.revision_count}
+                        </button>
+                      ) : t.source_module === "MCTC" ? (
+                        <span className="text-slate-400 text-xs">-</span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                      {t.source_module === "MCTC" && t.last_revision_date ? formatDateDDMMYYYY(t.last_revision_date.slice(0, 10), "—") : "—"}
+                    </td>
                     <td className="px-4 py-3 text-center"><PriorityBadge priority={getTaskDisplayPriority(t)} /></td>
                     <td className="px-4 py-3 text-center"><StatusBadge status={getTaskDisplayStatus(t)} /></td>
                     {(mode === "overview" || mode === "assigned") && <td className="px-4 py-3 text-center">{t.assigned_file ? <Download size={16} className="mx-auto text-blue-500 cursor-pointer hover:scale-110" onClick={() => handleFileDownload(t.assigned_file, `${t.task_id || "task"}-assigned.pdf`)} title="Download assigned PDF" /> : "—"}</td>}

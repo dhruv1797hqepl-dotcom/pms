@@ -34,9 +34,12 @@ class TaskSerializer(serializers.ModelSerializer):
     project_name = serializers.SerializerMethodField()
     client_name = serializers.ReadOnlyField(source='client_org.company_name')
     
-    # This brings the math from your model property into the JSON for React
-    # ats_score is now a model field, so we don't need source='calculate_ats'
-    
+    # MCTC-related fields for calendar enhancement
+    mctc_entry_id = serializers.SerializerMethodField()
+    original_date = serializers.SerializerMethodField()
+    revision_count = serializers.SerializerMethodField()
+    last_revision_date = serializers.SerializerMethodField()
+    half_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -50,7 +53,9 @@ class TaskSerializer(serializers.ModelSerializer):
             'status', 'priority', 'flag', 'remarks', 'ats_score',
             'assigned_file', 'completion_file',
             'is_repeatable', 'repeat_frequency', 'repeat_end_date', 'repeat_day', 'repeat_week',
-            'source_module'
+            'source_module',
+            # MCTC fields
+            'mctc_entry_id', 'original_date', 'revision_count', 'last_revision_date', 'half_type'
         ]
         # These are handled by the backend logic, not the user form
         read_only_fields = ['task_id', 'assigned_by']
@@ -98,6 +103,26 @@ class TaskSerializer(serializers.ModelSerializer):
                     return additional_task.project.name
 
         return None
+
+    def get_mctc_entry_id(self, obj):
+        entry = obj.linked_mctc_entries.first()
+        return entry.id if entry else None
+
+    def get_original_date(self, obj):
+        entry = obj.linked_mctc_entries.first()
+        return entry.original_date if entry else None
+
+    def get_revision_count(self, obj):
+        entry = obj.linked_mctc_entries.first()
+        return entry.revision_count if entry else 0
+
+    def get_last_revision_date(self, obj):
+        entry = obj.linked_mctc_entries.first()
+        return entry.last_revision_date if entry else None
+
+    def get_half_type(self, obj):
+        entry = obj.linked_mctc_entries.first()
+        return entry.half_type if entry else None
 
     def validate(self, data):
         """

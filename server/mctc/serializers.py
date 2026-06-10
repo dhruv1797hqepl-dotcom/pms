@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import MCTCEntry
+from .models import MCTCEntry, MCTCEntryHistory
 
 
 class MCTCEntrySerializer(serializers.ModelSerializer):
@@ -17,10 +17,21 @@ class MCTCEntrySerializer(serializers.ModelSerializer):
             'linked_task',
             'linked_task_status',
             'linked_task_completion_date',
+            'half_type',
+            'original_date',
+            'revision_count',
+            'last_revision_date',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id',
+            'original_date',
+            'revision_count',
+            'last_revision_date',
+            'created_at',
+            'updated_at',
+        ]
 
     def validate(self, attrs):
         entry_date = attrs.get('entry_date') or getattr(self.instance, 'entry_date', None)
@@ -40,3 +51,38 @@ class MCTCEntrySerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+
+
+class MCTCEntryMoveSerializer(serializers.Serializer):
+    """Validates drag-drop move requests."""
+
+    new_date = serializers.DateField()
+    new_half = serializers.ChoiceField(choices=MCTCEntry.HALF_CHOICES)
+
+    def validate_new_date(self, value):
+        if value.weekday() == 6:
+            raise serializers.ValidationError('Cannot move to a Sunday.')
+        return value
+
+
+class MCTCEntryHistorySerializer(serializers.ModelSerializer):
+    moved_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MCTCEntryHistory
+        fields = [
+            'id',
+            'old_date',
+            'new_date',
+            'old_half',
+            'new_half',
+            'moved_by',
+            'moved_by_name',
+            'moved_at',
+        ]
+        read_only_fields = fields
+
+    def get_moved_by_name(self, obj):
+        if obj.moved_by:
+            return obj.moved_by.get_full_name() or obj.moved_by.username
+        return None
