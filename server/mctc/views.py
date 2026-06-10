@@ -174,6 +174,14 @@ class MCTCEntryViewSet(viewsets.ModelViewSet):
         entry.half_type = new_half
         entry.revision_count += 1
         entry.last_revision_date = timezone.now()
+
+        is_place = entry.label.startswith('__MCTC_PLACE__')
+        if is_place:
+            parts = entry.label.split('|')
+            if len(parts) >= 3:
+                parts[2] = 'half2' if new_half == 'second_half' else 'half1'
+                entry.label = '|'.join(parts)
+
         entry.save()
 
         # Step 7: Update linked task target_date if present
@@ -182,8 +190,34 @@ class MCTCEntryViewSet(viewsets.ModelViewSet):
             task.target_date = new_date
             task.save()
 
-        # Also update any associated place entry label's half key
-        # (the place label encodes half1/half2 in the string)
+        # If it is a place entry, find and move all task entries for the same user, date, and half
+        if is_place:
+            associated_tasks = MCTCEntry.objects.filter(
+                user=entry.user,
+                entry_date=old_date,
+                half_type=old_half,
+                entry_type=MCTCEntry.TYPE_TASK
+            )
+            for task_entry in associated_tasks:
+                # Create history for task entry
+                MCTCEntryHistory.objects.create(
+                    entry=task_entry,
+                    old_date=old_date,
+                    new_date=new_date,
+                    old_half=old_half,
+                    new_half=new_half,
+                    moved_by=request.user,
+                )
+                task_entry.entry_date = new_date
+                task_entry.half_type = new_half
+                task_entry.revision_count += 1
+                task_entry.last_revision_date = timezone.now()
+                task_entry.save()
+
+                if task_entry.linked_task_id:
+                    t = task_entry.linked_task
+                    t.target_date = new_date
+                    t.save()
 
         return Response(
             MCTCEntrySerializer(entry).data,

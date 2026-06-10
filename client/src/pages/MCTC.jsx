@@ -267,71 +267,71 @@ const MCTC = () => {
         return grouped;
     };
 
-    useEffect(() => {
-        const loadMonthEntries = async () => {
-            try {
-                setLoading(true);
-                const year = currentDate.getFullYear();
-                const month = currentDate.getMonth() + 1;
-                const mctcParams = targetUserId
-                    ? { year, month, user: targetUserId }
-                    : { year, month };
-                const tasksParams = targetUserId
-                    ? { assigned_to: targetUserId }
-                    : undefined;
+    const fetchMonthEntries = useCallback(async () => {
+        try {
+            setLoading(true);
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            const mctcParams = targetUserId
+                ? { year, month, user: targetUserId }
+                : { year, month };
+            const tasksParams = targetUserId
+                ? { assigned_to: targetUserId }
+                : undefined;
 
-                const [mctcResponse, tasksResponse] = await Promise.all([
-                    api.get("/mctc/entries/", { params: mctcParams }),
-                    api.get("/tasks/", tasksParams ? { params: tasksParams } : undefined),
-                ]);
+            const [mctcResponse, tasksResponse] = await Promise.all([
+                api.get("/mctc/entries/", { params: mctcParams }),
+                api.get("/tasks/", tasksParams ? { params: tasksParams } : undefined),
+            ]);
 
-                const grouped = {};
-                const linkedTaskIds = new Set();
+            const grouped = {};
+            const linkedTaskIds = new Set();
 
-                mctcResponse.data.forEach((entry) => {
-                    if (isSundayDayKey(entry.entry_date)) return;
+            mctcResponse.data.forEach((entry) => {
+                if (isSundayDayKey(entry.entry_date)) return;
 
-                    const key = entry.entry_date;
-                    if (!grouped[key]) grouped[key] = [];
-                    if (entry.linked_task) linkedTaskIds.add(Number(entry.linked_task));
-                    grouped[key].push({
-                        id: entry.id,
-                        label: entry.label,
-                        type: entry.entry_type,
-                        linkedTaskId: entry.linked_task,
-                        linkedTaskStatus: entry.linked_task_status,
-                        linkedTaskCompletionDate: entry.linked_task_completion_date,
-                        isDashboardTask: false,
-                        half_type: entry.half_type || "first_half",
-                        original_date: entry.original_date,
-                        revision_count: entry.revision_count || 0,
-                        last_revision_date: entry.last_revision_date,
-                    });
+                const key = entry.entry_date;
+                if (!grouped[key]) grouped[key] = [];
+                if (entry.linked_task) linkedTaskIds.add(Number(entry.linked_task));
+                grouped[key].push({
+                    id: entry.id,
+                    label: entry.label,
+                    type: entry.entry_type,
+                    linkedTaskId: entry.linked_task,
+                    linkedTaskStatus: entry.linked_task_status,
+                    linkedTaskCompletionDate: entry.linked_task_completion_date,
+                    isDashboardTask: false,
+                    half_type: entry.half_type || "first_half",
+                    original_date: entry.original_date,
+                    revision_count: entry.revision_count || 0,
+                    last_revision_date: entry.last_revision_date,
                 });
+            });
 
-                const dashboardGrouped = buildDashboardTaskEntries(
-                    tasksResponse?.data,
-                    linkedTaskIds,
-                    year,
-                    month,
-                );
+            const dashboardGrouped = buildDashboardTaskEntries(
+                tasksResponse?.data,
+                linkedTaskIds,
+                year,
+                month,
+            );
 
-                Object.entries(dashboardGrouped).forEach(([dayKey, dayEntries]) => {
-                    if (!grouped[dayKey]) grouped[dayKey] = [];
-                    grouped[dayKey] = [...grouped[dayKey], ...dayEntries];
-                });
+            Object.entries(dashboardGrouped).forEach(([dayKey, dayEntries]) => {
+                if (!grouped[dayKey]) grouped[dayKey] = [];
+                grouped[dayKey] = [...grouped[dayKey], ...dayEntries];
+            });
 
-                setTasks(grouped);
-            } catch (error) {
-                console.error("Failed to load MCTC entries:", error);
-                setTasks({});
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadMonthEntries();
+            setTasks(grouped);
+        } catch (error) {
+            console.error("Failed to load MCTC entries:", error);
+            setTasks({});
+        } finally {
+            setLoading(false);
+        }
     }, [currentDate, targetUserId]);
+
+    useEffect(() => {
+        fetchMonthEntries();
+    }, [fetchMonthEntries]);
 
     useEffect(() => {
         const loadCurrentUser = async () => {
@@ -368,8 +368,9 @@ const MCTC = () => {
     const getPlaceModeForHalf = (dayKey, halfType) => {
         const placeEntries = getPlaceEntriesForHalf(dayKey, halfType);
         if (placeEntries.length === 0) return null;
-        const parsed = parsePlaceLabel(placeEntries[0].label);
-        return { mode: parsed.mode, companyName: parsed.companyName };
+        const entry = placeEntries[0];
+        const parsed = parsePlaceLabel(entry.label);
+        return { id: entry.id, mode: parsed.mode, companyName: parsed.companyName, entry };
     };
 
     /* ─── TASK VIEW ENTRIES ─── */
@@ -526,7 +527,7 @@ const MCTC = () => {
     /* ─── DRAG & DROP ─── */
 
     const handleDragStart = (e, entry, dayKey) => {
-        if (entry.isDashboardTask || isPlaceEntry(entry)) return;
+        if (entry.isDashboardTask) return;
         setDragData({ entryId: entry.id, sourceDayKey: dayKey, sourceHalf: entry.half_type });
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(entry.id));
@@ -555,44 +556,15 @@ const MCTC = () => {
 
         try {
             setIsSaving(true);
-            const response = await api.post(`/mctc/entries/${entryId}/move/`, {
+            await api.post(`/mctc/entries/${entryId}/move/`, {
                 new_date: dayKey,
                 new_half: halfType,
             });
 
-            const updatedEntry = response.data;
-
-            setTasks((prev) => {
-                const newTasks = { ...prev };
-
-                // Remove from source
-                const sourceEntries = [...(newTasks[sourceDayKey] || [])];
-                const entryIndex = sourceEntries.findIndex((t) => t.id === entryId);
-                let movedEntry = null;
-                if (entryIndex !== -1) {
-                    movedEntry = { ...sourceEntries[entryIndex] };
-                    sourceEntries.splice(entryIndex, 1);
-                    newTasks[sourceDayKey] = sourceEntries;
-                }
-
-                if (movedEntry) {
-                    // Update with response data
-                    movedEntry.half_type = updatedEntry.half_type || halfType;
-                    movedEntry.revision_count = updatedEntry.revision_count || 0;
-                    movedEntry.last_revision_date = updatedEntry.last_revision_date;
-                    movedEntry.original_date = updatedEntry.original_date;
-
-                    // Add to target
-                    const targetEntries = [...(newTasks[dayKey] || [])];
-                    targetEntries.push(movedEntry);
-                    newTasks[dayKey] = targetEntries;
-                }
-
-                return newTasks;
-            });
+            await fetchMonthEntries();
         } catch (error) {
             console.error("Failed to move entry:", error);
-            alert("Failed to move task.");
+            alert("Failed to move place.");
         } finally {
             setIsSaving(false);
         }
@@ -793,10 +765,9 @@ const MCTC = () => {
 
     const renderHalfSection = (dayKey, halfType, halfLabel) => {
         const placeMode = getPlaceModeForHalf(dayKey, halfType);
-        const taskEntries = getTaskEntriesForHalf(dayKey, halfType);
-        const generatedTasks = getGeneratedTasksForHalf(dayKey, halfType);
         const isDropHere = dropTarget?.dayKey === dayKey && dropTarget?.halfType === halfType;
         const isDragging = dragData !== null;
+        const canDrag = canManageEntries;
 
         return (
             <div
@@ -813,72 +784,36 @@ const MCTC = () => {
                         {halfLabel}
                     </span>
                     {placeMode && (
-                        <span className={`rounded-sm px-1 py-[1px] text-[5px] md:text-[6px] font-black uppercase tracking-wide ${
-                            placeMode.mode === "visit"
-                                ? "bg-indigo-100 text-indigo-700"
-                                : placeMode.mode === "leave"
-                                ? "bg-orange-100 text-orange-700"
-                                : "bg-emerald-100 text-emerald-700"
-                        }`}>
-                            {placeMode.mode === "visit" ? placeMode.companyName || "Visit" : placeMode.mode}
-                        </span>
-                    )}
-                </div>
-
-                {/* Task entries (from place popup) */}
-                <div className="space-y-0.5">
-                    {taskEntries.map((task) => {
-                        const taskCompleted = isLinkedTaskCompleted(task);
-                        const canDrag = canManageEntries && !task.isDashboardTask && !isPlaceEntry(task);
-
-                        return (
-                            <div
-                                key={task.id}
+                        <div className="flex items-center gap-1">
+                            <span
                                 draggable={canDrag}
-                                onDragStart={(e) => handleDragStart(e, task, dayKey)}
+                                onDragStart={(e) => handleDragStart(e, placeMode.entry, dayKey)}
                                 onDragEnd={handleDragEnd}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (task.revision_count > 0) openHistoryPopup(task);
-                                }}
-                                className={`flex items-center justify-between rounded-md border px-1 md:px-1.5 py-0.5 text-[6px] md:text-[8px] transition-all ${
+                                className={`rounded-sm px-1 py-[1px] text-[5px] md:text-[6px] font-black uppercase tracking-wide transition-all ${
                                     canDrag ? "cursor-grab active:cursor-grabbing" : ""
                                 } ${
-                                    taskCompleted
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                                        : "border-blue-100 bg-blue-50 text-blue-900"
+                                    placeMode.mode === "visit"
+                                        ? "bg-indigo-100 text-indigo-700"
+                                        : placeMode.mode === "leave"
+                                        ? "bg-orange-100 text-orange-700"
+                                        : "bg-emerald-100 text-emerald-700"
                                 }`}
+                                onClick={(e) => {
+                                    if (placeMode.entry.revision_count > 0) {
+                                        e.stopPropagation();
+                                        openHistoryPopup(placeMode.entry);
+                                    }
+                                }}
                             >
-                                <span className="flex-1 truncate font-bold">
-                                    {formatCalendarTaskLabel(task.label)}
-                                </span>
-                                <RevisionBadge
-                                    count={task.revision_count}
-                                    originalDate={task.original_date}
-                                    currentDate={dayKey}
-                                />
-                            </div>
-                        );
-                    })}
-
-                    {/* Generated tasks (from dashboard) */}
-                    {generatedTasks.map((task) => {
-                        const taskCompleted = isLinkedTaskCompleted(task);
-                        return (
-                            <div
-                                key={task.id}
-                                className={`flex items-center rounded-md border px-1 md:px-1.5 py-0.5 text-[6px] md:text-[8px] ${
-                                    taskCompleted
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                        : "border-amber-100 bg-amber-50 text-amber-800"
-                                }`}
-                            >
-                                <span className="flex-1 truncate font-semibold opacity-75">
-                                    {formatCalendarTaskLabel(task.label)}
-                                </span>
-                            </div>
-                        );
-                    })}
+                                {placeMode.mode === "visit" ? placeMode.companyName || "Visit" : placeMode.mode}
+                            </span>
+                            <RevisionBadge
+                                count={placeMode.entry.revision_count}
+                                originalDate={placeMode.entry.original_date}
+                                currentDate={dayKey}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -978,10 +913,14 @@ const MCTC = () => {
                                     const visibleDayTasks = dayTasks.slice(0, 2);
                                     const hiddenTaskCount = Math.max(dayTasks.length - visibleDayTasks.length, 0);
 
+                                    const isDropHere = dropTarget?.dayKey === key;
+                                    const isDragging = dragData !== null;
+
                                     return (
                                         <div
                                             key={key}
-                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-white`}
+                                            onClick={() => openDayPopup(key)}
+                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-white cursor-pointer hover:bg-slate-50/50`}
                                         >
                                             <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
                                                 <span className="flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black bg-[#1e293b] text-white">
@@ -996,6 +935,7 @@ const MCTC = () => {
                                                             visibleDayTasks.map((task) => {
                                                                 const taskCompleted = isLinkedTaskCompleted(task);
                                                                 const isMctcTaskWithRevs = task.type === "task" && task.revision_count > 0;
+
                                                                 return (
                                                                     <div
                                                                         key={task.id}
