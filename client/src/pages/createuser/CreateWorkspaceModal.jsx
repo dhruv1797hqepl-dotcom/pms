@@ -304,7 +304,6 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                                     icon={Briefcase}
                                     label="Assign SGM"
                                     multiple
-                                    singleSelect
                                     options={sgmOptions}
                                     value={formData.assigned_sgms}
                                     onChange={(v) => setFormData({ ...formData, assigned_sgms: normalizeIdList(v) })}

@@ -286,10 +286,23 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
                 <p className="text-sm font-bold text-slate-700">{currentClient?.company_name || 'Loading...'}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-[9px] uppercase font-black text-slate-400 tracking-widest">Lead SGM</p>
-                <p className="text-sm font-bold text-slate-700">
-                  {currentClient?.assigned_sgms_details?.[0]?.full_name || 'Unassigned'}
-                </p>
+                <label className="text-[9px] uppercase font-black text-slate-400 tracking-widest">Lead SGM</label>
+                {(currentClient?.assigned_sgms_details?.length || 0) > 1 ? (
+                  <select
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:border-[#f5914e] outline-none transition-all"
+                    value={formData.assigned_sgm || ''}
+                    onChange={(e) => setFormData({ ...formData, assigned_sgm: e.target.value ? Number(e.target.value) : '' })}
+                  >
+                    <option value="">Unassigned</option>
+                    {currentClient.assigned_sgms_details.map((sgm) => (
+                      <option key={sgm.id} value={sgm.id}>{sgm.full_name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm font-bold text-slate-700">
+                    {currentClient?.assigned_sgms_details?.[0]?.full_name || 'Unassigned'}
+                  </p>
+                )}
               </div>
             </div>
 
