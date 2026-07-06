@@ -3537,3 +3537,15 @@ INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=36 | M=7 |
 INFO:root:Sub Found: TEST2 - 7/2026 (Approved)
 INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=36 | M=7 | Y=2026 | Count=1
 INFO:root:Sub Found: TEST2 - 7/2026 (Approved)
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 37 | Month: 7 | Year: 2026 | Count: 0
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 37 | Month: 7 | Year: 2026 | Count: 0
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=37 | M=7 | Y=2026 | Count=0
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=37 | M=7 | Y=2026 | Count=0
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 36 | Month: 7 | Year: 2026 | Count: 0
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 36 | Month: 7 | Year: 2026 | Count: 0
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=36 | M=7 | Y=2026 | Count=1
+INFO:root:Sub Found: TEST2 - 7/2026 (Approved)
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=36 | M=7 | Y=2026 | Count=1
+INFO:root:Sub Found: TEST2 - 7/2026 (Approved)
+WARNING:django.request:Bad Request: /api/admin/create-user/
+WARNING:django.request:Bad Request: /api/admin/create-user/
