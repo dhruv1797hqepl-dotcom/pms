@@ -1,0 +1,2160 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Box } from 'lucide-react';
+import Sidebar from '../../components/Sidebar';
+import api from '../../api';
+
+const stepDefinitions = [
+  'Take input / format from Senior',
+  'Train / transfer the information to the internal team (SC or FHH?)',
+  'Prepare and review the relevant documents',
+  'Checking to be done by Senior',
+  'Conduct the training / auditing / discussion / time study, etc.',
+  'Share the output (test score / photographs / auditing report / discussion MOM)',
+  'Feedback / approval / agreement from relevant process owner / client owner',
+];
+
+const stepPercentages = [10, 20, 50, 60, 70, 80, 100];
+const SKIP_OWNER_VALUE = 'skip';
+const SKIP_REMARKS_TOKEN = '__SKIPPED__';
+
+const DDFMS = () => {
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+
+  const { clientId } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [approvedPeriod, setApprovedPeriod] = useState(null);
+  const [periodOptions, setPeriodOptions] = useState([]);
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [clientName, setClientName] = useState('');
+  const [responsibleOptions, setResponsibleOptions] = useState([]);
+
+  const [deliverables, setDeliverables] = useState([]);
+  const [contributorHoursByDeliverable, setContributorHoursByDeliverable] = useState({});
+  const [startDatesByDeliverable, setStartDatesByDeliverable] = useState({});
+  const [submittedRows, setSubmittedRows] = useState({});
+  const [editingSubmittedRows, setEditingSubmittedRows] = useState({});
+  const [completedStepRows, setCompletedStepRows] = useState({});
+  const [rowSubmitLoading, setRowSubmitLoading] = useState({});
+  const [monthStartWorkingDate, setMonthStartWorkingDate] = useState('');
+
+  const [tableData, setTableData] = useState({});
+  const [saveNonce, setSaveNonce] = useState(0);
+  const [autosaveState, setAutosaveState] = useState('idle');
+  const [autosaveError, setAutosaveError] = useState('');
+  const [isBackendReady, setIsBackendReady] = useState(false);
+  const [activePlanId, setActivePlanId] = useState(null);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+
+  const tableDataRef = useRef({});
+  const backendDeliverableMapRef = useRef({});
+  const stepIdMapRef = useRef({});
+  const completedStepRowsRef = useRef({});
+  const startDatesByDeliverableRef = useRef({});
+  const pendingChangedKeysRef = useRef(new Set());
+  const userEditedKeysRef = useRef(new Set());
+  const autosaveTimeoutRef = useRef(null);
+  const savedMonthStartDateRef = useRef('');
+  const initializedContextKeyRef = useRef('');
+  const initializationInFlightRef = useRef(false);
+
+  const getUserEditedStorageKey = () => {
+    if (!clientId || !approvedPeriod?.year || !approvedPeriod?.month) return '';
+    const month = String(approvedPeriod.month).padStart(2, '0');
+    return `ddfms-user-edited:${clientId}:${approvedPeriod.year}-${month}`;
+  };
+
+  const loadUserEditedKeysFromStorage = () => {
+    const storageKey = getUserEditedStorageKey();
+    if (!storageKey) return new Set();
+
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw);
+      return new Set(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const persistUserEditedKeysToStorage = () => {
+    const storageKey = getUserEditedStorageKey();
+    if (!storageKey) return;
+    sessionStorage.setItem(storageKey, JSON.stringify(Array.from(userEditedKeysRef.current)));
+  };
+
+  const markCellAsUserEdited = (cellKey) => {
+    if (!cellKey) return;
+    userEditedKeysRef.current.add(cellKey);
+    persistUserEditedKeysToStorage();
+  };
+
+  const isCellUserEdited = (cellKey) => userEditedKeysRef.current.has(cellKey);
+
+  const pruneUserEditedKeysForEmptyCells = (tableData) => {
+    const pruned = new Set();
+    userEditedKeysRef.current.forEach((key) => {
+      const value = tableData[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        pruned.add(key);
+      }
+    });
+
+    if (pruned.size !== userEditedKeysRef.current.size) {
+      userEditedKeysRef.current = pruned;
+      persistUserEditedKeysToStorage();
+    }
+  };
+
+  const getMemberDisplayName = (member) => {
+    const fullName = String(member?.full_name || '').trim();
+    if (fullName) return fullName;
+
+    const firstName = String(member?.first_name || '').trim();
+    const lastName = String(member?.last_name || '').trim();
+    const combinedName = `${firstName} ${lastName}`.trim();
+    if (combinedName) return combinedName;
+
+    const username = String(member?.username || member?.name || '').trim();
+    if (username) return username;
+
+    const email = String(member?.email || '').trim();
+    if (email) return email.split('@')[0];
+
+    return 'Unnamed';
+  };
+
+  const formatDateYYYYMMDD = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatPeriodKey = (year, month) => `${year}-${String(month).padStart(2, '0')}`;
+
+  const parsePeriodKey = (key) => {
+    if (!key || typeof key !== 'string') return null;
+    const match = key.match(/^(\d{4})-(\d{2})$/);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!year || !month || month < 1 || month > 12) return null;
+
+    return { year, month, key: formatPeriodKey(year, month) };
+  };
+
+  const getPreviousWorkingDateSkippingSunday = (dateStr) => {
+    if (!dateStr) return '';
+
+    const date = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return '';
+
+    date.setDate(date.getDate() - 1);
+    while (date.getDay() === 0) {
+      date.setDate(date.getDate() - 1);
+    }
+
+    return formatDateYYYYMMDD(date);
+  };
+
+  const shiftSundayTargetDateToSaturday = (dateStr) => {
+    if (!dateStr) return '';
+
+    const parsed = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+
+    if (parsed.getDay() === 0) {
+      parsed.setDate(parsed.getDate() - 1);
+    }
+
+    return formatDateYYYYMMDD(parsed);
+  };
+
+  const getLastWorkingDayOfMonth = (year, monthIndex) => {
+    const date = new Date(year, monthIndex + 1, 0);
+    while (date.getDay() === 0 || date.getDay() === 6) {
+      date.setDate(date.getDate() - 1);
+    }
+    return date;
+  };
+
+  const getMonthStartWorkingDateSkippingSunday = (year, monthIndex) => {
+    const date = new Date(year, monthIndex, 1);
+    while (date.getDay() === 0) {
+      date.setDate(date.getDate() + 1);
+    }
+    return formatDateYYYYMMDD(date);
+  };
+
+  const getStepDatesFromPercentages = (step7DateStr, startWorkingDateStr) => {
+    if (!step7DateStr || !startWorkingDateStr) return null;
+
+    const step7Date = new Date(`${step7DateStr}T00:00:00`);
+    const startDate = new Date(`${startWorkingDateStr}T00:00:00`);
+    if (Number.isNaN(step7Date.getTime()) || Number.isNaN(startDate.getTime())) return null;
+
+    const totalDaysBetween = Math.max(
+      0,
+      Math.round((step7Date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    );
+    const prefillPercentages = stepPercentages.slice(0, 6);
+
+    return prefillPercentages.map((percentage) => {
+      const stepTargetDay = Math.ceil((percentage / 100) * totalDaysBetween);
+      const computedDate = new Date(startDate);
+      computedDate.setDate(computedDate.getDate() + stepTargetDay);
+
+      return shiftSundayTargetDateToSaturday(formatDateYYYYMMDD(computedDate));
+    });
+  };
+
+  const getDeliverableStartDate = (deliverableId) => {
+    return startDatesByDeliverable[deliverableId] || '';
+  };
+
+  const getRowStartDateForPrefill = (deliverableId) => {
+    return getDeliverableStartDate(deliverableId)
+      || monthStartWorkingDate
+      || savedMonthStartDateRef.current
+      || '';
+  };
+
+  const getArrayFromResponse = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+    return [];
+  };
+
+  const parseResponsibleId = (value) => {
+    if (!value || typeof value !== 'string' || !value.startsWith('id:')) return null;
+    const raw = value.slice(3);
+    return /^\d+$/.test(raw) ? Number(raw) : null;
+  };
+
+  const isSkippedOwner = (value) => String(value || '').toLowerCase() === SKIP_OWNER_VALUE;
+
+  const getSourceSignature = (sourceType, sourceId) => {
+    const safeSourceType = sourceType || 'MANUAL';
+    const safeSourceId = sourceId === null || sourceId === undefined ? '' : String(sourceId);
+    return `${safeSourceType}:${safeSourceId}`;
+  };
+
+  const getApiErrorMessage = (error) => {
+    const data = error?.response?.data;
+    if (!data) return error?.message || 'Unknown error';
+    if (typeof data === 'string') return data;
+    if (data.detail) return String(data.detail);
+    if (data.is_submitted) {
+      return Array.isArray(data.is_submitted) ? data.is_submitted[0] : String(data.is_submitted);
+    }
+    const firstFieldError = Object.values(data).find((value) => Array.isArray(value) && value.length > 0);
+    if (firstFieldError) return String(firstFieldError[0]);
+    return 'Request failed';
+  };
+
+  const areAllDeliverablesSynced = () => {
+    if (deliverables.length === 0) return false;
+    return deliverables.every((deliverable) => Boolean(backendDeliverableMapRef.current[deliverable.id]));
+  };
+
+  const syncDeliverablesWithBackend = async (planId) => {
+    if (!planId || deliverables.length === 0) {
+      return { success: false, startDateMap: {}, submittedMap: {} };
+    }
+
+    try {
+      const deliverablesRes = await api.get(`ddfms/deliverables/?plan_id=${planId}`);
+      const backendDeliverables = getArrayFromResponse(deliverablesRes.data);
+      const existingBySignature = backendDeliverables.reduce((acc, item) => {
+        const signature = getSourceSignature(item?.source_type, item?.source_id);
+        acc[signature] = item;
+        return acc;
+      }, {});
+
+      const frontendToBackendMap = { ...backendDeliverableMapRef.current };
+      const frontendStartDateMap = { ...startDatesByDeliverableRef.current };
+      const frontendSubmittedMap = { ...submittedRows };
+
+      for (let index = 0; index < deliverables.length; index += 1) {
+        const deliverable = deliverables[index];
+        const signature = getSourceSignature(deliverable.sourceType, deliverable.sourceId);
+        let backendDeliverable = existingBySignature[signature];
+        const pendingStartDate = startDatesByDeliverableRef.current[deliverable.id] || '';
+        const rowStartDate = pendingStartDate || deliverable.startDate || '';
+        const normalizedRowStartDate = rowStartDate || null;
+
+        try {
+          const safeTitle = deliverable.title ? String(deliverable.title).substring(0, 200) : '';
+          if (!backendDeliverable) {
+            const createDeliverableRes = await api.post('ddfms/deliverables/', {
+              plan: planId,
+              source_type: deliverable.sourceType || 'MANUAL',
+              source_id: deliverable.sourceId,
+              title: safeTitle,
+              start_date: normalizedRowStartDate,
+              target_date: deliverable.targetDate || null,
+              order_index: index,
+            });
+            backendDeliverable = createDeliverableRes.data;
+            existingBySignature[signature] = backendDeliverable;
+          } else {
+            const backendStartDate = backendDeliverable?.start_date
+              ? String(backendDeliverable.start_date).slice(0, 10)
+              : '';
+
+            const needsDateUpdate = normalizedRowStartDate && backendStartDate !== normalizedRowStartDate;
+            const needsTitleUpdate = backendDeliverable.title !== safeTitle;
+
+            if (needsDateUpdate || needsTitleUpdate) {
+              const payload = {};
+              if (needsDateUpdate) payload.start_date = normalizedRowStartDate;
+              if (needsTitleUpdate) payload.title = safeTitle;
+
+              const updateDeliverableRes = await api.patch(`ddfms/deliverables/${backendDeliverable.id}/`, payload);
+              backendDeliverable = updateDeliverableRes.data;
+              existingBySignature[signature] = backendDeliverable;
+            }
+          }
+        } catch (itemError) {
+          console.error(`Failed to sync deliverable ${deliverable.id}`, itemError);
+          continue;
+        }
+
+        if (backendDeliverable?.id) {
+          frontendToBackendMap[deliverable.id] = backendDeliverable.id;
+        }
+
+        frontendStartDateMap[deliverable.id] = backendDeliverable?.start_date
+          ? String(backendDeliverable.start_date).slice(0, 10)
+          : (rowStartDate || '');
+
+        frontendSubmittedMap[deliverable.id] = Boolean(backendDeliverable?.is_submitted);
+      }
+
+      backendDeliverableMapRef.current = frontendToBackendMap;
+      setStartDatesByDeliverable(frontendStartDateMap);
+      setSubmittedRows(frontendSubmittedMap);
+
+      const success = deliverables.every((deliverable) => Boolean(frontendToBackendMap[deliverable.id]));
+      return {
+        success,
+        startDateMap: frontendStartDateMap,
+        submittedMap: frontendSubmittedMap,
+      };
+    } catch (error) {
+      console.error('Failed to sync DDFMS deliverables with backend', error);
+      return { success: false, startDateMap: {}, submittedMap: {} };
+    }
+  };
+
+  const persistDeliverableStep = async (deliverableFrontendId, stepIndex) => {
+    const backendDeliverableId = backendDeliverableMapRef.current[deliverableFrontendId];
+    if (!backendDeliverableId) return false;
+
+    const stepNumber = stepIndex + 1;
+    const ownerKey = `${deliverableFrontendId}-${stepIndex}-owner`;
+    const dateKey = `${deliverableFrontendId}-${stepIndex}-date`;
+
+    const payload = {
+      deliverable: backendDeliverableId,
+      step_number: stepNumber,
+      responsible: parseResponsibleId(tableDataRef.current[ownerKey]),
+      target_date: isSkippedOwner(tableDataRef.current[ownerKey]) ? null : (tableDataRef.current[dateKey] || null),
+      remarks: isSkippedOwner(tableDataRef.current[ownerKey]) ? SKIP_REMARKS_TOKEN : '',
+    };
+
+    const stepLookupKey = `${backendDeliverableId}-${stepNumber}`;
+    const existingStepId = stepIdMapRef.current[stepLookupKey];
+
+    if (existingStepId) {
+      await api.patch(`ddfms/steps/${existingStepId}/`, payload);
+    } else {
+      const createRes = await api.post('ddfms/steps/', payload);
+      const createdStepId = createRes?.data?.id;
+      if (createdStepId) {
+        stepIdMapRef.current[stepLookupKey] = createdStepId;
+      }
+    }
+
+    if (stepNumber === 7 && payload.target_date) {
+      await api.patch(`ddfms/deliverables/${backendDeliverableId}/`, {
+        target_date: payload.target_date,
+      });
+
+      setDeliverables((prev) => prev.map((deliverable) => (
+        String(deliverable.id) === String(deliverableFrontendId)
+          ? { ...deliverable, targetDate: payload.target_date }
+          : deliverable
+      )));
+    }
+
+    return true;
+  };
+
+  const saveAllDeliverableSteps = async (deliverableFrontendId) => {
+    try {
+      for (let stepIndex = 0; stepIndex < stepDefinitions.length; stepIndex += 1) {
+        const saved = await persistDeliverableStep(deliverableFrontendId, stepIndex);
+        if (!saved) return false;
+      }
+
+      Array.from(pendingChangedKeysRef.current)
+        .filter((key) => key.startsWith(`${deliverableFrontendId}-`))
+        .forEach((key) => pendingChangedKeysRef.current.delete(key));
+
+      return true;
+    } catch (error) {
+      console.error(`Failed to save steps for deliverable ${deliverableFrontendId}`, error);
+      return false;
+    }
+  };
+
+  const savePendingChanges = async () => {
+    const changedKeys = Array.from(pendingChangedKeysRef.current);
+    if (changedKeys.length === 0) return true;
+
+    const uniqueStepTokens = new Set();
+    const tokenToKeys = {};
+
+    changedKeys.forEach((key) => {
+      const match = key.match(/^(.*)-(\d+)-(owner|date)$/);
+      if (!match) return;
+
+      const deliverableId = match[1];
+      const stepIndex = Number(match[2]);
+      const token = `${deliverableId}-${stepIndex}`;
+      uniqueStepTokens.add(token);
+
+      if (!tokenToKeys[token]) tokenToKeys[token] = [];
+      tokenToKeys[token].push(key);
+    });
+
+    if (uniqueStepTokens.size === 0) {
+      pendingChangedKeysRef.current.clear();
+      return true;
+    }
+
+    setAutosaveState('saving');
+    setAutosaveError('');
+
+    const failedTokens = [];
+
+    for (const token of uniqueStepTokens) {
+      try {
+        const tokenMatch = token.match(/^(.*)-(\d+)$/);
+        if (!tokenMatch) continue;
+
+        const deliverableFrontendId = tokenMatch[1];
+        const stepIndex = Number(tokenMatch[2]);
+        await persistDeliverableStep(deliverableFrontendId, stepIndex);
+
+        const savedKeys = tokenToKeys[token] || [];
+        savedKeys.forEach((savedKey) => pendingChangedKeysRef.current.delete(savedKey));
+      } catch (error) {
+        failedTokens.push(token);
+      }
+    }
+
+    if (failedTokens.length > 0) {
+      setAutosaveState('error');
+      setAutosaveError('Auto-save failed for some changes. It will retry on your next edit.');
+      return false;
+    }
+
+    setAutosaveState('saved');
+    setAutosaveError('');
+    return true;
+  };
+
+  const getMissingRequiredSteps = (deliverableId) => {
+    const missingSteps = [];
+
+    stepDefinitions.forEach((_, stepIndex) => {
+      const ownerKey = `${deliverableId}-${stepIndex}-owner`;
+      const dateKey = `${deliverableId}-${stepIndex}-date`;
+      const hasOwner = Boolean(tableDataRef.current[ownerKey]);
+      const hasDate = Boolean(tableDataRef.current[dateKey]);
+
+      if (isSkippedOwner(tableDataRef.current[ownerKey])) {
+        return;
+      }
+
+      if (!hasOwner || !hasDate) {
+        missingSteps.push(stepIndex + 1);
+      }
+    });
+
+    return missingSteps;
+  };
+
+  const isStepCompleted = (deliverableId, stepIndex) =>
+    Boolean(completedStepRowsRef.current?.[`${deliverableId}-${stepIndex}`]);
+
+  const toggleSubmittedRowEditMode = async (deliverableId) => {
+    const backendDeliverableId = backendDeliverableMapRef.current[deliverableId];
+    if (!backendDeliverableId) return;
+
+    setRowSubmitLoading((prev) => ({ ...prev, [deliverableId]: true }));
+    try {
+      await api.patch(`ddfms/deliverables/${backendDeliverableId}/`, { is_submitted: false });
+
+      setSubmittedRows((prev) => ({ ...prev, [deliverableId]: false }));
+      setEditingSubmittedRows((prev) => ({ ...prev, [deliverableId]: false }));
+    } catch (error) {
+      console.error('Failed to enable row edit mode', error);
+      alert('Failed to enable row edit mode.');
+    } finally {
+      setRowSubmitLoading((prev) => ({ ...prev, [deliverableId]: false }));
+    }
+  };
+
+  const handleAssignAllSteps = async () => {
+    const toSubmit = deliverables.filter(d => !submittedRows[d.id]);
+
+    if (toSubmit.length === 0) {
+      alert('No pending changes to assign.');
+      return;
+    }
+
+    // Check for missing steps in any of the rows to be submitted
+    const rowsWithErrors = [];
+    toSubmit.forEach(d => {
+      const missing = getMissingRequiredSteps(d.id);
+      if (missing.length > 0) {
+        rowsWithErrors.push({ title: d.title, steps: missing });
+      }
+    });
+
+    if (rowsWithErrors.length > 0) {
+      const errorMsg = rowsWithErrors
+        .map(err => `"${err.title}": Missing steps ${err.steps.join(', ')}`)
+        .join('\n');
+      alert(`Cannot assign all steps. Some rows are incomplete:\n\n${errorMsg}`);
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to assign steps for all ${toSubmit.length} deliverables?`)) {
+      return;
+    }
+
+    if (!areAllDeliverablesSynced()) {
+      if (!activePlanId) {
+        alert('DDFMS is still initializing. Please wait a moment and try again.');
+        return;
+      }
+
+      setIsBulkSubmitting(true);
+      const syncResult = await syncDeliverablesWithBackend(activePlanId);
+      if (!syncResult.success) {
+        setIsBulkSubmitting(false);
+        alert('Unable to sync deliverables with the server. Please refresh the page and try again.');
+        return;
+      }
+    }
+
+    setIsBulkSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+    let firstFailureMessage = '';
+
+    for (const d of toSubmit) {
+      const backendDeliverableId = backendDeliverableMapRef.current[d.id];
+      if (!backendDeliverableId) {
+        failCount++;
+        if (!firstFailureMessage) {
+          firstFailureMessage = `"${d.title}": deliverable is not synced with the server.`;
+        }
+        continue;
+      }
+
+      const stepsSaved = await saveAllDeliverableSteps(d.id);
+      if (!stepsSaved) {
+        failCount++;
+        if (!firstFailureMessage) {
+          firstFailureMessage = `"${d.title}": failed to save step assignments.`;
+        }
+        continue;
+      }
+
+      try {
+        await api.patch(`ddfms/deliverables/${backendDeliverableId}/`, { is_submitted: true });
+        setSubmittedRows((prev) => ({ ...prev, [d.id]: true }));
+        setEditingSubmittedRows((prev) => ({ ...prev, [d.id]: false }));
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to submit row ${d.id}`, error);
+        failCount++;
+        if (!firstFailureMessage) {
+          firstFailureMessage = `"${d.title}": ${getApiErrorMessage(error)}`;
+        }
+      }
+    }
+
+    setIsBulkSubmitting(false);
+    if (failCount === 0) {
+      alert(`Successfully assigned all ${successCount} deliverables.`);
+    } else {
+      const detail = firstFailureMessage ? `\n\nFirst error:\n${firstFailureMessage}` : '';
+      alert(`Assigned ${successCount} deliverables. ${failCount} failed.${detail}`);
+    }
+  };
+
+  useEffect(() => {
+    const fetchApprovedDeliverables = async () => {
+      if (!clientId) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError('');
+
+      try {
+        // Fetch client details early to ensure name is displayed even if no submissions exist
+        const clientRes = await api.get(`clients/${clientId}/`);
+        const clientData = clientRes?.data || {};
+        setClientName(clientData?.company_name || clientData?.name || '');
+
+        const submissionsRes = await api.get(`ddtme/submissions/?client_id=${clientId}`);
+        const submissions = Array.isArray(submissionsRes.data)
+          ? submissionsRes.data
+          : (submissionsRes.data?.results || []);
+
+        const approvedSubmissions = submissions.filter(
+          (entry) => String(entry?.status || '').toUpperCase() === 'APPROVED'
+        );
+
+        if (approvedSubmissions.length === 0) {
+          setPeriodOptions([]);
+          const selectedFromKey = parsePeriodKey(selectedPeriodKey);
+          const fallbackDate = selectedFromKey
+            ? new Date(selectedFromKey.year, selectedFromKey.month - 1, 1)
+            : new Date();
+          const fallbackMonth = fallbackDate.getMonth() + 1;
+          const fallbackYear = fallbackDate.getFullYear();
+          const fallbackKey = formatPeriodKey(fallbackYear, fallbackMonth);
+
+          if (!selectedFromKey) {
+            setSelectedPeriodKey(fallbackKey);
+          }
+
+          setApprovedPeriod(null);
+          setDeliverables([]);
+          setContributorHoursByDeliverable({});
+          setMonthStartWorkingDate(getMonthStartWorkingDateSkippingSunday(fallbackYear, fallbackMonth - 1));
+          setActivePlanId(null);
+          setTableData({});
+          setIsBackendReady(false);
+          setStartDatesByDeliverable({});
+          setSubmittedRows({});
+          setEditingSubmittedRows({});
+          setRowSubmitLoading({});
+          backendDeliverableMapRef.current = {};
+          stepIdMapRef.current = {};
+          pendingChangedKeysRef.current.clear();
+          return;
+        }
+
+        const sortedApproved = [...approvedSubmissions].sort((a, b) => {
+          const yearDiff = Number(b?.year || 0) - Number(a?.year || 0);
+          if (yearDiff !== 0) return yearDiff;
+
+          const monthDiff = Number(b?.month || 0) - Number(a?.month || 0);
+          if (monthDiff !== 0) return monthDiff;
+
+          return Number(b?.id || 0) - Number(a?.id || 0);
+        });
+
+        const uniquePeriodsMap = new Map();
+        sortedApproved.forEach((submission) => {
+          const month = Number(submission?.month || 0);
+          const year = Number(submission?.year || 0);
+          if (!month || !year) return;
+
+          const key = `${year}-${String(month).padStart(2, '0')}`;
+          if (!uniquePeriodsMap.has(key)) {
+            uniquePeriodsMap.set(key, {
+              key,
+              month,
+              year,
+              label: new Date(year, month - 1, 1).toLocaleString('default', {
+                month: 'long',
+                year: 'numeric',
+              }),
+            });
+          }
+        });
+
+        const availablePeriods = Array.from(uniquePeriodsMap.values());
+        setPeriodOptions(availablePeriods);
+
+        const selectedFromKey = parsePeriodKey(selectedPeriodKey);
+        const latestAvailablePeriod = availablePeriods[0] || null;
+        const selectedPeriod = selectedFromKey || latestAvailablePeriod;
+
+        if (!selectedFromKey && latestAvailablePeriod?.key && latestAvailablePeriod.key !== selectedPeriodKey) {
+          setSelectedPeriodKey(latestAvailablePeriod.key);
+        }
+
+        const selectedMonth = selectedPeriod?.month;
+        const selectedYear = selectedPeriod?.year;
+
+        if (!selectedMonth || !selectedYear) {
+          setApprovedPeriod(null);
+          setDeliverables([]);
+          setContributorHoursByDeliverable({});
+          setResponsibleOptions([]);
+          setStartDatesByDeliverable({});
+          setSubmittedRows({});
+          setEditingSubmittedRows({});
+          setRowSubmitLoading({});
+          return;
+        }
+
+        const hasApprovedForSelectedMonth = availablePeriods.some(
+          (period) => Number(period.month) === Number(selectedMonth) && Number(period.year) === Number(selectedYear)
+        );
+
+        if (!hasApprovedForSelectedMonth) {
+          setApprovedPeriod(null);
+          setDeliverables([]);
+          setContributorHoursByDeliverable({});
+          setResponsibleOptions([]);
+          setMonthStartWorkingDate(getMonthStartWorkingDateSkippingSunday(Number(selectedYear), Number(selectedMonth) - 1));
+          setActivePlanId(null);
+          setTableData({});
+          setIsBackendReady(false);
+          setStartDatesByDeliverable({});
+          setSubmittedRows({});
+          setEditingSubmittedRows({});
+          setRowSubmitLoading({});
+          backendDeliverableMapRef.current = {};
+          stepIdMapRef.current = {};
+          pendingChangedKeysRef.current.clear();
+          return;
+        }
+
+        setApprovedPeriod({ month: selectedMonth, year: selectedYear });
+
+        const headers = {};
+
+        const [bigTasksRes, additionalTasksRes, entriesRes] = await Promise.all([
+          api.get(`ddtme/big-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers }),
+          api.get(`ddtme/additional-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers }),
+          api.get(`ddtme/man-day-entries/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`, { headers }),
+        ]);
+
+        const role = (localStorage.getItem('role') || '').toUpperCase();
+
+        const fetchProjectsData = async () => {
+          try {
+            if (role === 'EMPLOYEE') {
+              const employeeProjectsRes = await api.get('employees/my-projects/', { headers });
+              const employeeProjects = Array.isArray(employeeProjectsRes.data)
+                ? employeeProjectsRes.data
+                : (employeeProjectsRes.data?.results || []);
+
+              return employeeProjects.filter((project) => {
+                const projectClientId = project?.client?.id
+                  ?? project?.client_id
+                  ?? project?.client;
+                return String(projectClientId) === String(clientId);
+              });
+            }
+
+            let projectsEndpoint = `projects/?client_id=${clientId}`;
+            if (role === 'SGM') projectsEndpoint = `sgm/projects/?client_id=${clientId}`;
+
+            const projectsRes = await api.get(projectsEndpoint, { headers });
+            return Array.isArray(projectsRes.data)
+              ? projectsRes.data
+              : (projectsRes.data?.results || []);
+          } catch (projectError) {
+            console.warn('Failed to load projects for DDFMS context, continuing with defaults.', projectError);
+            return [];
+          }
+        };
+
+        const [projectsData, employeesRes] = await Promise.all([
+          fetchProjectsData(),
+          api.get(`clients/${clientId}/employees/`, { headers }),
+        ]);
+
+        // Re-using clientData from above
+
+        const clientEmployees = Array.isArray(employeesRes.data)
+          ? employeesRes.data
+          : (employeesRes.data?.results || []);
+
+        const entriesData = Array.isArray(entriesRes.data)
+          ? entriesRes.data
+          : (entriesRes.data?.results || []);
+
+        const bigTasks = Array.isArray(bigTasksRes.data)
+          ? bigTasksRes.data
+          : (bigTasksRes.data?.results || []);
+        const additionalTasks = Array.isArray(additionalTasksRes.data)
+          ? additionalTasksRes.data
+          : (additionalTasksRes.data?.results || []);
+
+        const selectedMonthIndex = Number(selectedMonth) - 1;
+        const selectedPeriodStart = new Date(Number(selectedYear), selectedMonthIndex, 1);
+        const selectedPeriodLastWorkingDate = getLastWorkingDayOfMonth(Number(selectedYear), selectedMonthIndex);
+        const selectedPeriodLastWorkingDateStr = formatDateYYYYMMDD(selectedPeriodLastWorkingDate);
+
+        const normalizeTask = (task, type, index) => {
+          const rawDate = task?.target_date ? String(task.target_date).slice(0, 10) : '';
+          const parsedDate = rawDate ? new Date(`${rawDate}T00:00:00`) : null;
+
+          if (parsedDate && parsedDate < selectedPeriodStart) {
+            return null;
+          }
+
+          const effectiveTargetDate = rawDate || selectedPeriodLastWorkingDateStr;
+
+          return {
+            id: `${type}-${task?.id || index}`,
+            title: type === 'big' ? (task.ddtme_title || task.title) : task.title,
+            startDate: '',
+            targetDate: effectiveTargetDate,
+            sourceType: type === 'big' ? 'BIG_TASK' : 'ADDITIONAL_TASK',
+            sourceId: task?.id ?? null,
+          };
+        };
+
+        const normalizedBigTasks = bigTasks
+          .filter((task) => task?.title)
+          .map((task, index) => normalizeTask(task, 'big', index))
+          .filter(Boolean);
+
+        const normalizedAdditionalTasks = additionalTasks
+          .filter((task) => task?.title)
+          .map((task, index) => normalizeTask(task, 'add', index))
+          .filter(Boolean);
+
+        const normalized = [...normalizedBigTasks, ...normalizedAdditionalTasks];
+
+        const normalizeHierarchyToken = (value) => {
+          const raw = String(value || '').toUpperCase();
+          if (raw === 'SS') return 'HQEPL';
+          return raw;
+        };
+
+        const formatHierarchyLabel = (hierarchy) => hierarchy;
+
+        const hierarchyRank = { HH: 1, SC: 2, SGM: 3, HQEPL: 4 };
+        const memberMap = new Map();
+
+        const extractHierarchyMap = (hierarchyItems) => {
+          const hierarchyMap = {};
+          if (!Array.isArray(hierarchyItems)) return hierarchyMap;
+
+          hierarchyItems.forEach((item) => {
+            const rawHierarchy = normalizeHierarchyToken(item?.hierarchy);
+            if (!hierarchyRank[rawHierarchy]) return;
+
+            const keys = [];
+            if (item.member_id !== null && item.member_id !== undefined) {
+              keys.push(`id:${String(item.member_id)}`);
+            }
+            if (item.member_key !== null && item.member_key !== undefined) {
+              keys.push(`key:${String(item.member_key)}`);
+            }
+
+            keys.forEach((key) => {
+              const existingHierarchy = hierarchyMap[key];
+              if (!existingHierarchy || hierarchyRank[rawHierarchy] >= hierarchyRank[existingHierarchy]) {
+                hierarchyMap[key] = rawHierarchy;
+              }
+            });
+          });
+
+          return hierarchyMap;
+        };
+
+        const hierarchyByMemberGlobal = extractHierarchyMap(clientData?.client_hierarchy);
+
+        // Keep project-level hierarchy as a fallback for older data while preferring client-level hierarchy.
+        projectsData.forEach((project) => {
+          const projectHierarchyMap = extractHierarchyMap(project?.project_hierarchy);
+          Object.entries(projectHierarchyMap).forEach(([key, hierarchy]) => {
+            const existingHierarchy = hierarchyByMemberGlobal[key];
+            if (!existingHierarchy) {
+              hierarchyByMemberGlobal[key] = hierarchy;
+            }
+          });
+        });
+
+        const addOption = (value, label, hierarchy) => {
+          const safeHierarchy = hierarchyRank[hierarchy] ? hierarchy : 'HH';
+          const next = { value, label, hierarchy: safeHierarchy };
+          const existing = memberMap.get(value);
+
+          const isUnnamedLabel = (rawLabel) => String(rawLabel || '').toLowerCase().startsWith('unnamed');
+
+          if (!existing) {
+            memberMap.set(value, next);
+            return;
+          }
+
+          const nextRank = hierarchyRank[next.hierarchy] || 0;
+          const existingRank = hierarchyRank[existing.hierarchy] || 0;
+
+          if (nextRank > existingRank) {
+            memberMap.set(value, next);
+            return;
+          }
+
+          if (nextRank === existingRank && isUnnamedLabel(existing.label) && !isUnnamedLabel(next.label)) {
+            memberMap.set(value, next);
+          }
+        };
+
+        const getFallbackHierarchy = (member) => {
+          const rawHierarchy = normalizeHierarchyToken(member?.hierarchy || member?.role);
+          return hierarchyRank[rawHierarchy] ? rawHierarchy : 'HH';
+        };
+
+        clientEmployees.forEach((employee, index) => {
+          const memberId = employee?.user_id ?? employee?.id ?? employee?.employee_id;
+          const memberKey = String(memberId ?? `employee-${index}`);
+          const username = getMemberDisplayName(employee);
+          const hierarchy = hierarchyByMemberGlobal[`id:${memberKey}`]
+            || hierarchyByMemberGlobal[`key:${memberKey}`]
+            || getFallbackHierarchy(employee);
+          addOption(`id:${memberKey}`, `${username} (${formatHierarchyLabel(hierarchy)})`, hierarchy);
+        });
+
+        const clientInternalTeam = Array.isArray(clientData?.internal_team_details)
+          ? clientData.internal_team_details
+          : [];
+
+        clientInternalTeam.forEach((member, index) => {
+          const memberId = member?.id;
+          const memberKey = String(memberId ?? `internal-${index}`);
+          const username = getMemberDisplayName(member);
+          const hierarchy = hierarchyByMemberGlobal[`id:${memberKey}`]
+            || hierarchyByMemberGlobal[`key:${memberKey}`]
+            || getFallbackHierarchy(member);
+          addOption(`id:${memberKey}`, `${username} (${formatHierarchyLabel(hierarchy)})`, hierarchy);
+        });
+
+        const clientSgms = Array.isArray(clientData?.assigned_sgms_details)
+          ? clientData.assigned_sgms_details
+          : [];
+
+        clientSgms.forEach((sgm, index) => {
+          const sgmId = sgm?.id;
+          const sgmKey = String(sgmId ?? `sgm-${index}`);
+          const username = getMemberDisplayName(sgm);
+          addOption(`id:${sgmKey}`, `${username} (SGM)`, 'SGM');
+        });
+
+        const clientHqepls = Array.isArray(clientData?.assigned_hqepls_details)
+          ? clientData.assigned_hqepls_details
+          : [];
+
+        clientHqepls.forEach((member, index) => {
+          const memberId = member?.id;
+          const memberKey = String(memberId ?? `hqepl-${index}`);
+          const username = getMemberDisplayName(member);
+          const hierarchyFromMap = hierarchyByMemberGlobal[`id:${memberKey}`]
+            || hierarchyByMemberGlobal[`key:${memberKey}`]
+            || getFallbackHierarchy(member)
+            || 'HQEPL';
+          const displayHierarchy = hierarchyFromMap === 'HH' ? 'HQEPL' : hierarchyFromMap;
+          addOption(`id:${memberKey}`, `${username} (${formatHierarchyLabel(displayHierarchy)})`, 'HQEPL');
+        });
+
+        projectsData.forEach((project) => {
+          const hierarchyByMember = extractHierarchyMap(project?.project_hierarchy);
+
+          const sgmDetail = project?.assigned_sgm_details
+            || (project?.assigned_sgm_name || project?.assigned_sgm
+              ? {
+                id: project.assigned_sgm,
+                username: project.assigned_sgm_name || 'Unnamed',
+                full_name: project.assigned_sgm_name || 'Unnamed',
+              }
+              : null);
+
+          if (sgmDetail) {
+            const name = getMemberDisplayName(sgmDetail);
+            const value = `id:${String(sgmDetail.id ?? `sgm-${name}`)}`;
+            addOption(value, `${name} (SGM)`, 'SGM');
+          }
+
+          const internalTeam = Array.isArray(project?.team_members_details)
+            ? project.team_members_details
+            : (Array.isArray(project?.internal_team_details) ? project.internal_team_details : []);
+
+          internalTeam.forEach((member, index) => {
+            const name = getMemberDisplayName(member);
+            const memberId = member?.id;
+            const memberKey = String(memberId ?? `internal-${index}-${name}`);
+            const hierarchy = hierarchyByMemberGlobal[`id:${memberKey}`]
+              || hierarchyByMemberGlobal[`key:${memberKey}`]
+              || hierarchyByMember[`id:${memberKey}`]
+              || hierarchyByMember[`key:${memberKey}`]
+              || getFallbackHierarchy(member);
+            const value = `id:${memberKey}`;
+            addOption(value, `${name} (${formatHierarchyLabel(hierarchy)})`, hierarchy);
+          });
+        });
+
+        const responsibleMembers = Array.from(memberMap.values());
+        setResponsibleOptions(responsibleMembers);
+
+        const userIdByEmployeeId = new Map();
+        clientEmployees.forEach((employee) => {
+          const employeeId = employee?.employee_id ?? employee?.id;
+          const userId = employee?.user_id;
+          if (employeeId !== null && employeeId !== undefined && userId !== null && userId !== undefined) {
+            userIdByEmployeeId.set(String(employeeId), String(userId));
+          }
+        });
+
+        const contributorHoursMap = {};
+        entriesData.forEach((entry) => {
+          const planHours = Number(entry?.plan_hours || 0);
+          const offHours = Number(entry?.off_hours || 0);
+          const totalHours = planHours + offHours;
+          if (totalHours <= 0) return;
+
+          const taskKey = entry?.big_task
+            ? `big-${entry.big_task}`
+            : (entry?.additional_task ? `add-${entry.additional_task}` : null);
+          if (!taskKey) return;
+
+          const entryUserId = entry?.employee_user_id;
+          const employeeId = entry?.employee_id ?? entry?.employee;
+          const resolvedUserId = entryUserId ?? userIdByEmployeeId.get(String(employeeId));
+          const userId = resolvedUserId !== null && resolvedUserId !== undefined ? String(resolvedUserId) : '';
+          if (!userId) return;
+
+          if (!contributorHoursMap[taskKey]) contributorHoursMap[taskKey] = {};
+          const memberKey = `id:${userId}`;
+          contributorHoursMap[taskKey][memberKey] = Number(contributorHoursMap[taskKey][memberKey] || 0) + totalHours;
+        });
+
+        setContributorHoursByDeliverable(contributorHoursMap);
+        setDeliverables(normalized);
+      } catch (error) {
+        console.error('Failed to fetch approved DDTME deliverables for DDFMS', error);
+        setLoadError('Failed to load approved DDTME data.');
+        setApprovedPeriod(null);
+        setPeriodOptions([]);
+        setDeliverables([]);
+        setContributorHoursByDeliverable({});
+        setResponsibleOptions([]);
+        setStartDatesByDeliverable({});
+        setSubmittedRows({});
+        setEditingSubmittedRows({});
+        setRowSubmitLoading({});
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchApprovedDeliverables();
+  }, [clientId, selectedPeriodKey]);
+
+  const updateCell = (key, value) => {
+    const dateKeyMatch = key.match(/^(.*)-(\d+)-date$/);
+    const ownerKeyMatch = key.match(/^(.*)-(\d+)-owner$/);
+
+    if (ownerKeyMatch) {
+      const deliverableId = ownerKeyMatch[1];
+      const stepIndex = Number(ownerKeyMatch[2]);
+      if (isStepCompleted(deliverableId, stepIndex)) {
+        return;
+      }
+    }
+
+    const parsedStepIndex = dateKeyMatch ? Number(dateKeyMatch[2]) : null;
+    const shouldShiftDate = Boolean(dateKeyMatch) && parsedStepIndex !== 6;
+    const normalizedDateValue = shouldShiftDate ? shiftSundayTargetDateToSaturday(value) : value;
+
+    if (dateKeyMatch) {
+      const deliverableId = dateKeyMatch[1];
+      const stepIndex = Number(dateKeyMatch[2]);
+      if (isStepCompleted(deliverableId, stepIndex)) {
+        return;
+      }
+    }
+
+    if (dateKeyMatch && normalizedDateValue && normalizedDateValue < todayStr) {
+      alert("Target date cannot be in the past.");
+      return;
+    }
+
+    markCellAsUserEdited(key);
+
+    if (!dateKeyMatch) {
+      pendingChangedKeysRef.current.add(key);
+
+      const nextTableData = { ...tableDataRef.current, [key]: normalizedDateValue };
+      tableDataRef.current = nextTableData;
+      setTableData(nextTableData);
+
+      setSaveNonce((prev) => prev + 1);
+
+      if (ownerKeyMatch && isBackendReady) {
+        if (autosaveTimeoutRef.current) {
+          clearTimeout(autosaveTimeoutRef.current);
+          autosaveTimeoutRef.current = null;
+        }
+        void savePendingChanges();
+      }
+      return;
+    }
+
+    const deliverableId = dateKeyMatch[1];
+    const stepIndex = Number(dateKeyMatch[2]);
+
+    if (stepIndex === 6) {
+      setTableData((prev) => {
+        const next = { ...prev, [key]: normalizedDateValue };
+        pendingChangedKeysRef.current.add(key);
+
+        const rowStartDate = getRowStartDateForPrefill(deliverableId);
+        const computedStepDates = getStepDatesFromPercentages(normalizedDateValue, rowStartDate);
+        if (computedStepDates) {
+          computedStepDates.forEach((computedDate, index) => {
+            const computedDateKey = `${deliverableId}-${index}-date`;
+            if (isStepCompleted(deliverableId, index)) return;
+            if (isCellUserEdited(computedDateKey)) return;
+            next[computedDateKey] = computedDate;
+            pendingChangedKeysRef.current.add(computedDateKey);
+          });
+        }
+
+        const step7DateKey = `${deliverableId}-6-date`;
+        if (!isStepCompleted(deliverableId, 6)) {
+          next[step7DateKey] = normalizedDateValue;
+          pendingChangedKeysRef.current.add(step7DateKey);
+        }
+
+        tableDataRef.current = next;
+
+        return next;
+      });
+
+      setSaveNonce((prev) => prev + 1);
+      return;
+    }
+
+    setTableData((prev) => {
+      const next = { ...prev, [key]: normalizedDateValue };
+      pendingChangedKeysRef.current.add(key);
+
+      let previousDate = normalizedDateValue;
+      for (let index = stepIndex - 1; index >= 0; index -= 1) {
+        previousDate = getPreviousWorkingDateSkippingSunday(previousDate);
+        const previousDateKey = `${deliverableId}-${index}-date`;
+        if (isStepCompleted(deliverableId, index)) continue;
+        if (isCellUserEdited(previousDateKey)) continue;
+        next[previousDateKey] = previousDate;
+        pendingChangedKeysRef.current.add(previousDateKey);
+      }
+
+      tableDataRef.current = next;
+
+      return next;
+    });
+
+    setSaveNonce((prev) => prev + 1);
+  };
+
+  const handleDeliverableStartDateChange = async (deliverableId, startDateValue) => {
+    if (startDateValue && startDateValue < todayStr) {
+      alert("Start date cannot be in the past.");
+      return;
+    }
+    const normalizedStartDate = startDateValue || '';
+
+    setStartDatesByDeliverable((prev) => ({
+      ...prev,
+      [deliverableId]: normalizedStartDate,
+    }));
+
+    const step7DateKey = `${deliverableId}-6-date`;
+    const step7Date = tableDataRef.current[step7DateKey] || '';
+
+    const prefillStartDate = normalizedStartDate || getRowStartDateForPrefill(deliverableId);
+    if (step7Date && prefillStartDate) {
+      setTableData((prev) => {
+        const computedStepDates = getStepDatesFromPercentages(step7Date, prefillStartDate);
+        if (!computedStepDates) return prev;
+
+        let changed = false;
+        const next = { ...prev };
+
+        computedStepDates.forEach((computedDate, index) => {
+          const computedDateKey = `${deliverableId}-${index}-date`;
+          if (isCellUserEdited(computedDateKey)) return;
+          if (next[computedDateKey] !== computedDate) {
+            next[computedDateKey] = computedDate;
+            pendingChangedKeysRef.current.add(computedDateKey);
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          tableDataRef.current = next;
+          setSaveNonce((nonce) => nonce + 1);
+          return next;
+        }
+
+        return prev;
+      });
+    }
+
+    const backendDeliverableId = backendDeliverableMapRef.current[deliverableId];
+    if (!backendDeliverableId) return;
+
+    try {
+      await api.patch(`ddfms/deliverables/${backendDeliverableId}/`, {
+        start_date: normalizedStartDate || null,
+      });
+    } catch (error) {
+      console.error('Failed to save deliverable start date', error);
+      alert('Failed to save start date. Please retry.');
+    }
+  };
+
+  useEffect(() => {
+    if (!approvedPeriod?.month || !approvedPeriod?.year) return;
+
+    const year = Number(approvedPeriod.year);
+    const monthIndex = Number(approvedPeriod.month) - 1;
+    if (Number.isNaN(year) || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return;
+
+    initializedContextKeyRef.current = '';
+    initializationInFlightRef.current = false;
+    setMonthStartWorkingDate(getMonthStartWorkingDateSkippingSunday(year, monthIndex));
+    setIsBackendReady(false);
+    setActivePlanId(null);
+    setTableData({});
+    backendDeliverableMapRef.current = {};
+    stepIdMapRef.current = {};
+    pendingChangedKeysRef.current.clear();
+    userEditedKeysRef.current = loadUserEditedKeysFromStorage();
+  }, [approvedPeriod]);
+
+  useEffect(() => {
+    tableDataRef.current = tableData;
+  }, [tableData]);
+
+  useEffect(() => {
+    completedStepRowsRef.current = completedStepRows;
+  }, [completedStepRows]);
+
+  useEffect(() => {
+    startDatesByDeliverableRef.current = startDatesByDeliverable;
+  }, [startDatesByDeliverable]);
+
+  useEffect(() => {
+    const seniorSteps = new Set([1, 2, 4, 6, 7]);
+    const forceSgmSteps = new Set([1, 4]);
+
+    const toHierarchy = (option) => {
+      const hierarchy = String(option?.hierarchy || 'HH').toUpperCase();
+      return hierarchy === 'SS' ? 'HQEPL' : hierarchy;
+    };
+    const byRole = (options, role) => options.filter((option) => toHierarchy(option) === role);
+
+    const pickHighestHours = (options, taskHoursMap) => {
+      if (!Array.isArray(options) || options.length === 0) return null;
+
+      const sorted = [...options].sort((a, b) => {
+        const hoursA = Number(taskHoursMap?.[a.value] || 0);
+        const hoursB = Number(taskHoursMap?.[b.value] || 0);
+        if (hoursA !== hoursB) return hoursB - hoursA;
+        return String(a?.label || '').localeCompare(String(b?.label || ''));
+      });
+
+      return sorted[0] || null;
+    };
+
+    const pickSeniorAndJunior = (taskHoursMap) => {
+      const membersWithHours = responsibleOptions.filter((option) => Number(taskHoursMap?.[option.value] || 0) > 0);
+      const sgmScHhWithHours = membersWithHours.filter((option) => ['SGM', 'SC', 'HH'].includes(toHierarchy(option)));
+      const sgmScHhOptions = responsibleOptions.filter((option) => ['SGM', 'SC', 'HH'].includes(toHierarchy(option)));
+      const pool = sgmScHhWithHours.length > 0 ? sgmScHhWithHours : sgmScHhOptions;
+
+      const allSgmPool = byRole(responsibleOptions, 'SGM');
+      const hqeplWithHours = byRole(membersWithHours, 'HQEPL');
+      const hqeplPool = byRole(responsibleOptions, 'HQEPL');
+      const step14Owner = hqeplWithHours.length > 0
+        ? (pickHighestHours(hqeplWithHours, taskHoursMap) || null)
+        : null;
+
+      const sgmWithHours = byRole(sgmScHhWithHours, 'SGM');
+      const scWithHours = byRole(sgmScHhWithHours, 'SC');
+      const hhWithHours = byRole(sgmScHhWithHours, 'HH');
+
+      const sgmPool = byRole(pool, 'SGM');
+      const scPool = byRole(pool, 'SC');
+      const hhPool = byRole(pool, 'HH');
+
+      const hasSgmHours = sgmWithHours.length > 0;
+      const hasScHours = scWithHours.length > 0;
+      const hasHhHours = hhWithHours.length > 0;
+
+      // Rule 1: SGM + SC + HH all have hours -> SGM senior, HH junior.
+      if (hasSgmHours && hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+          step14Owner,
+        };
+      }
+
+      // Rule 2: SC + HH have hours (No SGM) -> SC senior, HH junior.
+      if (!hasSgmHours && hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+          step14Owner,
+        };
+      }
+
+      // Rule 3: SGM + HH have hours (No SC) -> SGM senior, HH junior.
+      if (hasSgmHours && !hasScHours && hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(hhWithHours, taskHoursMap) || hhPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+          step14Owner,
+        };
+      }
+
+      // Rule 4: SGM + SC have hours (No HH) -> SGM senior, SC junior.
+      if (hasSgmHours && hasScHours && !hasHhHours) {
+        return {
+          senior: pickHighestHours(sgmWithHours, taskHoursMap) || sgmPool[0] || null,
+          junior: pickHighestHours(scWithHours, taskHoursMap) || scPool[0] || null,
+          enforceStep14WithSgm: false,
+          nonStep14Owner: null,
+          step14Owner,
+        };
+      }
+
+      // Rule 5: Only HH has hours -> step 1 and 4 to SGM, rest to HH.
+      if (!hasSgmHours && !hasScHours && hasHhHours) {
+        const forcedSgm = (hqeplWithHours.length > 0 ? pickHighestHours(hqeplWithHours, taskHoursMap) : null)
+          || pickHighestHours(allSgmPool, taskHoursMap)
+          || allSgmPool[0]
+          || pickHighestHours(hhWithHours, taskHoursMap)
+          || null;
+        if (!forcedSgm) return { senior: null, junior: null };
+        const forcedHh = pickHighestHours(hhWithHours, taskHoursMap) || forcedSgm;
+        return {
+          senior: forcedSgm,
+          junior: forcedHh,
+          enforceStep14WithSgm: true,
+          nonStep14Owner: forcedHh,
+          step14Owner,
+        };
+      }
+
+      // Rule 6: Only SC has hours -> step 1 and 4 to SGM, rest to SC.
+      if (!hasSgmHours && hasScHours && !hasHhHours) {
+        const forcedSgm = (hqeplWithHours.length > 0 ? pickHighestHours(hqeplWithHours, taskHoursMap) : null)
+          || pickHighestHours(allSgmPool, taskHoursMap)
+          || allSgmPool[0]
+          || null;
+        if (!forcedSgm) return { senior: null, junior: null };
+        const forcedSc = pickHighestHours(scWithHours, taskHoursMap) || forcedSgm;
+        return {
+          senior: forcedSgm,
+          junior: forcedSc,
+          enforceStep14WithSgm: true,
+          nonStep14Owner: forcedSc,
+          step14Owner,
+        };
+      }
+
+      const senior = pickHighestHours(sgmPool, taskHoursMap)
+        || pickHighestHours(scPool, taskHoursMap)
+        || pickHighestHours(hhPool, taskHoursMap)
+        || pool[0]
+        || null;
+
+      if (!senior) {
+        if (step14Owner) {
+          return {
+            senior: step14Owner,
+            junior: step14Owner,
+            enforceStep14WithSgm: false,
+            nonStep14Owner: step14Owner,
+            step14Owner,
+          };
+        }
+        return { senior: null, junior: null, step14Owner: null };
+      }
+
+      const seniorRole = toHierarchy(senior);
+      let junior = null;
+
+      if (seniorRole === 'SGM') {
+        junior = pickHighestHours(hhPool, taskHoursMap)
+          || pickHighestHours(scPool, taskHoursMap)
+          || senior;
+      } else if (seniorRole === 'SC') {
+        junior = pickHighestHours(hhPool, taskHoursMap)
+          || pickHighestHours(sgmPool, taskHoursMap)
+          || senior;
+      } else {
+        junior = senior;
+      }
+
+      return { senior, junior, enforceStep14WithSgm: false, nonStep14Owner: null, step14Owner };
+    };
+
+    const applyPrefillsToTableData = (
+      loadedTableData,
+      planStartDate,
+      submittedMap,
+      completedStepMap,
+      startDatesMap
+    ) => {
+      deliverables.forEach((deliverable) => {
+        const taskTargetDate = deliverable?.targetDate ? String(deliverable.targetDate).slice(0, 10) : '';
+        const step7DateKey = `${deliverable.id}-6-date`;
+        const normalizedTaskTargetDate = taskTargetDate ? shiftSundayTargetDateToSaturday(taskTargetDate) : '';
+        const step7SourceDate = normalizedTaskTargetDate || loadedTableData[step7DateKey] || '';
+
+        if (normalizedTaskTargetDate && !isCellUserEdited(step7DateKey)) {
+          loadedTableData[step7DateKey] = normalizedTaskTargetDate;
+        } else if (!step7SourceDate) {
+          return;
+        }
+
+        const rowStartDate = startDatesMap[deliverable.id] || planStartDate || '';
+        const computedStepDates = getStepDatesFromPercentages(step7SourceDate, rowStartDate);
+        if (!computedStepDates) return;
+
+        computedStepDates.forEach((computedDate, index) => {
+          const computedDateKey = `${deliverable.id}-${index}-date`;
+          if (isCellUserEdited(computedDateKey)) return;
+          if (computedDate) {
+            loadedTableData[computedDateKey] = computedDate;
+          }
+        });
+      });
+
+      if (responsibleOptions.length === 0) return;
+
+      deliverables.forEach((deliverable) => {
+        const isRowLocked = Boolean(submittedMap[deliverable.id]);
+        if (isRowLocked) return;
+
+        const taskHoursMap = contributorHoursByDeliverable?.[deliverable.id] || {};
+        const { senior, junior, enforceStep14WithSgm, nonStep14Owner, step14Owner } = pickSeniorAndJunior(taskHoursMap);
+        if (!senior?.value || !junior?.value) return;
+
+        const fallbackStep14Sgm = pickHighestHours(byRole(responsibleOptions, 'SGM'), taskHoursMap)
+          || byRole(responsibleOptions, 'SGM')[0]
+          || senior;
+
+        stepDefinitions.forEach((_, stepIndex) => {
+          const ownerKey = `${deliverable.id}-${stepIndex}-owner`;
+          const completedKey = `${deliverable.id}-${stepIndex}`;
+          if (completedStepMap[completedKey]) return;
+
+          const stepNumber = stepIndex + 1;
+          let desiredOwner = seniorSteps.has(stepNumber) ? senior.value : junior.value;
+
+          if (enforceStep14WithSgm) {
+            desiredOwner = forceSgmSteps.has(stepNumber)
+              ? senior.value
+              : (nonStep14Owner?.value || junior.value);
+          }
+
+          if (forceSgmSteps.has(stepNumber)) {
+            desiredOwner = step14Owner?.value || fallbackStep14Sgm?.value || desiredOwner;
+          }
+
+          const existingOwnerValue = loadedTableData[ownerKey];
+          const cellAlreadyHasOwner = existingOwnerValue && String(existingOwnerValue).trim() !== '';
+          if (!cellAlreadyHasOwner && !isCellUserEdited(ownerKey) && desiredOwner) {
+            loadedTableData[ownerKey] = desiredOwner;
+          }
+        });
+      });
+    };
+
+    const initializeDdfmsData = async () => {
+      if (!clientId || !approvedPeriod) {
+        return;
+      }
+
+      if (deliverables.length === 0) {
+        return;
+      }
+
+      const contextKey = `${clientId}:${approvedPeriod.year}-${approvedPeriod.month}`;
+      if (initializationInFlightRef.current) {
+        return;
+      }
+
+      const needsBackendInit = initializedContextKeyRef.current !== contextKey || !areAllDeliverablesSynced();
+
+      if (!needsBackendInit) {
+        if (!isBackendReady || responsibleOptions.length === 0) {
+          return;
+        }
+
+        userEditedKeysRef.current = loadUserEditedKeysFromStorage();
+        const nextTableData = { ...tableDataRef.current };
+        pruneUserEditedKeysForEmptyCells(nextTableData);
+        applyPrefillsToTableData(
+          nextTableData,
+          monthStartWorkingDate || savedMonthStartDateRef.current,
+          submittedRows,
+          completedStepRowsRef.current,
+          startDatesByDeliverableRef.current
+        );
+        tableDataRef.current = nextTableData;
+        setTableData(nextTableData);
+        return;
+      }
+
+      initializationInFlightRef.current = true;
+      userEditedKeysRef.current = loadUserEditedKeysFromStorage();
+
+      try {
+        setIsBackendReady(false);
+        setAutosaveState('saving');
+        setAutosaveError('');
+
+        const plansRes = await api.get(
+          `ddfms/plans/?client_id=${clientId}&month=${approvedPeriod.month}&year=${approvedPeriod.year}`
+        );
+        const existingPlans = getArrayFromResponse(plansRes.data);
+
+        const defaultMonthStartDate = getMonthStartWorkingDateSkippingSunday(
+          Number(approvedPeriod.year),
+          Number(approvedPeriod.month) - 1
+        );
+
+        let plan = existingPlans[0] || null;
+        if (!plan) {
+          const createPlanRes = await api.post('ddfms/plans/', {
+            client: Number(clientId),
+            month: Number(approvedPeriod.month),
+            year: Number(approvedPeriod.year),
+            start_working_date: defaultMonthStartDate,
+          });
+          plan = createPlanRes.data;
+        }
+
+        const planId = plan?.id;
+        if (!planId) {
+          throw new Error('Unable to initialize DDFMS plan');
+        }
+
+        setActivePlanId(planId);
+
+        const resolvedMonthStartDate = plan?.start_working_date
+          ? String(plan.start_working_date).slice(0, 10)
+          : defaultMonthStartDate;
+        setMonthStartWorkingDate(resolvedMonthStartDate);
+        savedMonthStartDateRef.current = resolvedMonthStartDate;
+
+        const syncResult = await syncDeliverablesWithBackend(planId);
+        if (!syncResult.success) {
+          throw new Error('Unable to sync all deliverables with the server');
+        }
+
+        const frontendToBackendMap = backendDeliverableMapRef.current;
+        const frontendStartDateMap = syncResult.startDateMap;
+        const frontendSubmittedMap = syncResult.submittedMap;
+
+        setEditingSubmittedRows({});
+        setRowSubmitLoading({});
+
+        const stepsRes = await api.get(`ddfms/steps/?plan_id=${planId}`);
+        const backendSteps = getArrayFromResponse(stepsRes.data);
+        const backendToFrontendMap = Object.entries(frontendToBackendMap).reduce((acc, [frontendId, backendId]) => {
+          acc[String(backendId)] = frontendId;
+          return acc;
+        }, {});
+
+        const loadedTableData = {};
+        const loadedStepIdMap = {};
+        const loadedCompletedStepMap = {};
+        const loadedStepKeySet = new Set();
+
+        backendSteps.forEach((step) => {
+          const backendDeliverableId = step?.deliverable;
+          const frontendDeliverableId = backendToFrontendMap[String(backendDeliverableId)];
+          if (!frontendDeliverableId) return;
+
+          const stepNumber = Number(step?.step_number || 0);
+          if (stepNumber < 1 || stepNumber > 12) return;
+
+          const stepIndex = stepNumber - 1;
+          const ownerKey = `${frontendDeliverableId}-${stepIndex}-owner`;
+          const dateKey = `${frontendDeliverableId}-${stepIndex}-date`;
+          loadedStepKeySet.add(dateKey);
+          const rawStepDate = step?.target_date ? String(step.target_date).slice(0, 10) : '';
+          const normalizedStepDate = shiftSundayTargetDateToSaturday(rawStepDate);
+
+          loadedTableData[ownerKey] = step?.responsible
+            ? `id:${step.responsible}`
+            : (String(step?.remarks || '').includes(SKIP_REMARKS_TOKEN) ? SKIP_OWNER_VALUE : '');
+          loadedTableData[dateKey] = normalizedStepDate;
+
+          if (rawStepDate && rawStepDate !== normalizedStepDate) {
+            pendingChangedKeysRef.current.add(dateKey);
+          }
+
+          loadedStepIdMap[`${backendDeliverableId}-${stepNumber}`] = step?.id;
+          if (step?.has_completed_task) {
+            loadedCompletedStepMap[`${frontendDeliverableId}-${stepIndex}`] = true;
+          }
+        });
+
+        pruneUserEditedKeysForEmptyCells(loadedTableData);
+        applyPrefillsToTableData(
+          loadedTableData,
+          resolvedMonthStartDate,
+          frontendSubmittedMap,
+          loadedCompletedStepMap,
+          frontendStartDateMap
+        );
+
+        stepIdMapRef.current = loadedStepIdMap;
+        setCompletedStepRows(loadedCompletedStepMap);
+
+        tableDataRef.current = loadedTableData;
+        setTableData(loadedTableData);
+
+        setIsBackendReady(true);
+        if (areAllDeliverablesSynced()) {
+          initializedContextKeyRef.current = contextKey;
+        }
+        setAutosaveState('saved');
+      } catch (error) {
+        console.error('Failed to initialize DDFMS autosave context', error);
+        setActivePlanId(null);
+        setIsBackendReady(false);
+        setAutosaveState('error');
+        setAutosaveError('Auto-save unavailable. Please refresh and try again.');
+      } finally {
+        initializationInFlightRef.current = false;
+      }
+    };
+
+    initializeDdfmsData();
+  }, [
+    clientId,
+    approvedPeriod,
+    deliverables,
+    responsibleOptions,
+    contributorHoursByDeliverable,
+    monthStartWorkingDate,
+    isBackendReady,
+    submittedRows,
+  ]);
+
+  useEffect(() => {
+    if (!activePlanId || !monthStartWorkingDate) return;
+    if (savedMonthStartDateRef.current === monthStartWorkingDate) return;
+
+    let isCancelled = false;
+
+    const saveMonthStartDate = async () => {
+      try {
+        await api.patch(`ddfms/plans/${activePlanId}/`, {
+          start_working_date: monthStartWorkingDate,
+        });
+
+        if (!isCancelled) {
+          savedMonthStartDateRef.current = monthStartWorkingDate;
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Failed to save DDFMS month start working date', error);
+        }
+      }
+    };
+
+    saveMonthStartDate();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activePlanId, monthStartWorkingDate]);
+
+  useEffect(() => {
+    if (saveNonce <= 0) return;
+    if (!isBackendReady) return;
+
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    autosaveTimeoutRef.current = setTimeout(() => {
+      savePendingChanges();
+    }, 600);
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [saveNonce, isBackendReady]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isBackendReady) return;
+    if (pendingChangedKeysRef.current.size === 0) return;
+    setSaveNonce((prev) => prev + 1);
+  }, [isBackendReady]);
+
+
+  const currentPeriodIndex = periodOptions.findIndex((period) => period.key === selectedPeriodKey);
+  const parsedSelectedPeriod = parsePeriodKey(selectedPeriodKey);
+  const fallbackDisplayPeriod = approvedPeriod
+    ? {
+      year: Number(approvedPeriod.year),
+      month: Number(approvedPeriod.month),
+    }
+    : (periodOptions[0]
+      ? { year: Number(periodOptions[0].year), month: Number(periodOptions[0].month) }
+      : { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
+
+  const displayYear = parsedSelectedPeriod?.year || fallbackDisplayPeriod.year;
+  const displayMonth = parsedSelectedPeriod?.month || fallbackDisplayPeriod.month;
+  const currentPeriodLabel = new Date(displayYear, displayMonth - 1, 1).toLocaleString('default', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const canGoPrevMonth = true;
+  const canGoNextMonth = true;
+
+  const goToPrevMonth = () => {
+    const prevDate = new Date(displayYear, displayMonth - 2, 1);
+    setSelectedPeriodKey(formatPeriodKey(prevDate.getFullYear(), prevDate.getMonth() + 1));
+  };
+
+  const goToNextMonth = () => {
+    const nextDate = new Date(displayYear, displayMonth, 1);
+    setSelectedPeriodKey(formatPeriodKey(nextDate.getFullYear(), nextDate.getMonth() + 1));
+  };
+
+  const stickyDeliverableWidthPx = 480;
+  const stickyDateColumnWidthPx = 150;
+  const stickyStartDateLeftPx = stickyDeliverableWidthPx;
+  const stickyTargetDateLeftPx = stickyDeliverableWidthPx + stickyDateColumnWidthPx;
+  const stickyMainHeaderTopPx = 0;
+  const stickySubHeaderTopPx = 88;
+  const ddfmsScrollbarStyles = `
+    .ddfms-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: #64748b #e2e8f0;
+    }
+
+    .ddfms-scrollbar::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .ddfms-scrollbar::-webkit-scrollbar-track {
+      background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 999px;
+    }
+
+    .ddfms-scrollbar::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+      border-radius: 999px;
+      border: 2px solid #e2e8f0;
+    }
+
+    .ddfms-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+    }
+  `;
+
+  return (
+    <div className="h-screen w-screen bg-[#FBFBFB] antialiased font-sans flex overflow-hidden">
+      <style>{ddfmsScrollbarStyles}</style>
+      <Sidebar />
+
+      <main className="flex-1 overflow-hidden transition-all duration-300">
+        <div className="h-full max-w-[1600px] mx-auto px-6 pt-6 pb-4 flex flex-col gap-6">
+          <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm flex items-center justify-between gap-4">
+            {/* LEFT: BACK BUTTON + ICON + TITLE */}
+            <div className="flex items-center gap-4 min-w-[300px]">
+              <button
+                onClick={() => navigate('/ddfms')}
+                className="p-1.5 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                title="Back to DDFMS"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <div className="h-6 w-px bg-slate-200 ml-1"></div>
+
+              <div className="flex items-center gap-3 ml-1">
+                <span className="p-1.5 rounded-lg bg-slate-100 text-slate-700">
+                  <Box size={16} />
+                </span>
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-xl font-bold text-slate-900 tracking-tight">DDFMS Workspace</h1>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em]">
+                    <span
+                      className={`px-2 py-1 rounded-full border ${autosaveState === 'saving'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : autosaveState === 'error'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                    >
+                      {autosaveState === 'saving'
+                        ? 'Autosaving'
+                        : autosaveState === 'error'
+                          ? 'Save error'
+                          : 'Autosaved'}
+                    </span>
+                    {autosaveError && autosaveState === 'error' && (
+                      <span className="text-rose-500 tracking-normal font-semibold">
+                        {autosaveError}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CENTER: CLIENT NAME */}
+            <div className="flex-1 text-center">
+              <p className="text-slate-600 text-sm font-bold truncate px-4">{clientName}</p>
+            </div>
+
+            {/* RIGHT: MONTH NAVIGATION */}
+            <div className="flex items-center gap-3 min-w-[200px] justify-end">
+              <button
+                type="button"
+                onClick={goToPrevMonth}
+                disabled={!canGoPrevMonth}
+                className="p-1.5 rounded-full border border-slate-200 text-slate-700 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs font-black uppercase tracking-widest text-slate-700 min-w-[120px] text-center">{currentPeriodLabel}</span>
+              <button
+                type="button"
+                onClick={goToNextMonth}
+                disabled={!canGoNextMonth}
+                className="p-1.5 rounded-full border border-slate-200 text-slate-700 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {!loading && !approvedPeriod && !loadError && (
+            <p className="text-amber-700 text-sm mt-2 font-semibold">
+              No approved DDTME submission found for selected month.
+            </p>
+          )}
+
+          {loadError && (
+            <p className="text-red-600 text-sm mt-2 font-semibold">{loadError}</p>
+          )}
+
+
+          <div className="mt-1 flex-1 min-h-0 flex flex-col gap-3">
+
+            <div
+              className="border border-slate-200 rounded-xl overflow-x-auto overflow-y-auto shadow-sm ddfms-scrollbar flex-1 min-h-0"
+            >
+              <table className="w-full min-w-[3000px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-200">
+                    <th
+                      className="sticky left-0 z-50 bg-slate-100 p-3 text-left text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                    >
+                      Deliverable / Step
+                    </th>
+                    <th
+                      className="sticky z-50 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                    >
+                      Start Date
+                    </th>
+                    <th
+                      className="sticky z-50 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200"
+                      style={{ top: `${stickyMainHeaderTopPx}px`, left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                    >
+                      Target Date
+                    </th>
+                    {stepDefinitions.map((stepText, index) => (
+                      <th
+                        key={`step-${index + 1}`}
+                        colSpan={2}
+                        className="sticky top-0 z-40 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 border-r border-slate-200 min-w-[180px]"
+                      >
+                        <div className="space-y-1 normal-case tracking-normal">
+                          <div className="uppercase text-[11px] font-black tracking-wider">Step {index + 1}</div>
+                          <div className="text-[12px] font-bold text-slate-600 leading-relaxed">{stepText}</div>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="sticky top-0 z-40 bg-slate-100 p-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-700 min-w-[180px]">
+                      Actions
+                    </th>
+                  </tr>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th
+                      className="sticky left-0 z-50 bg-slate-50 p-2 text-left text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                    >
+                      Item
+                    </th>
+                    <th
+                      className="sticky z-50 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                    >
+                      Start Date
+                    </th>
+                    <th
+                      className="sticky z-50 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200"
+                      style={{ top: `${stickySubHeaderTopPx}px`, left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                    >
+                      Target Date
+                    </th>
+                    {stepDefinitions.map((_, index) => (
+                      <React.Fragment key={`step-sub-${index + 1}`}>
+                        <th
+                          className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]"
+                          style={{ top: `${stickySubHeaderTopPx}px` }}
+                        >
+                          Responsible Person
+                        </th>
+                        <th
+                          className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 border-r border-slate-200 min-w-[140px]"
+                          style={{ top: `${stickySubHeaderTopPx}px` }}
+                        >
+                          Target Date
+                        </th>
+                      </React.Fragment>
+                    ))}
+                    <th
+                      className="sticky z-30 bg-slate-50 p-2 text-center text-[11px] font-bold text-slate-500 min-w-[180px]"
+                      style={{ top: `${stickySubHeaderTopPx}px` }}
+                    >
+                      Row Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && Array.from({ length: 5 }).map((_, rowIndex) => (
+                    <tr key={`skeleton-row-${rowIndex}`} className="border-b border-slate-100 bg-white">
+                      <td
+                        className="sticky left-0 z-20 bg-white p-3 pr-6 border-r border-slate-200"
+                        style={{ width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <div className="bg-slate-200 animate-pulse h-3 w-4 rounded" />
+                          <div className="bg-slate-200 animate-pulse h-6 w-full rounded" />
+                        </div>
+                      </td>
+                      <td className="p-3 border-r border-slate-200 text-center">
+                        <div className="bg-slate-200 animate-pulse h-6 w-full rounded" />
+                      </td>
+                      <td className="p-3 border-r border-slate-200 text-center">
+                        <div className="bg-slate-200 animate-pulse h-6 w-full rounded" />
+                      </td>
+                      {Array.from({ length: 7 }).map((_, stepIdx) => (
+                        <React.Fragment key={`skeleton-step-${stepIdx}`}>
+                          <td className="p-3 border-r border-slate-200">
+                            <div className="bg-slate-200 animate-pulse h-6 w-full rounded" />
+                          </td>
+                          <td className="p-3 border-r border-slate-200">
+                            <div className="bg-slate-200 animate-pulse h-6 w-full rounded" />
+                          </td>
+                        </React.Fragment>
+                      ))}
+                      <td className="p-3 border-r border-slate-200">
+                        <div className="bg-slate-200 animate-pulse h-8 w-20 rounded-lg mx-auto" />
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && deliverables.map((deliverable, rowIndex) => {
+                    const isRowSubmitted = Boolean(submittedRows[deliverable.id]);
+                    const isRowLocked = isRowSubmitted;
+                    const isRowSubmitting = Boolean(rowSubmitLoading[deliverable.id]);
+                    const rowBackgroundClass = isRowSubmitted ? 'bg-emerald-50/70' : 'bg-white';
+
+                    return (
+                      <tr key={deliverable.id} className={`${rowBackgroundClass} border-b border-slate-100`}>
+                        <td
+                          className={`sticky left-0 z-20 ${rowBackgroundClass} p-1.5 pr-6 border-r border-slate-200 align-top`}
+                          style={{ width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[12px] font-black text-slate-500">{rowIndex + 1})</span>
+                            <div className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-800 truncate">
+                              {deliverable.title}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td
+                          className={`sticky z-20 ${rowBackgroundClass} p-1.5 border-r border-slate-200`}
+                          style={{ left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                        >
+                          <input
+                            type="date"
+                            value={getDeliverableStartDate(deliverable.id)}
+                            min={todayStr}
+                            onChange={(e) => handleDeliverableStartDateChange(deliverable.id, e.target.value)}
+                            disabled={isRowLocked}
+                            className={`w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-700 focus:outline-none ${isRowLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                          />
+                        </td>
+
+                        <td
+                          className={`sticky z-20 ${rowBackgroundClass} p-1.5 border-r border-slate-200`}
+                          style={{ left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
+                        >
+                          <input
+                            type="date"
+                            value={deliverable.targetDate || ''}
+                            readOnly
+                            className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-700 focus:outline-none"
+                          />
+                        </td>
+
+                        {stepDefinitions.map((_, stepIndex) => {
+                          const ownerKey = `${deliverable.id}-${stepIndex}-owner`;
+                          const dateKey = `${deliverable.id}-${stepIndex}-date`;
+                          const isCompletedStep = Boolean(completedStepRows[`${deliverable.id}-${stepIndex}`]);
+                          const isStepLocked = isRowLocked || isCompletedStep;
+
+                          return (
+                            <React.Fragment key={`${deliverable.id}-${stepIndex}`}>
+                              <td className="p-1.5 border-r border-slate-200">
+                                <select
+                                  value={tableData[ownerKey] || ''}
+                                  onChange={(e) => updateCell(ownerKey, e.target.value)}
+                                  disabled={isStepLocked}
+                                  title={isCompletedStep ? 'Completed step: assignment is locked' : ''}
+                                  className={`w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-700 focus:outline-none ${isStepLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                >
+                                  <option value="">Select</option>
+                                  <option value={SKIP_OWNER_VALUE}>Skip</option>
+                                  {responsibleOptions.map((memberOption) => (
+                                    <option key={memberOption.value} value={memberOption.value}>
+                                      {memberOption.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="p-1.5 border-r border-slate-200">
+                                <input
+                                  type="date"
+                                  value={tableData[dateKey] || ''}
+                                  min={todayStr}
+                                  onChange={(e) => updateCell(dateKey, e.target.value)}
+                                  disabled={isStepLocked}
+                                  title={isCompletedStep ? 'Completed step: target date is locked' : ''}
+                                  className={`w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-700 focus:outline-none ${isStepLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                />
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+
+                        <td className={`p-1.5 border-r border-slate-200 ${rowBackgroundClass}`}>
+                          <div className="flex items-center justify-center gap-2">
+                            {isRowSubmitted ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleSubmittedRowEditMode(deliverable.id)}
+                                disabled={isRowSubmitting}
+                                className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all bg-white text-slate-700 border-slate-300 hover:bg-slate-50 shadow-sm disabled:opacity-60"
+                              >
+                                {isRowSubmitting ? 'Please Wait' : 'Edit Row'}
+                              </button>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="text-[10px] font-black text-amber-600 uppercase tracking-tighter bg-amber-50 px-2 py-0.5 rounded">
+                                  Pending Assign
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {deliverables.some((d) => !submittedRows[d.id]) && (
+                    <tr className="bg-slate-50">
+                      <td colSpan={17} className="p-3 border-r border-slate-200"></td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={handleAssignAllSteps}
+                          disabled={isBulkSubmitting || deliverables.length === 0 || !isBackendReady || !areAllDeliverablesSynced()}
+                          className={`w-full py-2.5 rounded-full text-xs font-black uppercase tracking-widest shadow-md transition-all transform active:scale-95 ${isBulkSubmitting || deliverables.length === 0
+                            ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                            : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:-translate-y-0.5 shadow-emerald-100'
+                            }`}
+                        >
+                          {isBulkSubmitting ? 'Submitting...' : 'Submit'}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading && deliverables.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4 + stepDefinitions.length * 2}
+                        className="p-6 text-center text-sm font-semibold text-slate-500"
+                      >
+                        No deliverables available from approved DDTME.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default DDFMS;

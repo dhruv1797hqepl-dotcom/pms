@@ -1,0 +1,422 @@
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import Client, ExternalTeam
+from django.db import transaction, IntegrityError
+from rest_framework.exceptions import ValidationError
+import uuid
+
+User = get_user_model()
+
+# ---------------- Client ---------------- #
+class ClientSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(write_only=True)
+    email = serializers.EmailField(write_only=True)
+    password = serializers.CharField(write_only=True)
+
+    assigned_sgms = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+    assigned_hqepls = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+    internal_team = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+
+    class Meta:
+        model = Client
+        fields = [
+            "username", "email", "password",
+            "company_name", "logo", "contact_email",
+            "phone", "website", "address", "status",
+            "employees", "assigned_sgms", "assigned_hqepls", "internal_team", "client_hierarchy"
+        ]
+
+    employees = serializers.SerializerMethodField()
+
+    def get_employees(self, obj):
+        members = obj.external_members.all()
+        data = []
+        for m in members:
+            assigned_project = m.user.projects.filter(status="ACTIVE").first()
+            project_name = assigned_project.name if assigned_project else "Not Assigned"
+            data.append({
+                "id": m.user.id,
+                "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
+                "shortform": m.user.shortform,
+                "email": m.user.email,
+                "role": m.user.role if m.user.role != "EXTERNAL" else "Client Team",
+                "status": m.status,
+                "project": project_name
+            })
+        return data
+
+    def validate_email(self, value):
+        normalized_email = value.strip().lower()
+        queryset = User.objects.filter(email=normalized_email)
+        if self.instance and self.instance.user:
+            queryset = queryset.exclude(pk=self.instance.user.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return normalized_email
+
+    def validate_username(self, value):
+        username = value.strip()
+        if self.instance:
+            queryset = User.objects.filter(username=username)
+            if self.instance.user:
+                queryset = queryset.exclude(pk=self.instance.user.pk)
+            if queryset.exists():
+                raise serializers.ValidationError("A user with this username already exists.")
+        return username
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+
+        ret["username"] = instance.user.username
+        ret["email"] = instance.user.email
+
+        def format_user(user):
+            if not user: return None
+            return {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "shortform": user.shortform,
+                "full_name": f"{user.first_name} {user.last_name}".strip() or user.username,
+                "role": user.role,
+            }
+
+        ret['assigned_sgms_details'] = [format_user(u) for u in instance.assigned_sgms.all()]
+        ret['assigned_hqepls_details'] = [format_user(u) for u in instance.assigned_hqepls.all()]
+
+        internal_users = set(instance.internal_team.all())
+
+        from projects.models import Project
+        from sgm.models import ProjectTeam
+
+        projects = Project.objects.filter(client=instance)
+        for proj in projects:
+            for emp in proj.assigned_employees.all():
+                internal_users.add(emp.user)
+            pt = ProjectTeam.objects.filter(project=proj).first()
+            if pt:
+                for member in pt.internal_members.all():
+                    internal_users.add(member)
+
+        sorted_members = sorted(
+            list(internal_users),
+            key=lambda u: (u.first_name or "", u.last_name or "", u.username or "")
+        )
+
+        ret['internal_team_details'] = [format_user(u) for u in sorted_members]
+
+        seniors = [
+            format_user(et.user) for et in instance.external_members.filter(user__role="SENIOR")
+        ]
+        ret['seniors_details'] = seniors
+
+        return ret
+
+    def _extract_relation_ids(self, request, field_name, treat_missing_as_empty=False):
+        if not request:
+            return None
+
+        data = request.data
+
+        if hasattr(data, "getlist"):
+            if not treat_missing_as_empty and field_name not in data:
+                return None
+            raw_values = data.getlist(field_name)
+        else:
+            if field_name not in data:
+                return [] if treat_missing_as_empty else None
+            raw_values = data.get(field_name)
+            if not isinstance(raw_values, list):
+                raw_values = [raw_values]
+
+        parsed_ids = []
+        for value in raw_values:
+            if value in (None, "", "null"):
+                continue
+            try:
+                parsed_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        return parsed_ids
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        raw_username = validated_data.pop("username")
+        email = validated_data.pop("email")
+        password = validated_data.pop("password")
+
+        assigned_sgms = validated_data.pop("assigned_sgms", [])
+        assigned_hqepls = validated_data.pop("assigned_hqepls", [])
+        internal_team = validated_data.pop("internal_team", [])
+
+        unique_username = f"{raw_username}_{uuid.uuid4().hex[:6]}"
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=unique_username,
+                email=email,
+                password=password,
+                role="CLIENT"
+            )
+            creator = request.user if request and request.user.is_authenticated else None
+            client = Client.objects.create(
+                user=user,
+                created_by=creator,
+                **validated_data
+            )
+
+            client.assigned_sgms.set(assigned_sgms)
+            client.assigned_hqepls.set(assigned_hqepls)
+            client.internal_team.set(internal_team)
+
+        return client
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+
+        new_username = validated_data.pop("username", None)
+        new_email = validated_data.pop("email", None)
+        new_password = validated_data.pop("password", None)
+
+        assigned_sgms = validated_data.pop("assigned_sgms", serializers.empty)
+        assigned_hqepls = validated_data.pop("assigned_hqepls", serializers.empty)
+        internal_team = validated_data.pop("internal_team", serializers.empty)
+
+        with transaction.atomic():
+            client = super().update(instance, validated_data)
+
+            user = client.user
+            user_dirty = False
+
+            if new_username:
+                user.username = new_username
+                user_dirty = True
+
+            if new_email:
+                normalized_email = new_email.strip().lower()
+                if User.objects.filter(email=normalized_email).exclude(pk=user.pk).exists():
+                    raise serializers.ValidationError({"email": "A user with this email already exists."})
+                user.email = normalized_email
+                user_dirty = True
+
+            if new_password:
+                user.set_password(new_password)
+                user_dirty = True
+
+            if user_dirty:
+                try:
+                    user.save()
+                except IntegrityError:
+                    raise serializers.ValidationError({"email": "A user with this email already exists."})
+
+            force_full_replace = bool(request and request.method == "PUT")
+
+            assigned_sgm_ids = self._extract_relation_ids(
+                request, "assigned_sgms", treat_missing_as_empty=force_full_replace,
+            )
+            assigned_hqepl_ids = self._extract_relation_ids(
+                request, "assigned_hqepls", treat_missing_as_empty=force_full_replace,
+            )
+            internal_team_ids = self._extract_relation_ids(
+                request, "internal_team", treat_missing_as_empty=force_full_replace,
+            )
+
+            if assigned_sgm_ids is not None:
+                # Accept SGM and COO roles in the SGM slot
+                sgm_users = User.objects.filter(id__in=assigned_sgm_ids, role__in=["SGM", "COO"])
+                client.assigned_sgms.set(sgm_users)
+            elif assigned_sgms is not serializers.empty:
+                client.assigned_sgms.set(assigned_sgms)
+
+            if assigned_hqepl_ids is not None:
+                # Accept HQEPL and COO roles in the HQEPL slot
+                hqepl_users = User.objects.filter(id__in=assigned_hqepl_ids, role__in=["HQEPL", "COO"])
+                client.assigned_hqepls.set(hqepl_users)
+            elif assigned_hqepls is not serializers.empty:
+                client.assigned_hqepls.set(assigned_hqepls)
+
+            if internal_team_ids is not None:
+                employee_users = User.objects.filter(id__in=internal_team_ids, role="EMPLOYEE")
+                client.internal_team.set(employee_users)
+            elif internal_team is not serializers.empty:
+                client.internal_team.set(internal_team)
+
+        return client
+
+
+class ClientListSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+
+    project_count = serializers.IntegerField(read_only=True)
+    assigned_sgms_details = serializers.SerializerMethodField()
+    assigned_hqepls_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Client
+        fields = [
+            "id", "company_name", "username", "email",
+            "contact_email", "phone", "website", "address",
+            "logo", "status", "created_at", "project_count",
+            "assigned_sgms_details", "assigned_hqepls_details"
+        ]
+
+    def get_assigned_sgms_details(self, obj):
+        return [
+            {
+                "id": u.id,
+                "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "shortform": u.shortform,
+                "email": u.email,
+                "role": u.role,
+            }
+            for u in obj.assigned_sgms.all()
+        ]
+
+    def get_assigned_hqepls_details(self, obj):
+        return [
+            {
+                "id": u.id,
+                "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "shortform": u.shortform,
+                "email": u.email,
+                "role": u.role,
+            }
+            for u in obj.assigned_hqepls.all()
+        ]
+
+
+# ---------------- External Team ---------------- #
+class ExternalMemberCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    username = serializers.CharField()
+    shortform = serializers.CharField(max_length=50)
+    password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(
+        choices=["EXTERNAL", "SENIOR"],
+        required=False,
+        default="EXTERNAL"
+    )
+
+    def create(self, validated_data):
+        client = self.context["client"]
+        email = validated_data["email"].lower().strip()
+        raw_username = validated_data["username"]
+        shortform = str(validated_data["shortform"] or "").strip().upper()
+        password = validated_data["password"]
+        role = validated_data.get("role", "EXTERNAL")
+
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            from django.utils.text import slugify
+            base_username = slugify(raw_username) or "user"
+            unique_username = base_username
+
+            while User.objects.filter(username=unique_username).exists():
+                unique_username = f"{base_username}_{uuid.uuid4().hex[:4]}"
+
+            names = raw_username.split(' ', 1)
+            first_name = names[0]
+            last_name = names[1] if len(names) > 1 else ""
+
+            user = User.objects.create_user(
+                username=unique_username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                shortform=shortform,
+                role=role
+            )
+        elif shortform and user.shortform != shortform:
+            user.shortform = shortform
+            user.save(update_fields=["shortform"])
+
+        if ExternalTeam.objects.filter(user=user, client_org=client).exists():
+            raise ValidationError("User already added to this client")
+
+        external = ExternalTeam.objects.create(
+            user=user,
+            client_org=client,
+            created_by=self.context.get("creator")
+        )
+
+        if user.role == "SENIOR":
+            from projects.models import Project
+            for project in Project.objects.filter(client=client):
+                project.external_team.add(user)
+
+        return external
+
+
+class ExternalTeamSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(write_only=True)
+    shortform = serializers.CharField(write_only=True, max_length=50)
+    email = serializers.EmailField(write_only=True)
+    password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(
+        choices=["EXTERNAL", "SENIOR"],
+        write_only=True,
+        required=False,
+        default="EXTERNAL"
+    )
+    status = serializers.ChoiceField(choices=[("active", "Active"), ("hold", "Hold"), ("inactive", "Inactive")], required=False, default="active")
+    credential_access = serializers.BooleanField(required=False, default=False)
+
+    class Meta:
+        model = ExternalTeam
+        fields = ["id", "client_org", "role", "username", "shortform", "email", "password", "status", "credential_access"]
+        extra_kwargs = {
+            "client_org": {"read_only": True}
+        }
+
+    def create(self, validated_data):
+        username = validated_data.pop("username")
+        shortform = str(validated_data.pop("shortform", "") or "").strip().upper()
+        email = validated_data.pop("email").lower().strip()
+        password = validated_data.pop("password")
+        role = validated_data.pop("role", "EXTERNAL")
+
+        credential_access = validated_data.get("credential_access", False)
+        is_active = credential_access
+
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                "username": username,
+                "shortform": shortform,
+                "role": role,
+                "is_active": is_active
+            }
+        )
+
+        if created:
+            user.set_password(password)
+            user.save()
+        else:
+            updated_fields = []
+            if shortform and user.shortform != shortform:
+                user.shortform = shortform
+                updated_fields.append("shortform")
+            if updated_fields:
+                user.save(update_fields=updated_fields)
+
+        if ExternalTeam.objects.filter(client_org=validated_data.get('client_org'), user=user).exists():
+            raise serializers.ValidationError(f"User {email} is already a member of this client.")
+
+        external = ExternalTeam.objects.create(
+            user=user,
+            **validated_data
+        )
+
+        if user.role == "SENIOR":
+            from projects.models import Project
+            client = external.client_org
+            for project in Project.objects.filter(client=client):
+                project.external_team.add(user)
+
+        return external
