@@ -389,7 +389,7 @@ const RepeatableTaskPage = () => {
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Start Date</label>
                   <input
                     required
-                    type="date"
+                    type="date" lang="en-GB"
                     value={formData.startDate}
                     min={minTaskDate}
                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
@@ -526,7 +526,7 @@ const RepeatableTaskPage = () => {
                           </td>
                           <td className="px-3 py-3">
                             <input
-                              type="date"
+                              type="date" lang="en-GB"
                               value={row.repeatEndDate}
                               min={minTaskDate}
                               onChange={(e) => updateRepeatRow(row.id, { repeatEndDate: e.target.value })}

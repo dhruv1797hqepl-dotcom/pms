@@ -5,6 +5,7 @@ from .models import MCTCEntry, MCTCEntryHistory
 
 class MCTCEntrySerializer(serializers.ModelSerializer):
     linked_task_status = serializers.ReadOnlyField(source='linked_task.status')
+    linked_task_priority = serializers.ReadOnlyField(source='linked_task.priority')
     linked_task_completion_date = serializers.ReadOnlyField(source='linked_task.completion_date')
 
     class Meta:
@@ -16,6 +17,7 @@ class MCTCEntrySerializer(serializers.ModelSerializer):
             'entry_type',
             'linked_task',
             'linked_task_status',
+            'linked_task_priority',
             'linked_task_completion_date',
             'half_type',
             'original_date',

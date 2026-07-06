@@ -47,12 +47,9 @@ API.interceptors.request.use(
     const token = localStorage.getItem("access_token") || localStorage.getItem("token") || localStorage.getItem("access");
     if (token && shouldAttachAuth) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log(`[API] Authorization header set for ${config.url}`);
     } else if (token && !shouldAttachAuth) {
-      console.log(`[API] Skipping Authorization header for external request ${config.url}`);
     } else {
       console.warn(`[API] No access_token found in localStorage for ${config.url}. Request may fail with 401.`);
-      console.log("[API] Available localStorage keys:", Object.keys(localStorage));
     }
     return config;
   },
@@ -85,6 +82,10 @@ API.interceptors.response.use(
         localStorage.removeItem("access_token");
         localStorage.removeItem("token");
         localStorage.removeItem("refresh_token");
+        
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
       }
     }
     return Promise.reject(error);

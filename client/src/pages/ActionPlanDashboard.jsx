@@ -506,9 +506,19 @@ const ActionPlanDashboard = () => {
 
   const handleProjectSelection = (projectId) => {
     setSelectedProjects(prev => {
-      const updated = prev.includes(projectId)
-        ? prev.filter(id => id !== projectId)
-        : [...prev, projectId];
+      let currentSelected = prev;
+      if (includeAllProjects) {
+        setIncludeAllProjects(false);
+        currentSelected = projectOptions.map(p => p.id);
+      }
+      
+      const updated = currentSelected.includes(projectId)
+        ? currentSelected.filter(id => id !== projectId)
+        : [...currentSelected, projectId];
+        
+      if (updated.length > 0 && updated.length === projectOptions.length) {
+        setIncludeAllProjects(true);
+      }
       return updated;
     });
   };
@@ -744,7 +754,7 @@ const ActionPlanDashboard = () => {
     return (
       <div className="h-screen w-screen bg-slate-50/50 flex overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
           <PageSkeleton />
         </main>
       </div>
@@ -787,7 +797,7 @@ const ActionPlanDashboard = () => {
             <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm text-center flex flex-col max-h-[300px] lg:max-h-[400px]">
               <h3 className="font-black text-slate-900 uppercase text-xs mb-3 tracking-widest text-left shrink-0">Project Filter</h3>
               {loading ? <p className="text-xs text-slate-400">Loading...</p> : (
-                <div className="text-left flex-1 overflow-y-auto pr-1">
+                <div className="text-left flex-1 overflow-y-auto pr-1 min-h-0 custom-scrollbar">
                   <label className="flex items-center gap-2 text-[12px] text-slate-700 mb-2 cursor-pointer font-semibold">
                     <input
                       type="checkbox"
@@ -797,6 +807,8 @@ const ActionPlanDashboard = () => {
                         setIncludeAllProjects(checked);
                         if (checked) {
                           setSelectedProjects(projectOptions.map(p => p.id));
+                        } else {
+                          setSelectedProjects([]);
                         }
                       }}
                       className="accent-slate-900"
@@ -1094,7 +1106,7 @@ const ActionPlanDashboard = () => {
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Start Date</label>
                       <input
-                        type="date"
+                        type="date" lang="en-GB"
                         value={newTask.start_date}
                         onChange={e => setNewTask({ ...newTask, start_date: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none"
@@ -1104,7 +1116,7 @@ const ActionPlanDashboard = () => {
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Target Date</label>
                       <input
-                        type="date"
+                        type="date" lang="en-GB"
                         value={newTask.target_date}
                         onChange={e => setNewTask({ ...newTask, target_date: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none"
@@ -1286,7 +1298,7 @@ const ActionPlanDashboard = () => {
                                 </td>
                                 <td className="px-3 py-2 min-w-[140px]">
                                   <input
-                                    type="date"
+                                    type="date" lang="en-GB"
                                     value={task.targetDate}
                                     onChange={(e) => {
                                       const updated = [...draftActionTasks];

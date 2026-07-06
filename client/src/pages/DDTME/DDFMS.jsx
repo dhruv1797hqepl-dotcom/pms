@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Box } from 'lucide-react';
+import MonthYearPicker from '../../components/MonthYearPicker';
 import Sidebar from '../../components/Sidebar';
 import api from '../../api';
 
@@ -1808,10 +1809,10 @@ const DDFMS = () => {
       <Sidebar />
 
       <main className="flex-1 overflow-hidden transition-all duration-300">
-        <div className="h-full max-w-[1600px] mx-auto px-6 pt-6 pb-4 flex flex-col gap-6">
+        <div className="h-full max-w-[1600px] mx-auto px-3 sm:px-6 pt-3 sm:pt-6 pb-4 flex flex-col gap-3 sm:gap-6">
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm flex items-center justify-between gap-4">
             {/* LEFT: BACK BUTTON + ICON + TITLE */}
-            <div className="flex items-center gap-4 min-w-[300px]">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
               <button
                 onClick={() => navigate('/ddfms')}
                 className="p-1.5 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
@@ -1868,7 +1869,19 @@ const DDFMS = () => {
               >
                 <ChevronLeft size={14} />
               </button>
-              <span className="text-xs font-black uppercase tracking-widest text-slate-700 min-w-[120px] text-center">{currentPeriodLabel}</span>
+              <MonthYearPicker
+                selectedMonth={displayMonth}
+                selectedYear={displayYear}
+                onChange={(y, m) => {
+                  setSelectedPeriodKey(formatPeriodKey(y, m));
+                }}
+                label={
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-700 min-w-[120px] text-center cursor-pointer block">
+                    {currentPeriodLabel}
+                  </span>
+                }
+                className="flex items-center justify-center"
+              />
               <button
                 type="button"
                 onClick={goToNextMonth}
@@ -1896,7 +1909,7 @@ const DDFMS = () => {
             <div
               className="border border-slate-200 rounded-xl overflow-x-auto overflow-y-auto shadow-sm ddfms-scrollbar flex-1 min-h-0"
             >
-              <table className="w-full min-w-[3000px] border-collapse">
+              <table className="w-full min-w-[3000px] border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
                     <th
@@ -2013,7 +2026,7 @@ const DDFMS = () => {
                     const isRowSubmitted = Boolean(submittedRows[deliverable.id]);
                     const isRowLocked = isRowSubmitted;
                     const isRowSubmitting = Boolean(rowSubmitLoading[deliverable.id]);
-                    const rowBackgroundClass = isRowSubmitted ? 'bg-emerald-50/70' : 'bg-white';
+                    const rowBackgroundClass = isRowSubmitted ? 'bg-emerald-50' : 'bg-white';
 
                     return (
                       <tr key={deliverable.id} className={`${rowBackgroundClass} border-b border-slate-100`}>
@@ -2021,9 +2034,9 @@ const DDFMS = () => {
                           className={`sticky left-0 z-20 ${rowBackgroundClass} p-1.5 pr-6 border-r border-slate-200 align-top`}
                           style={{ width: `${stickyDeliverableWidthPx}px`, minWidth: `${stickyDeliverableWidthPx}px`, maxWidth: `${stickyDeliverableWidthPx}px` }}
                         >
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[12px] font-black text-slate-500">{rowIndex + 1})</span>
-                            <div className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-800 truncate">
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-[12px] font-black text-slate-500 mt-1.5">{rowIndex + 1})</span>
+                            <div className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-800 whitespace-normal break-words leading-relaxed">
                               {deliverable.title}
                             </div>
                           </div>
@@ -2034,7 +2047,7 @@ const DDFMS = () => {
                           style={{ left: `${stickyStartDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                         >
                           <input
-                            type="date"
+                            type="date" lang="en-GB"
                             value={getDeliverableStartDate(deliverable.id)}
                             min={todayStr}
                             onChange={(e) => handleDeliverableStartDateChange(deliverable.id, e.target.value)}
@@ -2048,7 +2061,7 @@ const DDFMS = () => {
                           style={{ left: `${stickyTargetDateLeftPx}px`, width: `${stickyDateColumnWidthPx}px`, minWidth: `${stickyDateColumnWidthPx}px`, maxWidth: `${stickyDateColumnWidthPx}px` }}
                         >
                           <input
-                            type="date"
+                            type="date" lang="en-GB"
                             value={deliverable.targetDate || ''}
                             readOnly
                             className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] font-semibold text-slate-700 focus:outline-none"
@@ -2082,7 +2095,7 @@ const DDFMS = () => {
                               </td>
                               <td className="p-1.5 border-r border-slate-200">
                                 <input
-                                  type="date"
+                                  type="date" lang="en-GB"
                                   value={tableData[dateKey] || ''}
                                   min={todayStr}
                                   onChange={(e) => updateCell(dateKey, e.target.value)}

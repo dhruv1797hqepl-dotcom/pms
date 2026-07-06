@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../api";
 import Sidebar from "../../components/Sidebar";
@@ -10,6 +11,7 @@ import {
   ChevronLeft, ChevronRight
 } from "lucide-react";
 import { formatDateDDMMYYYY } from "../../utils/dateFormat";
+import useDebounce from "../../hooks/useDebounce";
 
 const parseDateOnly = (value) => {
   if (!value) return null;
@@ -109,6 +111,9 @@ const EmployeeDashboard = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
+  const [isAssigningBulk, setIsAssigningBulk] = useState(false);
+  const [isAssigningSingle, setIsAssigningSingle] = useState(false);
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
   const [showExcelImportModal, setShowExcelImportModal] = useState(false);
   const [excelUploadStatus, setExcelUploadStatus] = useState(null);
@@ -527,6 +532,7 @@ const EmployeeDashboard = () => {
   const [includeAllTasks, setIncludeAllTasks] = useState(true);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState("All");
   const [showStatusFilterDropdown, setShowStatusFilterDropdown] = useState(false);
   const statusFilterRef = useRef(null);
@@ -579,7 +585,6 @@ const EmployeeDashboard = () => {
 
   const splitTasksForUser = (tasks, user) => {
     if (!user) {
-      console.log("No user object provided to splitTasksForUser");
       return { my_active: [], my_completed: [], delegated: [] };
     }
 
@@ -593,8 +598,6 @@ const EmployeeDashboard = () => {
     const userId = normalizeId(user.id);
     const userNameCandidates = [normalizeName(user.username), normalizeName(user.full_name)].filter(Boolean);
 
-    console.log("====== TASK FILTERING DEBUG ======");
-    console.log("Filtering for User ID:", user.id, "Username:", user.username);
 
     const isMine = (t) => {
       // Try multiple field name variations
@@ -609,7 +612,6 @@ const EmployeeDashboard = () => {
 
       const result = matchByName || matchById;
       if (result) {
-        console.log(`✓ Task "${t.title}" is mine - assigned_to: ${taskAssignedToName} (${taskAssignedToId}), match by: ${matchByName ? 'name' : 'id'}`);
       }
       return result;
     };
@@ -627,7 +629,12 @@ const EmployeeDashboard = () => {
       return (matchByName || matchById) && isMine(t);
     };
 
-    const my_active = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && !t.completion_date);
+    const my_active = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && !t.completion_date)
+      .sort((a, b) => {
+        const dateA = a.target_date ? new Date(a.target_date) : new Date('9999-12-31');
+        const dateB = b.target_date ? new Date(b.target_date) : new Date('9999-12-31');
+        return dateA - dateB;
+      });
     const my_completed = tasks.filter(t => (isMine(t) || isSelfAssigned(t)) && t.completion_date);
     const delegated = tasks.filter(t => {
       const sourceModule = String(t.source_module || '').trim().toUpperCase();
@@ -655,10 +662,6 @@ const EmployeeDashboard = () => {
       return isAssignedBy && isAssignedToOther;
     });
 
-    console.log("====== FILTERING RESULTS ======");
-    console.log("My Active Tasks:", my_active.length);
-    console.log("My Completed Tasks:", my_completed.length);
-    console.log("Delegated Tasks:", delegated.length);
     return { my_active, my_completed, delegated };
   };
 
@@ -736,25 +739,16 @@ const EmployeeDashboard = () => {
         const memberParam = new URLSearchParams(window.location.search).get('member');
         const memberId = Number(memberParam);
         const hasValidMemberId = Number.isFinite(memberId) && memberId > 0;
-        console.log("====== MEMBER PARAM DEBUG ======");
-        console.log("Member Param from URL:", memberParam);
-        console.log("Full URL:", window.location.href);
-        console.log("Search String:", window.location.search);
 
         let userData;
         let isMemberView = false;
         if (hasValidMemberId) {
-          console.log("Attempting to fetch member ID:", memberId);
           try {
             const url = `admin/users/${memberId}/`;
-            console.log("Fetching from URL:", url);
 
             const memberRes = await api.get(url);
             userData = memberRes.data;
             isMemberView = true;
-            console.log("✓ Member Data Fetched Successfully");
-            console.log("Member ID:", userData?.id);
-            console.log("Member Name:", userData?.full_name);
 
             if (userData?.id != memberId) {
               console.error("⚠ WARNING: Fetched user ID does not match requested member ID!");
@@ -776,16 +770,11 @@ const EmployeeDashboard = () => {
           }
         } else {
           // Fetch current user
-          console.log("No member param - fetching current user data");
           const userRes = await api.get("me/");
           userData = userRes.data;
           isMemberView = false;
         }
 
-        console.log("====== USER DATA ======");
-        console.log("Is Member View:", isMemberView);
-        console.log("UserData ID:", userData?.id);
-        console.log("UserData Full Name:", userData?.full_name);
 
         const displayName = getDashboardDisplayName(userData);
         setUserName(displayName);
@@ -808,7 +797,6 @@ const EmployeeDashboard = () => {
 
         // 2. Fetch Projects
         const projRes = await api.get("projects/");
-        console.log("Projects API Response:", projRes.data); // DEBUG
 
         // Handle potential pagination
         const projectsData = normalizeListResponse(projRes.data);
@@ -912,21 +900,13 @@ const EmployeeDashboard = () => {
         let statsData;
 
         // 4. Split tasks from the fetched list
-        console.log("====== TASKS DEBUG ======");
-        console.log("Total Tasks Fetched:", allFetchedTasks.length);
         if (allFetchedTasks.length > 0) {
-          console.log("First Task:", allFetchedTasks[0]);
-          console.log("Task assigned_to:", allFetchedTasks[0].assigned_to);
-          console.log("Task assigned_to_name:", allFetchedTasks[0].assigned_to_name);
         }
-        console.log("Filtering tasks for - ID:", userData?.id, "Username:", userData?.username);
 
         const { my_active, my_completed, delegated } = isMemberView
           ? { ...splitTasksForMember(allFetchedTasks, userData), delegated: [] }
           : splitTasksForUser(allFetchedTasks, userData);
 
-        console.log("My Active Tasks:", my_active);
-        console.log("My Completed Tasks:", my_completed);
 
         setMyTasks(my_active);
         setCompletedTasks(my_completed);
@@ -946,7 +926,6 @@ const EmployeeDashboard = () => {
           const atsScore = totalTasks > 0 ? Math.round((my_completed.length / totalTasks) * 100) : 0;
           const otcScore = my_completed.length > 0 ? Math.round((onTimeCount / my_completed.length) * 100) : 0;
 
-          console.log("Stats - Total:", totalTasks, "OnTime:", onTimeCount, "ATS:", atsScore, "OTC:", otcScore);
 
           setDashboardStats({
             total_tasks: totalTasks,
@@ -1272,6 +1251,7 @@ const EmployeeDashboard = () => {
 
   const handleCompleteSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmittingCompletion(true);
     try {
       if (!completionData.id) {
         alert("Task ID is missing. Please re-open the completion form.");
@@ -1347,6 +1327,8 @@ const EmployeeDashboard = () => {
       console.error("Completion Failed:", err.response?.data || err);
       const msg = err.response?.data ? JSON.stringify(err.response.data) : (err.message || "Unknown error");
       alert(`Failed to complete task: ${msg}`);
+    } finally {
+      setIsSubmittingCompletion(false);
     }
   };
 
@@ -1421,6 +1403,7 @@ const EmployeeDashboard = () => {
 
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
+    setIsAssigningSingle(true);
     try {
       if (assignData.file && !isPdfAttachment(assignData.file)) {
         alert("Only PDF files are allowed for attachments.");
@@ -1515,13 +1498,15 @@ const EmployeeDashboard = () => {
     } catch (err) {
       console.error("Assignment Failed:", err.response?.data || err);
       alert("Failed to assign task: " + JSON.stringify(err.response?.data || err.message));
+    } finally {
+      setIsAssigningSingle(false);
     }
   };
 
   // Helper Filter Function
   const filterTasks = (tasks) => {
-    if (!searchQuery) return tasks;
-    const lowerQ = searchQuery.toLowerCase();
+    if (!debouncedSearchQuery) return tasks;
+    const lowerQ = debouncedSearchQuery.toLowerCase();
     return tasks.filter(t =>
       t.title?.toLowerCase().includes(lowerQ) ||
       t.task_id?.toLowerCase().includes(lowerQ) ||
@@ -1533,6 +1518,7 @@ const EmployeeDashboard = () => {
 
   const handleBulkAssignSubmit = async (e) => {
     e.preventDefault();
+    setIsAssigningBulk(true);
     try {
 
       // Filter out empty rows (conceptually, though UI enforces some fields)
@@ -1631,6 +1617,8 @@ const EmployeeDashboard = () => {
         msg += err.message || "Unknown error";
       }
       alert(msg);
+    } finally {
+      setIsAssigningBulk(false);
     }
   };
 
@@ -2135,14 +2123,6 @@ const EmployeeDashboard = () => {
           is_repeatable: false
         };
 
-        console.log(`[Task ${taskIndex + 1}] Creating: "${task.title}"`, {
-          project_id: selectedProjectObj?.id || null,
-          client_id: selectedProjectObj?.client || null,
-          assigned_to: selectedUser.id,
-          assigned_to_email: task.assignedTo,
-          target_date: task.targetDate,
-          isInternal: task.isInternal
-        });
 
         if (task.file) {
           const formData = new FormData();
@@ -2604,7 +2584,7 @@ const EmployeeDashboard = () => {
           </div>
         </div>
       )}
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className="flex-1 overflow-y-auto pb-20 no-scrollbar">
 
         {/* ===== HEADER ===== */}
         <div className="max-w-7xl mx-auto mt-5 bg-slate-900 rounded-2xl px-4 md:px-6 py-4 flex flex-col md:grid md:grid-cols-3 items-center gap-4 md:gap-0 text-white shadow-xl">
@@ -2676,7 +2656,7 @@ const EmployeeDashboard = () => {
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Start Date</label>
                       <input
-                        type="date"
+                        type="date" lang="en-GB"
                         value={draftCurrentStartDate || draftStartDate}
                         onChange={(e) => {
                           setDraftCurrentStartDate(e.target.value);
@@ -2691,7 +2671,7 @@ const EmployeeDashboard = () => {
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">End Date</label>
                       <input
-                        type="date"
+                        type="date" lang="en-GB"
                         value={draftCurrentEndDate || draftEndDate}
                         onChange={(e) => {
                           setDraftCurrentEndDate(e.target.value);
@@ -2705,35 +2685,7 @@ const EmployeeDashboard = () => {
                   </div>
                 </div>
 
-                {/* SECTION 2: Original Date Range */}
-                <div className="mb-4">
-                  <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 border-b pb-1">Original planned date range (MCTC)</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Start Date</label>
-                      <input
-                        type="date"
-                        value={draftOriginalStartDate}
-                        onChange={(e) => setDraftOriginalStartDate(e.target.value)}
-                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        title="Original start date"
-                      />
-                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftOriginalStartDate)}</p>
-                    </div>
 
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">End Date</label>
-                      <input
-                        type="date"
-                        value={draftOriginalEndDate}
-                        onChange={(e) => setDraftOriginalEndDate(e.target.value)}
-                        className="w-full px-3 py-2 text-xs text-slate-900 rounded-lg bg-white border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        title="Original end date"
-                      />
-                      <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDisplayDate(draftOriginalEndDate)}</p>
-                    </div>
-                  </div>
-                </div>
 
                 <div className="flex justify-end mt-4 pt-3 border-t border-slate-100">
                   <button
@@ -2768,23 +2720,31 @@ const EmployeeDashboard = () => {
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setIncludeAllTasks(checked);
-                      if (checked) {
-                        setSelectedClients(Object.keys(clientProjectMap));
-                      }
+                      // Check → select all clients; Uncheck → clear all clients
+                      setSelectedClients(checked ? Object.keys(clientProjectMap) : []);
                     }}
                     className="accent-slate-900"
                   /> All Tasks
                 </label>
-                {Object.keys(clientProjectMap).map((client, i) => (
-                  <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeAllTasks || selectedClients.includes(client)}
-                      onChange={() => toggleClientSelection(client)}
-                      className="accent-slate-900"
-                    /> {client}
-                  </label>
-                ))}
+                <div
+                  style={{
+                    maxHeight: "220px",
+                    overflowY: "auto",
+                    paddingRight: "4px",
+                  }}
+                  className="nice-scrollbar"
+                >
+                  {Object.keys(clientProjectMap).map((client, i) => (
+                    <label key={i} className="flex items-center gap-2 text-[12px] text-slate-600 mb-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedClients.includes(client)}
+                        onChange={() => toggleClientSelection(client)}
+                        className="accent-slate-900"
+                      /> {client}
+                    </label>
+                  ))}
+                </div>
               </>
             )}
           </div>
@@ -2902,12 +2862,7 @@ const EmployeeDashboard = () => {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setShowSmartPasteModal(true)}
-            className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-emerald-100 border border-emerald-300 text-emerald-700 shadow-sm hover:bg-emerald-200 transition-all active:scale-95"
-          >
-            <Upload size={14} /> SMART PASTE
-          </button>
+
           <button
             onClick={() => setShowBulkModal(true)}
             className="flex items-center gap-2 px-7 py-3 rounded-full text-[10px] font-bold uppercase bg-white border border-slate-200 text-slate-900 shadow-sm hover:bg-slate-50 transition-all active:scale-95"
@@ -3031,7 +2986,7 @@ const EmployeeDashboard = () => {
 
                     <div>
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Step 2: Remarks / Work Description</label>
-                      <textarea required value={completionData.remarks} onChange={(e) => setCompletionData({ ...completionData, remarks: e.target.value })} rows="3" className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-3xl px-6 py-4 text-sm outline-none focus:border-emerald-500 transition-all font-bold text-slate-700" placeholder="Describe exactly what was delivered..." />
+                      <textarea value={completionData.remarks} onChange={(e) => setCompletionData({ ...completionData, remarks: e.target.value })} rows="3" className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-3xl px-6 py-4 text-sm outline-none focus:border-emerald-500 transition-all font-bold text-slate-700" placeholder="Describe exactly what was delivered..." />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3050,8 +3005,25 @@ const EmployeeDashboard = () => {
                       </div>
 
                       <div className="flex items-end">
-                        <button type="submit" className="w-full bg-emerald-500 text-white font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all active:scale-95">
-                          <SendHorizontal size={18} /> Submit Final Report
+                        <button
+                          type="submit"
+                          disabled={isSubmittingCompletion}
+                          className={`w-full font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 ${
+                            isSubmittingCompletion
+                              ? "bg-slate-400 text-white cursor-not-allowed"
+                              : "bg-emerald-500 text-white shadow-emerald-100 hover:bg-emerald-600"
+                          }`}
+                        >
+                          {isSubmittingCompletion ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                              Submitting...
+                            </>
+                          ) : (
+                            <>
+                              <SendHorizontal size={18} /> Submit Final Report
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -3089,7 +3061,7 @@ const EmployeeDashboard = () => {
                         <th className="px-4 py-3 min-w-[160px]">Assigned To</th>
                         <th className="px-4 py-3 min-w-[120px]">Priority</th>
                         <th className="px-4 py-3 min-w-[130px]">Flag</th>
-                        <th className="px-4 py-3 min-w-[120px]">Due Date</th>
+                        <th className="px-4 py-3 min-w-[180px]">Due Date</th>
                         <th className="px-4 py-3 w-10 text-center">Ads</th>
                         <th className="px-4 py-3 w-10 text-center">Act</th>
                       </tr>
@@ -3218,11 +3190,11 @@ const EmployeeDashboard = () => {
                           {/* DUE DATE */}
                           <td className="px-4 py-3 align-top">
                             <input
-                              type="date"
+                              type="date" lang="en-GB"
                               value={task.targetDate}
                               onChange={(e) => handleRowChange(index, "targetDate", e.target.value)}
                               min={minTaskDate}
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
+                              className="w-full min-w-[140px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-1 ring-emerald-400"
                             />
                           </td>
 
@@ -3261,259 +3233,30 @@ const EmployeeDashboard = () => {
 
                   <button
                     onClick={handleBulkAssignSubmit}
-                    disabled={bulkTasks.length === 0}
-                    className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${bulkTasks.length > 0 ? 'bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                    disabled={bulkTasks.length === 0 || isAssigningBulk}
+                    className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${
+                      bulkTasks.length > 0 && !isAssigningBulk
+                        ? "bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95"
+                        : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                    }`}
                   >
-                    <ClipboardList size={16} /> Assign All {bulkTasks.length} Tasks
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ===== DEDICATED SMART PASTE MODAL ===== */}
-        {showSmartPasteModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex justify-center items-center p-4">
-            <div className="bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
-              <div className="bg-blue-900 p-6 flex justify-between items-center text-white shrink-0">
-                <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-3">
-                  <Upload size={24} /> Smart Paste Task Builder
-                </h2>
-                <button onClick={() => setShowSmartPasteModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-all flex items-center justify-center">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-                {/* PASTE INPUT TEXTAREA */}
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: 'title', label: 'Title' },
-                      { key: 'client', label: 'Client' },
-                      { key: 'project', label: 'Project' },
-                      { key: 'assignee', label: 'Assigned To' },
-                      { key: 'date', label: 'Date' }
-                    ].map((col) => (
-                      <button
-                        key={col.key}
-                        type="button"
-                        onClick={() => setPasteColumnType(col.key)}
-                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${pasteColumnType === col.key ? "bg-emerald-500 text-white border-emerald-500 shadow" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
-                      >
-                        {col.label}
-                      </button>
-                    ))}
-                  </div>
-                  <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                    {pasteColumnType ? `📋 Paste ${pasteColumnType} column` : "📋 Select a column, then paste"}
-                  </h3>
-                  <textarea
-                    value={pasteContent}
-                    onChange={(e) => setPasteContent(e.target.value)}
-                    placeholder={pasteColumnType
-                      ? `Paste ${pasteColumnType} values (one per line)`
-                      : "Select a column button above, then paste"}
-                    className="w-full h-32 p-4 text-sm font-mono bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 ring-emerald-400 resize-none font-bold"
-                  />
-                </div>
-
-                {/* DRAFT TASKS TABLE WITH DROPDOWNS */}
-                {draftTasks.length > 0 && (
-                  <div className="space-y-2">
-                    <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{draftTasks.length} Draft Tasks</h3>
-                    <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto max-h-60 overflow-y-auto">
-                      <table className="w-full text-[10px] font-mono">
-                        <thead className="sticky top-0 bg-slate-50 z-10">
-                          <tr className="border-b border-slate-200">
-                            <th className="text-left px-3 py-2 text-slate-400">#</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Title</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Client</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[90px]">Project</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[120px]">Assigned To</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[110px]">Priority</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[110px]">Flag</th>
-                            <th className="text-left px-3 py-2 text-slate-400 min-w-[100px]">Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {draftTasks.map((task, idx) => {
-                            const isInvalidClient = task.client.startsWith('[INVALID]');
-                            const isInvalidProject = task.project.startsWith('[INVALID]');
-                            const isInvalid = isInvalidClient || isInvalidProject;
-                            const importErrorFields = Array.isArray(task.importErrorFields) ? task.importErrorFields : [];
-                            const hasTitleError = importErrorFields.includes('title');
-                            const hasClientError = importErrorFields.includes('client');
-                            const hasProjectError = importErrorFields.includes('project');
-                            const hasAssignedToError = importErrorFields.includes('assigned_to');
-                            const hasTargetDateError = importErrorFields.includes('target_date');
-
-                            return (
-                              <tr
-                                key={idx}
-                                className={`border-b border-slate-100 ${isInvalid ? 'bg-red-50' : 'hover:bg-slate-50'}`}
-                              >
-                                <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                                <td className={`px-3 py-2 truncate max-w-[100px] ${hasTitleError ? 'text-red-600 font-bold' : 'text-slate-700'}`} title={task.title}>{task.title || "—"}</td>
-                                <td className="px-3 py-2 min-w-[120px]">
-                                  <select
-                                    value={task.isInternal ? 'Internal' : task.client}
-                                    onChange={(e) => {
-                                      const selected = e.target.value;
-                                      const updated = [...draftTasks];
-                                      if (selected === 'Internal') {
-                                        updated[idx] = { ...updated[idx], isInternal: true, client: '', project: '', assignedTo: '' };
-                                      } else {
-                                        updated[idx] = { ...updated[idx], isInternal: false, client: selected, project: '', assignedTo: '' };
-                                      }
-                                      setDraftTasks(updated);
-                                    }}
-                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${(isInvalidClient || hasClientError) ? 'border-red-400 bg-red-50/50 text-red-700' : 'border-slate-200'}`}
-                                  >
-                                    <option value="">Select Client...</option>
-                                    <option value="Internal">Internal</option>
-                                    {getAvailableClientNames().map((clientName) => (
-                                      <option key={clientName} value={clientName}>{clientName}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 min-w-[120px]">
-                                  <select
-                                    value={task.project || ''}
-                                    onChange={(e) => {
-                                      const updated = [...draftTasks];
-                                      updated[idx] = { ...updated[idx], project: e.target.value, assignedTo: '' };
-                                      setDraftTasks(updated);
-                                    }}
-                                    disabled={task.isInternal || !task.client}
-                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${(isInvalidProject || hasProjectError) ? 'border-red-400 bg-red-50/50 text-red-700' : 'border-slate-200'} ${task.isInternal ? 'text-slate-400 bg-slate-100' : ''}`}
-                                  >
-                                    <option value="">{task.isInternal ? '-' : 'Select Project...'}</option>
-                                    {!task.isInternal && task.client && (clientProjectMap[task.client] || []).map((p, i) => (
-                                      <option key={`${task.client}-${p.id || i}`} value={p.name}>{p.name}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 min-w-[120px]">
-                                  <select
-                                    value={task.assignedTo}
-                                    onChange={(e) => {
-                                      const updated = [...draftTasks];
-                                      updated[idx] = { ...updated[idx], assignedTo: e.target.value };
-                                      setDraftTasks(updated);
-                                    }}
-                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${hasAssignedToError ? 'border-red-400 bg-red-50/50' : 'border-slate-200'}`}
-                                  >
-                                    <option value="">Select...</option>
-                                    {(() => {
-                                      let members = getAssignableMembers({
-                                        isInternal: task.isInternal,
-                                        clientName: task.client,
-                                        projectName: task.project,
-                                      });
-                                      return members.map((m, i) => (
-                                        <option key={i} value={m.email}>{m.full_name || m.username || m.email.split('@')[0]}</option>
-                                      ));
-                                    })()}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 min-w-[110px]">
-                                  <select
-                                    value={task.priority || 'LOW'}
-                                    onChange={(e) => {
-                                      const updated = [...draftTasks];
-                                      updated[idx] = { ...updated[idx], priority: e.target.value };
-                                      setDraftTasks(updated);
-                                    }}
-                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
-                                  >
-                                    {taskPriorityOptions.map((priorityOption) => (
-                                      <option key={priorityOption.value} value={priorityOption.value}>{priorityOption.label}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 min-w-[110px]">
-                                  <select
-                                    value={task.flag || 'none'}
-                                    onChange={(e) => {
-                                      const updated = [...draftTasks];
-                                      updated[idx] = { ...updated[idx], flag: e.target.value };
-                                      setDraftTasks(updated);
-                                    }}
-                                    className="w-full px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 ring-emerald-400"
-                                  >
-                                    {taskFlagOptions.map((flagOption) => (
-                                      <option key={flagOption.value} value={flagOption.value}>{flagOption.label}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 min-w-[120px]">
-                                  <input
-                                    type="date"
-                                    value={task.targetDate}
-                                    onChange={(e) => {
-                                      const updated = [...draftTasks];
-                                      updated[idx] = { ...updated[idx], targetDate: e.target.value };
-                                      setDraftTasks(updated);
-                                    }}
-                                    min={minTaskDate}
-                                    className={`w-full px-2 py-1 text-[10px] font-bold bg-white border rounded-lg outline-none focus:ring-1 ring-emerald-400 ${hasTargetDateError ? 'border-red-400 bg-red-50/50' : 'border-slate-200'}`}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {(draftTasks.some(t => String(t.client || '').startsWith('[INVALID]')) || draftTasks.some(t => String(t.project || '').startsWith('[INVALID]'))) && (
-                      <p className="text-[10px] text-red-600 font-semibold">
-                        ⚠ {draftTasks.filter(t => String(t.client || '').startsWith('[INVALID]') || String(t.project || '').startsWith('[INVALID]')).length} tasks with invalid clients/projects won't be created
-                      </p>
+                    {isAssigningBulk ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Assigning...
+                      </>
+                    ) : (
+                      <>
+                        <ClipboardList size={16} /> Assign All {bulkTasks.length} Tasks
+                      </>
                     )}
-                  </div>
-                )}
-
-                {/* ACTION BUTTONS */}
-                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 shrink-0">
-                  {draftTasks.length > 0 && (
-                    <button
-                      onClick={clearSmartPasteDrafts}
-                      className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold uppercase hover:bg-red-200 transition-all"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowSmartPasteModal(false)}
-                    className="px-4 py-2 bg-slate-200 text-slate-600 rounded-lg text-xs font-bold uppercase hover:bg-slate-300 transition-all"
-                  >
-                    Close
                   </button>
-                  <button
-                    onClick={handleSmartPaste}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-all"
-                  >
-                    {draftTasks.length === 0 ? "Create Drafts" : "Update Column"}
-                  </button>
-                  {draftTasks.length > 0 && (
-                    <button
-                      onClick={handleSubmitSmartPaste}
-                      className="px-6 py-2 bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 animate-pulse"
-                    >
-                      ✓ Create {draftTasks.filter(t => {
-                        const invalidMarker = String(t.client || '').startsWith('[INVALID]') || String(t.project || '').startsWith('[INVALID]');
-                        const hasRequired = t.title && t.assignedTo && t.targetDate && (t.isInternal || (t.client && t.project));
-                        return !invalidMarker && hasRequired;
-                      }).length} Tasks
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
           </div>
         )}
+
 
         {showExcelImportModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex justify-center items-center p-4">
@@ -3601,30 +3344,30 @@ const EmployeeDashboard = () => {
                         ].map((field) => {
                           const hasFieldError = excelErrorFields.includes(field.key);
                           return (
-                          <div key={field.key} className="grid grid-cols-2 items-center gap-3">
-                            <label className={`text-xs font-bold ${hasFieldError ? 'text-red-600' : 'text-slate-700'}`}>
-                              {field.label} {field.required && <span className="text-red-500">*</span>}
-                            </label>
-                            <select
-                              value={columnMapping[field.key] ?? ''}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setColumnMapping(prev => ({
-                                  ...prev,
-                                  [field.key]: value === '' ? '' : Number(value),
-                                }));
-                              }}
-                              className={`w-full bg-slate-50 border rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300 ${hasFieldError ? 'border-red-400 bg-red-50/60' : 'border-slate-200'}`}
-                            >
-                              <option value="">Not mapped</option>
-                              {(excelPreview?.columns || []).map((col, idx) => (
-                                <option key={idx} value={idx}>
-                                  Col {idx + 1}: {String(col || '').trim() || `Column ${idx + 1}`}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        );
+                            <div key={field.key} className="grid grid-cols-2 items-center gap-3">
+                              <label className={`text-xs font-bold ${hasFieldError ? 'text-red-600' : 'text-slate-700'}`}>
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                              </label>
+                              <select
+                                value={columnMapping[field.key] ?? ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setColumnMapping(prev => ({
+                                    ...prev,
+                                    [field.key]: value === '' ? '' : Number(value),
+                                  }));
+                                }}
+                                className={`w-full bg-slate-50 border rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 ring-blue-300 ${hasFieldError ? 'border-red-400 bg-red-50/60' : 'border-slate-200'}`}
+                              >
+                                <option value="">Not mapped</option>
+                                {(excelPreview?.columns || []).map((col, idx) => (
+                                  <option key={idx} value={idx}>
+                                    Col {idx + 1}: {String(col || '').trim() || `Column ${idx + 1}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
                         })}
 
                         <div className="pt-3 mt-2 border-t border-slate-200 space-y-3">
@@ -3831,7 +3574,7 @@ const EmployeeDashboard = () => {
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Date</label>
                       <input
                         required
-                        type="date"
+                        type="date" lang="en-GB"
                         value={assignData.targetDate}
                         min={minTaskDate}
                         onChange={e => setAssignData({ ...assignData, targetDate: e.target.value })}
@@ -3872,8 +3615,25 @@ const EmployeeDashboard = () => {
                   </div>
 
                   <div className="pt-4 pb-2">
-                    <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl text-sm uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black transition-all active:scale-95 flex justify-center gap-2 items-center">
-                      <Plus size={18} /> Confirm Assignment
+                    <button
+                      type="submit"
+                      disabled={isAssigningSingle}
+                      className={`w-full font-black py-4 rounded-3xl text-sm uppercase tracking-widest shadow-xl flex justify-center gap-2 items-center transition-all active:scale-95 ${
+                        isAssigningSingle
+                          ? "bg-slate-400 text-white cursor-not-allowed"
+                          : "bg-slate-900 text-white shadow-slate-200 hover:bg-black"
+                      }`}
+                    >
+                      {isAssigningSingle ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          Assigning...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={18} /> Confirm Assignment
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -4273,32 +4033,30 @@ const Table = ({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left" style={{borderCollapse: 'separate', borderSpacing: 0}}>
             <thead className="bg-white border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <tr>
-                <th className="px-4 py-3">Task ID</th>
-                <th className="px-4 py-3">Task</th>
+                <th className="px-4 py-3 sticky left-0 z-20 bg-white w-[80px] min-w-[80px]">Task ID</th>
+                <th className="px-4 py-3 sticky left-[80px] z-20 bg-white min-w-[160px]">Task</th>
                 {mode !== "assigned" && <th className="px-4 py-3">Project / Client</th>}
                 {mode === "assigned" && <th className="px-4 py-3">Assigned To</th>}
                 {mode !== "assigned" && <th className="px-4 py-3">Assigned By</th>}
                 {mode === "overview" && <th className="px-4 py-3">Start Date</th>}
-                {mode === "overview" && (
-                  <th className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("target_date")}
-                      className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
-                      title="Sort by target date"
-                    >
-                      <span>Target Date</span>
-                      <span className="text-[11px] leading-none">
-                        {sortField === "target_date" ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
-                      </span>
-                    </button>
-                  </th>
-                )}
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("target_date")}
+                    className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
+                    title="Sort by target date"
+                  >
+                    <span>Target Date</span>
+                    <span className="text-[11px] leading-none">
+                      {sortField === "target_date" ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
+                    </span>
+                  </button>
+                </th>
                 {mode === "completed" && <th className="px-4 py-3">Complete Date</th>}
-                
+
                 {/* MCTC Columns */}
                 <th className="px-4 py-3">
                   <button
@@ -4345,9 +4103,9 @@ const Table = ({
                 {(mode === "overview" || mode === "assigned") && <th className="px-4 py-3 text-center">Assigned PDF</th>}
                 {mode === "completed" && <th className="px-4 py-3 text-center">Remarks</th>}
                 {(mode === "completed" || mode === "assigned") && <th className="px-4 py-3 text-center">Complete PDF</th>}
-                {mode === "overview" && <th className="px-4 py-3 text-center">Select</th>}
-                {mode === "overview" && <th className="px-4 py-3 text-center">Complete</th>}
-                {mode !== "completed" && <th className="px-4 py-3 text-center">Delete</th>}
+                {mode === "overview" && <th className="px-4 py-3 text-center sticky right-[180px] z-20 bg-white w-[60px] min-w-[60px]">Select</th>}
+                {mode === "overview" && <th className="px-4 py-3 text-center sticky right-[90px] z-20 bg-white w-[90px] min-w-[90px]">Complete</th>}
+                {mode !== "completed" && <th className="px-4 py-3 text-center sticky right-0 z-20 bg-white w-[90px] min-w-[90px]">Delete</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -4385,8 +4143,8 @@ const Table = ({
 
                 return (
                   <tr key={t.id} className={`transition-colors ${rowClass}`}>
-                    <td className="px-4 py-3 font-bold text-slate-500 text-[11px]">{t.task_id}</td>
-                    <td className="px-4 py-3 font-semibold text-xs text-slate-800">{t.title}</td>
+                    <td className="px-4 py-3 font-bold text-slate-500 text-[11px] sticky left-0 z-10 bg-white w-[80px] min-w-[80px]">{t.task_id}</td>
+                    <td className="px-4 py-3 font-semibold text-xs text-slate-800 sticky left-[80px] z-10 bg-white min-w-[160px]">{t.title}</td>
 
                     {mode !== "assigned" && <td className="px-4 py-3 text-[11px] font-medium text-slate-500 italic">{getProjectClientLabel(t)}</td>}
                     {mode === "assigned" && <td className="px-4 py-3 text-xs font-medium">{t.assigned_to_name}</td>}
@@ -4396,9 +4154,9 @@ const Table = ({
                       </td>
                     )}
                     {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-violet-700 whitespace-nowrap">{t.start_date ? formatDateDDMMYYYY(t.start_date, "—") : "—"}</td>}
-                    {mode === "overview" && <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{formatDateDDMMYYYY(t.target_date, "—")}</td>}
+                    <td className="px-4 py-3 text-[11px] font-bold text-orange-400 whitespace-nowrap">{formatDateDDMMYYYY(t.target_date, "—")}</td>
                     {mode === "completed" && <td className="px-4 py-3 text-[11px] font-bold text-emerald-500 whitespace-nowrap">{formatDateDDMMYYYY(t.completion_date, "—")}</td>}
-                    
+
                     {/* MCTC Columns */}
                     <td className="px-4 py-3 text-[11px] font-bold text-slate-500 whitespace-nowrap">
                       {t.source_module === "MCTC" && t.original_date ? formatDateDDMMYYYY(t.original_date, "—") : "—"}
@@ -4432,7 +4190,7 @@ const Table = ({
                     {(mode === "completed" || mode === "assigned") && <td className="px-4 py-3 text-center">{t.completion_file ? <Download size={16} className="mx-auto text-emerald-500 cursor-pointer hover:scale-110" onClick={() => handleFileDownload(t.completion_file, `${t.task_id || "task"}-completion.pdf`)} title="Download completion PDF" /> : "—"}</td>}
                     {mode === "overview" && (
                       <>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center sticky right-[180px] z-10 bg-white w-[60px] min-w-[60px]">
                           <input
                             type="checkbox"
                             checked={selectedTasks?.includes(t.id) || false}
@@ -4440,7 +4198,7 @@ const Table = ({
                             className="cursor-pointer accent-emerald-500 scale-110"
                           />
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center sticky right-[90px] z-10 bg-white w-[90px] min-w-[90px]">
                           <button onClick={() => onReportComplete(t)} className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-slate-900 text-white shadow-md hover:bg-black transition-all">
                             Complete
                           </button>
@@ -4448,7 +4206,7 @@ const Table = ({
                       </>
                     )}
                     {mode !== "completed" && (
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center sticky right-0 z-10 bg-white w-[90px] min-w-[90px]">
                         {deletable ? (
                           <button
                             onClick={() => onDeleteTask?.(t)}
@@ -4509,6 +4267,8 @@ const PriorityBadge = ({ priority }) => {
 const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, className }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [show, setShow] = useState(false);
+  const inputRef = useRef(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     if (value) {
@@ -4519,31 +4279,69 @@ const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, cl
     }
   }, [value, options]);
 
+  useEffect(() => {
+    if (show && inputRef.current) {
+      const updatePosition = () => {
+        if (inputRef.current) {
+          const rect = inputRef.current.getBoundingClientRect();
+          setDropdownPos({
+            top: rect.bottom + window.scrollY + 4,
+            left: rect.left + window.scrollX,
+            width: rect.width
+          });
+        }
+      };
+      
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+      };
+    }
+  }, [show]);
+
+  const dropdown = show && suggestions.length > 0 && !disabled ? (
+    <ul 
+      className="absolute z-[99999] bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-y-auto mt-1 custom-scrollbar animate-in fade-in zoom-in-95 duration-100"
+      style={{
+        top: `${dropdownPos.top}px`,
+        left: `${dropdownPos.left}px`,
+        width: `${dropdownPos.width}px`
+      }}
+    >
+      {suggestions.map((opt, i) => (
+        <li
+          key={i}
+          onMouseDown={(e) => {
+            e.preventDefault(); // prevent blur before click
+            onChange(opt);
+            setShow(false);
+          }}
+          className="px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 cursor-pointer transition-colors"
+        >
+          {opt}
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
   return (
     <div className="relative w-full">
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => { onChange(e.target.value); setShow(true); }}
         onFocus={() => setShow(true)}
-        onBlur={() => setTimeout(() => setShow(false), 200)} // Delay for click
+        onBlur={() => setShow(false)}
         placeholder={placeholder}
         disabled={disabled}
         className={className}
       />
-      {show && suggestions.length > 0 && !disabled && (
-        <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-y-auto mt-1 custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
-          {suggestions.map((opt, i) => (
-            <li
-              key={i}
-              onMouseDown={() => { onChange(opt); setShow(false); }} // onMouseDown fires before onBlur
-              className="px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 cursor-pointer transition-colors"
-            >
-              {opt}
-            </li>
-          ))}
-        </ul>
-      )}
+      {show && createPortal(dropdown, document.body)}
     </div>
   );
 };

@@ -15,11 +15,8 @@ export default function InternalTeamView() {
     try {
       const response = await api.get(`clients/${clientId}/`);
       const teamData = response.data.internal_team_details || [];
-      console.log("Internal Team Data:", teamData);
       if (teamData.length > 0) {
-        console.log("First Team Member:", teamData[0]);
         teamData.forEach((m, idx) => {
-          console.log(`Member ${idx}:`, m.id, m.full_name, m.username);
         });
       }
       setInternalTeam(teamData);
@@ -37,12 +34,7 @@ export default function InternalTeamView() {
 
   const handleMemberClick = (member) => {
     // Navigate to full EmployeeDashboard for that member
-    console.log("====== NAVIGATING TO MEMBER DASHBOARD ======");
-    console.log("Clicked member:", member);
-    console.log("Member ID:", member.id);
-    console.log("Member Name:", member.full_name);
     const newUrl = `/employeedashboard?member=${member.id}`;
-    console.log("Navigating to URL:", newUrl);
     navigate(newUrl);
   };
 

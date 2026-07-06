@@ -449,13 +449,13 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">Start Date</label>
-                <input type="date" required className="w-full px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold"
+                <input type="date" lang="en-GB" required className="w-full px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold"
                   value={formData.start_date}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">End Date</label>
-                <input type="date" required className="w-full px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold"
+                <input type="date" lang="en-GB" required className="w-full px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} />
               </div>

@@ -389,8 +389,8 @@ const CompanyLevelDashboard = () => {
                 </header>
 
                 {/* Dashboard Content */}
-                <main className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid grid-cols-12 gap-6">
+                <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
+                    <div className="grid grid-cols-12 gap-3 md:gap-6">
 
                         {/* Client Filter Section */}
                         <motion.div
@@ -602,7 +602,7 @@ const CompanyLevelDashboard = () => {
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Start Date</label>
                                     <input
-                                        type="date"
+                                        type="date" lang="en-GB"
                                         value={startDate}
                                         onChange={e => setStartDate(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:border-slate-800 transition-all font-bold text-slate-700"
@@ -611,7 +611,7 @@ const CompanyLevelDashboard = () => {
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">End Date</label>
                                     <input
-                                        type="date"
+                                        type="date" lang="en-GB"
                                         value={endDate}
                                         onChange={e => setEndDate(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:border-slate-800 transition-all font-bold text-slate-700"

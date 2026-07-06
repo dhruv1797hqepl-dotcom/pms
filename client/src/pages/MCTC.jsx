@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Sidebar from "../components/Sidebar";
-import { ChevronLeft, ChevronRight, Plus, X, GripVertical, Clock, History, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, GripVertical, Clock, History, Download, Check } from "lucide-react";
+import MonthYearPicker from '../components/MonthYearPicker';
 import { useLocation } from "react-router-dom";
 import api from "../api";
 import { jsPDF } from "jspdf";
@@ -165,8 +166,9 @@ const MCTC = () => {
     const parsePlaceLabel = (label) => {
         const raw = String(label || "");
 
-        if (raw.startsWith(`${PLACE_PREFIX}|`)) {
-            const [, dayType, halfKey, mode, ...companyChunks] = raw.split("|");
+        if (raw.startsWith(PLACE_PREFIX)) {
+            const withoutPrefix = raw.replace(PLACE_PREFIX, "").replace(/^\|/, "");
+            const [dayType, halfKey, mode, ...companyChunks] = withoutPrefix.split("|");
             const company = companyChunks.join("|");
             return {
                 isPlace: true,
@@ -263,6 +265,7 @@ const MCTC = () => {
                 original_date: null,
                 revision_count: 0,
                 last_revision_date: null,
+                priority: task?.priority || "MEDIUM",
             });
         });
 
@@ -309,6 +312,7 @@ const MCTC = () => {
                     original_date: entry.original_date,
                     revision_count: entry.revision_count || 0,
                     last_revision_date: entry.last_revision_date,
+                    priority: entry.linked_task_priority || "MEDIUM",
                 });
             });
 
@@ -904,11 +908,32 @@ const MCTC = () => {
         const isDragging = dragData !== null;
         const canDrag = canManageEntries;
 
+        const companyColors = [
+            "bg-indigo-100 text-indigo-700 hover:bg-indigo-200",
+            "bg-violet-100 text-violet-700 hover:bg-violet-200",
+            "bg-blue-100 text-blue-700 hover:bg-blue-200",
+            "bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200",
+            "bg-sky-100 text-sky-700 hover:bg-sky-200",
+            "bg-teal-100 text-teal-700 hover:bg-teal-200",
+            "bg-pink-100 text-pink-700 hover:bg-pink-200"
+        ];
+
+        let placeColorClass = "bg-slate-100 text-slate-700 hover:bg-slate-200";
+        if (placeMode) {
+            if (placeMode.mode === "leave") {
+                placeColorClass = "bg-orange-100 text-orange-700 hover:bg-orange-200";
+            } else if (placeMode.mode === "office") {
+                placeColorClass = "bg-emerald-100 text-emerald-700 hover:bg-emerald-200";
+            } else if (placeMode.mode === "visit") {
+                const getHash = (str) => String(str).toLowerCase().trim().split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                placeColorClass = companyColors[getHash(placeMode.companyName || "visit") % companyColors.length];
+            }
+        }
+
         return (
             <div
-                className={`flex-1 min-h-0 px-1 md:px-1.5 py-0.5 transition-all ${
-                    isDropHere ? "bg-blue-50 ring-2 ring-blue-400 ring-inset rounded-md" : ""
-                } ${isDragging && !isDropHere ? "bg-slate-50/30" : ""}`}
+                className={`flex-1 min-h-0 px-1 md:px-1.5 py-0.5 transition-all ${isDropHere ? "bg-blue-50 ring-2 ring-blue-400 ring-inset rounded-md" : ""
+                    } ${isDragging && !isDropHere ? "bg-slate-50/30" : ""}`}
                 onDragOver={(e) => handleDragOver(e, dayKey, halfType)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, dayKey, halfType)}
@@ -924,15 +949,8 @@ const MCTC = () => {
                                 draggable={canDrag}
                                 onDragStart={(e) => handleDragStart(e, placeMode.entry, dayKey)}
                                 onDragEnd={handleDragEnd}
-                                className={`rounded-md px-1.5 py-[2px] text-[8px] md:text-[10px] font-extrabold uppercase tracking-wide transition-all ${
-                                    canDrag ? "cursor-grab active:cursor-grabbing" : ""
-                                } ${
-                                    placeMode.mode === "visit"
-                                        ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                                        : placeMode.mode === "leave"
-                                        ? "bg-orange-100 text-orange-700 hover:bg-orange-200"
-                                        : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                                }`}
+                                className={`rounded-md px-1.5 py-[2px] text-[8px] md:text-[10px] font-extrabold uppercase tracking-wide transition-all ${canDrag ? "cursor-grab active:cursor-grabbing" : ""
+                                    } ${placeColorClass}`}
                                 onClick={(e) => {
                                     if (placeMode.entry.revision_count > 0) {
                                         e.stopPropagation();
@@ -964,13 +982,13 @@ const MCTC = () => {
         const isPlaceView = headerView === "place";
 
         return (
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl md:rounded-4xl border border-slate-200 bg-white">
-                <div className="grid grid-cols-7 border-b border-slate-200">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-md shadow-slate-200/40">
+                <div className="grid grid-cols-7 border-b border-slate-200/80 bg-slate-50/50 backdrop-blur-md">
                     {dayLabels.map((dayLabel, dayIndex) => (
                         <div
                             key={dayLabel}
-                            className={`px-1 md:px-2 py-1.5 md:py-2 text-center text-[8px] md:text-[10px] font-black uppercase tracking-widest md:tracking-[0.16em] ${dayIndex === 0 ? "bg-red-50/70 text-red-600" : "bg-slate-50/70 text-slate-600"
-                                } ${dayIndex < 6 ? "border-r border-slate-200" : ""}`}
+                            className={`px-1 md:px-2 py-2 md:py-3 text-center text-[9px] md:text-[11px] font-black uppercase tracking-widest md:tracking-[0.16em] ${dayIndex === 0 ? "text-rose-500" : "text-slate-500"
+                                } ${dayIndex < 6 ? "border-r border-slate-200/80" : ""}`}
                         >
                             <span className="hidden sm:inline">{dayLabel}</span>
                             <span className="sm:hidden">{dayLabelsShort[dayIndex]}</span>
@@ -979,48 +997,54 @@ const MCTC = () => {
                 </div>
 
                 {loading ? (
-                    <div className="grid grid-cols-7 flex-1 min-h-0 divide-y divide-x divide-slate-100 bg-slate-50/20">
+                    <div className="grid grid-cols-7 flex-1 min-h-0 divide-y divide-x divide-slate-100/80 bg-slate-50/20">
                         {Array.from({ length: 35 }).map((_, idx) => (
-                            <div key={`mctc-skeleton-${idx}`} className="p-3 min-h-[90px] flex flex-col justify-between animate-pulse border-r border-b border-slate-200">
+                            <div key={`mctc-skeleton-${idx}`} className="p-3 min-h-[90px] flex flex-col justify-between animate-pulse border-r border-b border-slate-100">
                                 <div className="bg-slate-200 h-4 w-5 rounded" />
                                 <div className="bg-slate-200 h-6 w-full rounded mt-2 opacity-60" />
                             </div>
                         ))}
                     </div>
                 ) : (
-                    <div className="grid flex-1 min-h-0" style={{ gridTemplateRows: calendarRowTemplate }}>
+                    <div className="grid flex-1 min-h-0 bg-slate-50/30" style={{ gridTemplateRows: calendarRowTemplate }}>
                         {calendarWeeks.map((week, weekIndex) => (
                             <div key={`week-${weekIndex}`} className="grid min-h-0 grid-cols-7">
                                 {week.map((cell, dayIndex) => {
                                     const isSunday = dayIndex === 0;
                                     const showBottomBorder = weekIndex < calendarWeeks.length - 1;
-                                    const cellBorderClass = `${dayIndex < 6 ? "border-r border-slate-200" : ""} ${showBottomBorder ? "border-b border-slate-200" : ""}`;
+                                    const cellBorderClass = `${dayIndex < 6 ? "border-r border-slate-200/80" : ""} ${showBottomBorder ? "border-b border-slate-200/80" : ""}`;
 
                                     if (!cell) {
                                         return (
                                             <div
                                                 key={`empty-${weekIndex}-${dayIndex}`}
-                                                className={`h-full min-h-0 bg-slate-50/40 ${cellBorderClass}`}
+                                                className={`h-full min-h-0 bg-slate-100/40 ${cellBorderClass}`}
                                             />
                                         );
                                     }
 
                                     const key = cell.key;
+                                    const isToday = key === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
 
                                     if (isSunday) {
                                         return (
                                             <div
                                                 key={key}
-                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-red-50/40`}
+                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-rose-50/40 relative overflow-hidden group`}
                                             >
-                                                <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
-                                                    <span className="flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black bg-[#b91c1c] text-white">
+                                                <div className="absolute inset-0 bg-linear-to-b from-rose-100/20 to-transparent"></div>
+                                                <div className="relative flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
+                                                    <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] md:text-xs font-black transition-colors ${
+                                                        isToday ? "bg-rose-500 text-white shadow-sm shadow-rose-500/30 ring-2 ring-rose-200" : "bg-rose-100 text-rose-600 group-hover:bg-rose-200"
+                                                    }`}>
                                                         {cell.day}
                                                     </span>
                                                 </div>
-                                                <p className="px-1.5 md:px-2.5 pt-1 md:pt-2 text-[7px] md:text-[9px] font-black uppercase tracking-[0.14em] text-red-500/80">
-                                                    Sunday
-                                                </p>
+                                                <div className="relative flex flex-1 items-center justify-center pb-2 opacity-60">
+                                                    <p className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] text-rose-300 -rotate-12 scale-110 select-none">
+                                                        Sunday
+                                                    </p>
+                                                </div>
                                             </div>
                                         );
                                     }
@@ -1031,17 +1055,22 @@ const MCTC = () => {
                                             <div
                                                 key={key}
                                                 onClick={() => openDayPopup(key)}
-                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} cursor-pointer bg-white hover:bg-slate-50/50`}
+                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} cursor-pointer bg-white hover:bg-slate-50/80 transition-colors relative`}
                                             >
-                                                <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1 md:pt-1.5">
-                                                    <span className="flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black bg-[#1e293b] text-white">
+                                                {isToday && (
+                                                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500"></div>
+                                                )}
+                                                <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
+                                                    <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] md:text-xs font-black transition-colors ${
+                                                        isToday ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 ring-2 ring-indigo-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                    }`}>
                                                         {cell.day}
                                                     </span>
                                                 </div>
 
-                                                <div className="flex flex-1 min-h-0 flex-col mt-0.5">
+                                                <div className="flex flex-1 min-h-0 flex-col mt-0.5 px-0.5 pb-1">
                                                     {renderHalfSection(key, "first_half", "1st")}
-                                                    <div className="border-t border-dashed border-slate-200 mx-1" />
+                                                    <div className="border-t border-dashed border-slate-200/80 my-0.5 mx-1" />
                                                     {renderHalfSection(key, "second_half", "2nd")}
                                                 </div>
                                             </div>
@@ -1050,8 +1079,8 @@ const MCTC = () => {
 
                                     // ─── TASK VIEW: Flat list ───
                                     const dayTasks = getVisibleDayEntries(key);
-                                    const visibleDayTasks = dayTasks.slice(0, 2);
-                                    const hiddenTaskCount = Math.max(dayTasks.length - visibleDayTasks.length, 0);
+                                    // Removed slice so all tasks are rendered!
+                                    const visibleDayTasks = dayTasks;
 
                                     const isDropHere = dropTarget?.dayKey === key;
                                     const isDragging = dragData !== null;
@@ -1060,47 +1089,61 @@ const MCTC = () => {
                                         <div
                                             key={key}
                                             onClick={() => openDayPopup(key)}
-                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-white cursor-pointer hover:bg-slate-50/50`}
+                                            className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-white cursor-pointer hover:bg-slate-50/80 transition-all relative ${
+                                                isDropHere ? "ring-2 ring-indigo-400 ring-inset bg-indigo-50/50 z-10" : ""
+                                            }`}
                                         >
+                                            {isToday && !isDropHere && (
+                                                <div className="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500"></div>
+                                            )}
                                             <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
-                                                <span className="flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black bg-[#1e293b] text-white">
+                                                <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] md:text-xs font-black transition-colors ${
+                                                    isToday ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 ring-2 ring-indigo-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                }`}>
                                                     {cell.day}
                                                 </span>
                                             </div>
 
                                             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                                                <div className="mt-1 md:mt-2 flex flex-1 min-h-0 flex-col px-1.5 md:px-2.5 pb-2.5 md:pb-3">
-                                                    <div className="space-y-0.5 md:space-y-1 overflow-hidden">
+                                                <div className="mt-1 flex flex-1 min-h-0 flex-col px-1 md:px-1.5 pb-1 md:pb-2">
+                                                    <div className="space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pr-0.5 h-full min-h-0 flex-1">
                                                         {dayTasks.length > 0 ? (
                                                             visibleDayTasks.map((task) => {
                                                                 const taskCompleted = isLinkedTaskCompleted(task);
                                                                 const isMctcTaskWithRevs = task.type === "task" && task.revision_count > 0;
+                                                                
+                                                                // Use priority for task color
+                                                                const p = String(task.priority || "MEDIUM").toUpperCase();
+                                                                let taskColorClass = "border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300"; // Medium default
+                                                                if (taskCompleted) {
+                                                                    taskColorClass = "border-emerald-200 bg-emerald-100/60 text-emerald-900 hover:border-emerald-300";
+                                                                } else if (p === "HIGH") {
+                                                                    taskColorClass = "border-rose-200 bg-rose-50 text-rose-900 hover:border-rose-300";
+                                                                } else if (p === "LOW") {
+                                                                    taskColorClass = "border-sky-200 bg-sky-50 text-sky-900 hover:border-sky-300";
+                                                                }
 
                                                                 return (
                                                                     <div
                                                                         key={task.id}
                                                                         onClick={(event) => {
-                                                                            event.stopPropagation();
                                                                             if (isMctcTaskWithRevs) {
+                                                                                event.stopPropagation();
                                                                                 openHistoryPopup(task);
                                                                             }
                                                                         }}
-                                                                        className={`flex items-center justify-between rounded-lg border px-1.5 md:px-2 py-0.5 md:py-1 text-[7px] md:text-[9px] transition-all ${
-                                                                            isMctcTaskWithRevs ? "cursor-pointer hover:border-slate-300" : ""
-                                                                        } ${task.type === "task"
-                                                                            ? taskCompleted
-                                                                                ? "border-emerald-200 bg-emerald-100 text-emerald-900"
-                                                                                : "border-amber-100 bg-amber-50 text-amber-900"
-                                                                            : "border-slate-100 bg-slate-50 text-slate-700"
-                                                                            }`}
+                                                                        className={`group/task relative flex items-center justify-between rounded-lg border px-1.5 py-0.5 md:py-1 text-[8px] md:text-[9px] transition-all ${isMctcTaskWithRevs ? "cursor-pointer hover:border-slate-300 hover:-translate-y-[1px] hover:shadow-sm" : ""
+                                                                            } ${taskColorClass}`}
                                                                     >
-                                                                        <span className="flex-1 truncate font-bold">
-                                                                            {formatCalendarTaskLabel(task.label)}
-                                                                            <span className="ml-1 text-[5px] md:text-[6px] text-slate-400 font-semibold uppercase">
-                                                                                ({task.half_type === "second_half" ? "H2" : "H1"})
+                                                                        <span className="flex-1 truncate font-bold flex items-center gap-1">
+                                                                            <span className="shrink-0 text-[7px] md:text-[8px] font-black uppercase text-slate-400">
+                                                                                {task.half_type === "second_half" ? "H2" : "H1"}
+                                                                            </span>
+                                                                            <span className="truncate pr-1">
+                                                                                {formatCalendarTaskLabel(task.label)}
                                                                             </span>
                                                                         </span>
-                                                                        <div className="ml-2 flex items-center gap-1">
+                                                                        <div className="ml-1 flex shrink-0 items-center gap-1 opacity-90 group-hover/task:opacity-100">
                                                                             <RevisionBadge
                                                                                 count={task.revision_count}
                                                                                 originalDate={task.original_date}
@@ -1113,9 +1156,13 @@ const MCTC = () => {
                                                                                         completeTask(key, task.id);
                                                                                     }}
                                                                                     disabled={isSaving || taskCompleted}
-                                                                                    className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[8px] font-black uppercase text-white disabled:bg-slate-200"
+                                                                                    className={`rounded p-0.5 font-black transition-colors ${
+                                                                                        taskCompleted 
+                                                                                            ? "text-emerald-500 bg-emerald-100" 
+                                                                                            : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 bg-slate-200/50"
+                                                                                    }`}
                                                                                 >
-                                                                                    {taskCompleted ? "✓" : "Do"}
+                                                                                    {taskCompleted ? <Check size={10} strokeWidth={4} /> : "DO"}
                                                                                 </button>
                                                                             )}
                                                                             {canManageEntries && (
@@ -1125,7 +1172,7 @@ const MCTC = () => {
                                                                                         removeTask(key, task.id);
                                                                                     }}
                                                                                     disabled={task.isDashboardTask}
-                                                                                    className="p-0.5 text-slate-400 transition-colors hover:text-red-500"
+                                                                                    className="p-0.5 text-slate-400 transition-colors hover:text-rose-500 hover:bg-rose-50 rounded"
                                                                                 >
                                                                                     <X size={10} strokeWidth={3} />
                                                                                 </button>
@@ -1135,19 +1182,13 @@ const MCTC = () => {
                                                                 );
                                                             })
                                                         ) : (
-                                                            <p className="pt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
-                                                                No items
-                                                            </p>
+                                                            <div className="flex items-center justify-center pt-2">
+                                                                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
+                                                                    No items
+                                                                </p>
+                                                            </div>
                                                         )}
                                                     </div>
-
-                                                    {hiddenTaskCount > 0 && (
-                                                        <div className="mt-2 pt-1">
-                                                            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 leading-none">
-                                                                {hiddenTaskCount} more
-                                                            </p>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1203,9 +1244,8 @@ const MCTC = () => {
                                     {/* Half header */}
                                     <div className="mb-3 flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2">
-                                            <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-black ${
-                                                halfIndex === 0 ? "bg-blue-600 text-white" : "bg-indigo-600 text-white"
-                                            }`}>
+                                            <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-black ${halfIndex === 0 ? "bg-blue-600 text-white" : "bg-indigo-600 text-white"
+                                                }`}>
                                                 {halfIndex + 1}
                                             </span>
                                             <div>
@@ -1299,16 +1339,20 @@ const MCTC = () => {
                             {dayTasks.length > 0 ? (
                                 dayTasks.map((task) => {
                                     const taskCompleted = isLinkedTaskCompleted(task);
+                                    const p = String(task.priority || "MEDIUM").toUpperCase();
+                                    let popupColorClass = "border-amber-100 bg-amber-50 text-slate-800"; // Medium default
+                                    if (taskCompleted) {
+                                        popupColorClass = "border-emerald-200 bg-emerald-50 text-slate-800";
+                                    } else if (p === "HIGH") {
+                                        popupColorClass = "border-rose-100 bg-rose-50 text-slate-800";
+                                    } else if (p === "LOW") {
+                                        popupColorClass = "border-sky-100 bg-sky-50 text-slate-800";
+                                    }
 
                                     return (
                                         <div
                                             key={`popup-${task.id}`}
-                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${task.type === "task"
-                                                ? taskCompleted
-                                                    ? "border-emerald-200 bg-emerald-100"
-                                                    : "border-amber-100 bg-amber-50"
-                                                : "border-slate-100 bg-slate-50"
-                                                }`}
+                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${task.type === "task" ? popupColorClass : "border-slate-100 bg-slate-50 text-slate-800"}`}
                                         >
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
@@ -1338,7 +1382,11 @@ const MCTC = () => {
                                                     <button
                                                         onClick={() => completeTask(activeDayPopup, task.id)}
                                                         disabled={isSaving || taskCompleted}
-                                                        className="rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase text-white disabled:bg-slate-200 whitespace-nowrap"
+                                                        className={`rounded-md px-2 py-1 text-[9px] font-black uppercase whitespace-nowrap transition-colors ${
+                                                            taskCompleted 
+                                                                ? "bg-emerald-100 text-emerald-600 border border-emerald-200 opacity-100" 
+                                                                : "bg-emerald-500 text-white hover:bg-emerald-600"
+                                                        }`}
                                                     >
                                                         {taskCompleted ? "Done" : "Complete"}
                                                     </button>
@@ -1571,14 +1619,22 @@ const MCTC = () => {
                             <ChevronLeft size={12} className="sm:w-4 sm:h-4 md:w-5 md:h-5" strokeWidth={3} />
                         </button>
 
-                        <div className="min-w-20 sm:min-w-35 md:min-w-45 px-1 sm:px-2 md:px-4 text-center">
-                            <h2 className="flex items-center justify-center gap-0.5 sm:gap-1 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black text-[#1e293b] whitespace-nowrap">
-                                {monthNames[currentDate.getMonth()].substring(0, 3)}
-                                <span className="font-light text-slate-200 hidden sm:inline">/</span>
-                                <span className="hidden sm:inline">{currentDate.getFullYear()}</span>
-                                <span className="sm:hidden text-[8px]">{currentDate.getFullYear().toString().substring(2)}</span>
-                            </h2>
-                        </div>
+                        <MonthYearPicker
+                            selectedMonth={currentDate.getMonth() + 1}
+                            selectedYear={currentDate.getFullYear()}
+                            onChange={(y, m) => {
+                                setCurrentDate(new Date(y, m - 1, 1));
+                            }}
+                            label={
+                                <h2 className="flex items-center justify-center gap-0.5 sm:gap-1 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black text-[#1e293b] whitespace-nowrap cursor-pointer block">
+                                    {monthNames[currentDate.getMonth()].substring(0, 3)}
+                                    <span className="font-light text-slate-200 hidden sm:inline">/</span>
+                                    <span className="hidden sm:inline">{currentDate.getFullYear()}</span>
+                                    <span className="sm:hidden text-[8px]">{currentDate.getFullYear().toString().substring(2)}</span>
+                                </h2>
+                            }
+                            className="min-w-20 sm:min-w-35 md:min-w-45 px-1 sm:px-2 md:px-4 text-center"
+                        />
 
                         <button
                             onClick={handleNextMonth}

@@ -10,6 +10,7 @@ import { SkeletonListItem, SkeletonTableRow } from '../components/SkeletonLoader
 import Sidebar from '../components/Sidebar';
 // Ensure your api service is correctly configured to point to your Django/Node backend
 import api from '../api';
+import useDebounce from '../hooks/useDebounce';
 
 const StaffManagement = () => {
     const navigate = useNavigate();
@@ -23,6 +24,7 @@ const StaffManagement = () => {
     const defaultTableColSpan = isManagerMemberView ? 4 : (isAdminRole ? 6 : 5);
     const [staffMembers, setStaffMembers] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('All');
     const [expandedMemberId, setExpandedMemberId] = useState(null);
@@ -196,7 +198,7 @@ const StaffManagement = () => {
     // --- 2. SEARCH & ROLE FILTERING ---
     const filteredStaff = staffMembers.filter(member => {
         const fullName = `${member.first_name || ''} ${member.last_name || ''}`.trim();
-        const query = searchQuery.toLowerCase();
+        const query = debouncedSearchQuery.toLowerCase();
 
         const matchesSearch = fullName.toLowerCase().includes(query) ||
             member.username?.toLowerCase().includes(query) ||
@@ -568,7 +570,7 @@ const StaffManagement = () => {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-8 py-6 text-center">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                         <button
                                                             type="button"
                                                             onClick={() => navigate(`/employeedashboard?member=${member.id}`)}
@@ -577,7 +579,7 @@ const StaffManagement = () => {
                                                             View Dashboard
                                                         </button>
                                                     </td>
-                                                    <td className="px-8 py-6 text-center">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                         <button
                                                             type="button"
                                                             onClick={() => {
@@ -589,7 +591,7 @@ const StaffManagement = () => {
                                                             View MCTC
                                                         </button>
                                                     </td>
-                                                    <td className="px-8 py-6 text-center">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                         <button
                                                             type="button"
                                                             onClick={() => {
@@ -622,7 +624,7 @@ const StaffManagement = () => {
                                                     </td>
 
                                                     {/* Role Badge */}
-                                                    <td className="px-8 py-6">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6">
                                                         <span className={`text-[9px] font-black uppercase px-4 py-2 rounded-xl tracking-widest border
                                                     ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
                                                                 member.role?.toLowerCase() === 'mls' ? 'bg-violet-50 text-violet-600 border-violet-100' :
@@ -633,7 +635,7 @@ const StaffManagement = () => {
                                                     </td>
 
                                                     {/* Status Badge */}
-                                                    <td className="px-8 py-6 text-center">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                         <div className="flex justify-center">
                                                             {member.is_active ? (
                                                                 <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase">
@@ -648,7 +650,7 @@ const StaffManagement = () => {
                                                     </td>
 
                                                     {/* Join Date */}
-                                                    <td className="px-8 py-6 text-center">
+                                                    <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                         <p className="text-[12px] font-bold text-slate-700 flex items-center justify-center gap-2">
                                                             <Calendar size={14} className="text-slate-300" />
                                                             {formatDate(member.date_joined)}
@@ -656,14 +658,14 @@ const StaffManagement = () => {
                                                     </td>
 
                                                     {isAdminRole && (
-                                                        <td className="px-8 py-6 text-center">
+                                                        <td className="px-4 md:px-8 py-3 md:py-6 text-center">
                                                             <p className="text-[12px] font-black tracking-[0.1em] text-slate-700">{member.password_display || 'Not available'}</p>
                                                             <p className="mt-1 text-[10px] font-bold text-slate-400">{formatDateTime(member.password_changed_at)}</p>
                                                         </td>
                                                     )}
 
                                                     {/* Control Menu */}
-                                                    <td className="px-10 py-6 text-right">
+                                                    <td className="px-4 md:px-10 py-3 md:py-6 text-right">
                                                         {isClientRole ? (
                                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">View Only</span>
                                                         ) : (

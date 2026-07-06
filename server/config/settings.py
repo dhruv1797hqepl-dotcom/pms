@@ -222,3 +222,44 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=15),
 }
+
+
+# ========================
+# EMAIL (Weekly Score PDF)
+# ========================
+
+EMAIL_BACKEND    = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST       = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT       = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS    = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_USE_SSL    = os.environ.get('EMAIL_USE_SSL', 'False') == 'True'
+EMAIL_HOST_USER  = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL  = 'HQEPL PMS <' + os.environ.get('EMAIL_HOST_USER') + '>'
+
+# Weekly score email recipients
+# WEEKLY_SCORE_EMAIL_RECIPIENTS = ['mannp.hqepl@gmail.com','bhim.hqepl@gmail.com']
+WEEKLY_SCORE_EMAIL_RECIPIENTS = ['mannp.hqepl@gmail.com']   
+# WEEKLY_SCORE_EMAIL_RECIPIENTS = ['suriya@herequality.com','sameep.hqepl@gmail.com','harshil.hqepl@gmail.com','bhim.hqepl@gmail.com','mannp.hqepl@gmail.com']
+
+
+# ========================
+# LOGGING
+# ========================
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Only show warnings (4xx) and errors (5xx)
+            'propagate': False,
+        },
+    },
+}

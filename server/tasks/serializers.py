@@ -194,3 +194,23 @@ class TaskSerializer(serializers.ModelSerializer):
             data['flag'] = 'document'
 
         return data
+
+
+class WeeklyScoreTaskSerializer(serializers.ModelSerializer):
+    assigned_to_name = serializers.SerializerMethodField()
+    project_name = serializers.ReadOnlyField(source='project.name')
+    client_name = serializers.ReadOnlyField(source='client_org.company_name')
+
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'task_id', 'title', 'project', 'project_name',
+            'client_org', 'client_name', 'assigned_to', 'assigned_to_name',
+            'start_date', 'target_date', 'completion_date', 'status', 'ats_score'
+        ]
+
+    def get_assigned_to_name(self, obj):
+        if not obj.assigned_to:
+            return None
+        full_name = f"{obj.assigned_to.first_name or ''} {obj.assigned_to.last_name or ''}".strip()
+        return full_name or obj.assigned_to.username or obj.assigned_to.email

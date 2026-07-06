@@ -8,6 +8,7 @@ import { SkeletonListItem } from '../components/SkeletonLoader';
 import Sidebar from '../components/Sidebar';
 import api from '../api';
 import CreateTeamMemberModal from '../components/CreateTeamMemberModal';
+import useDebounce from '../hooks/useDebounce';
 
 export default function ExternalManagement() {
     const { clientId } = useParams();
@@ -15,6 +16,7 @@ export default function ExternalManagement() {
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     const fetchMembers = async () => {
@@ -53,8 +55,8 @@ export default function ExternalManagement() {
     useEffect(() => { fetchMembers(); }, [clientId]);
 
     const filteredMembers = members.filter(m =>
-        m.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.email?.toLowerCase().includes(searchQuery.toLowerCase())
+        m.username?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        m.email?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     );
 
     return (

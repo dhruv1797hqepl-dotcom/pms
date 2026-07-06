@@ -7,9 +7,11 @@ import { SkeletonCard } from '../../components/SkeletonLoader';
 import Sidebar from '../../components/Sidebar';
 import api from '../../api';
 import { resolveMediaUrl } from '../../utils/media';
+import useDebounce from '../../hooks/useDebounce';
 
 export default function DDTMEBasePage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [activeFilter, setActiveFilter] = useState('All');
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +41,7 @@ export default function DDTMEBasePage() {
   }, []);
 
   const filteredClients = clients.filter(c => {
-    const matchesSearch = c?.company_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = c?.company_name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     const matchesStatus = activeFilter === 'All' ||
       (activeFilter === 'Active' && c?.status?.toLowerCase() === 'active') ||
       (activeFilter === 'Inactive' && c?.status?.toLowerCase() === 'inactive');

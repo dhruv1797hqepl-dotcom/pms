@@ -1,16 +1,49 @@
-# React + Vite
+# HQEPL PMS - Client (Frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the frontend application for the HQEPL Project Management System. It is built using modern web technologies to provide a fast and responsive user experience.
 
-Currently, two official plugins are available:
+## Tech Stack
+- **Framework**: React 19 + Vite
+- **Routing**: React Router DOM
+- **Styling**: Tailwind CSS v4
+- **Data Fetching**: Axios
+- **Charts & Visualization**: Recharts
+- **Icons**: Lucide React
+- **Document Generation**: jsPDF, jsPDF-AutoTable
+- **Excel Handling**: xlsx
+- **Animations**: Framer Motion
+- **Emails**: EmailJS
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Installation
 
-## React Compiler
+1. Navigate to the client directory:
+   ```bash
+   cd client
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Set up your environment variables:
+   Create a `.env` file in the root of the `client` folder and add your backend API URL and other required keys:
+   ```env
+   VITE_API_BASE_URL=http://localhost:8000
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Running the Application
 
-## Expanding the ESLint configuration
+To start the development server:
+```bash
+npm run dev
+```
+The application will be accessible at `http://localhost:5173`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Build for Production
+To create an optimized production build:
+```bash
+npm run build
+```
+You can preview the production build locally with:
+```bash
+npm run preview
+```

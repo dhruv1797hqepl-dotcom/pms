@@ -294,7 +294,6 @@ export default function ProjectDetails() {
         let endpoint = `projects/${projectId}/`;
         if (userRole === 'SGM') endpoint = `sgm/projects/${projectId}/`;
 
-        console.log(`Persisting Progress: ${calculatedProgress}% for Project ${projectId}`);
 
         await api.patch(endpoint, { overall_progress: calculatedProgress });
 
@@ -313,7 +312,7 @@ export default function ProjectDetails() {
     return (
       <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
           <PageSkeleton />
         </main>
       </div>

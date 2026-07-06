@@ -179,7 +179,7 @@ body {
 		display: inherit;
 	}
 }
-with the
+
 /* ============================================
    RESPONSIVE MODAL & POPUP STYLES
    Ensures popups/modals fit on all screen sizes
@@ -273,23 +273,7 @@ with the
 	background: #94a3b8;
 }
 
-/* Collapse page margins on mobile */
-@media (max-width: 640px) {
-	main {
-		padding: 0.5rem;
-	}
-
-	.max-w-7xl,
-	.max-w-6xl,
-	.max-w-5xl,
-	.max-w-4xl,
-	.max-w-3xl {
-		padding-left: 0.25rem;
-		padding-right: 0.25rem;
-		margin-left: auto;
-		margin-right: auto;
-	}
-}
+/* Collapse page margins on mobile — note: individual pages use their own px/py classes */
 
 /* Improve touch targets on mobile */
 @media (max-width: 768px) {
@@ -329,45 +313,9 @@ with the
 
 /* Optimize for 13-14 inch laptop screens (1200-1440px) */
 @media (min-width: 1024px) and (max-width: 1440px) {
-	/* Slightly reduce padding on medium-large screens */
-	.max-w-7xl,
-	.max-w-6xl,
-	.max-w-5xl {
-		padding-left: 1rem;
-		padding-right: 1rem;
-	}
-
-	/* Adjust spacing for better fit */
-	main {
-		padding: 1rem 0.75rem;
-	}
-
-	/* Scale down large gaps slightly */
-	.gap-8 {
-		gap: 1.5rem;
-	}
-
-	.gap-12 {
-		gap: 2rem;
-	}
-
-	/* Optimize grid layouts for smaller-width screens */
-	.grid-cols-3,
-	.lg\\:grid-cols-3 {
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-	}
-
 	/* Better table text size */
 	table {
 		font-size: 0.85rem;
-	}
-
-	table th {
-		padding: 0.5rem 0.75rem;
-	}
-
-	table td {
-		padding: 0.5rem 0.75rem;
 	}
 }
 
@@ -380,37 +328,6 @@ with the
 
 	aside[class*="w-64"] {
 		width: 15rem !important;
-	}
-
-	/* Adjust main container width */
-	main {
-		padding: 0.75rem;
-	}
-
-	.max-w-7xl,
-	.max-w-6xl,
-	.max-w-5xl,
-	.max-w-4xl {
-		padding-left: 0.5rem;
-		padding-right: 0.5rem;
-	}
-
-	/* Reduce gap between elements */
-	.gap-8 {
-		gap: 1rem;
-	}
-
-	.gap-12 {
-		gap: 1.5rem;
-	}
-
-	.space-y-8 > * + * {
-		margin-top: 1.5rem;
-	}
-
-	/* Optimize button sizes */
-	button {
-		padding: clamp(0.4rem, 0.8vh, 0.65rem) clamp(0.75rem, 1.5vw, 1.25rem);
 	}
 
 	/* Better responsive modal */
@@ -429,7 +346,6 @@ with the
 	select,
 	textarea {
 		font-size: 0.95rem;
-		padding: clamp(0.4rem, 0.8vh, 0.65rem) clamp(0.5rem, 1vw, 0.75rem);
 	}
 }
 
@@ -439,12 +355,9 @@ with the
 		display: none !important;
 	}
 
-	/* Increase touch targets */
-	a, button, input[type="button"], input[type="submit"], label {
+	/* Increase touch targets for interactive elements */
+	a, button, input[type="button"], input[type="submit"] {
 		min-height: 44px;
-		min-width: 44px;
-		display: flex;
-		align-items: center;
 	}
 }
 

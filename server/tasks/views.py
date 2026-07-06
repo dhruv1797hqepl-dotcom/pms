@@ -8,7 +8,8 @@ from django.contrib.auth import get_user_model
 import tempfile
 import os
 import math
-from datetime import timedelta
+from datetime import timedelta, date
+from rest_framework.views import APIView
 from .models import Task
 from .serializers import TaskSerializer
 from .excel_utils import ExcelTaskImporter
@@ -341,6 +342,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         Weekly score dataset with explicit member list + tasks.
         For SGM: includes internal members + SGM names across handled projects/clients, excludes EXTERNAL members.
         """
+        import traceback
+
         user = request.user
 
         month_param = request.query_params.get('month')
@@ -367,131 +370,144 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if user.role == User.SGM:
-            member_ids, handled_project_ids, handled_client_ids = self._get_sgm_scoped_team_member_ids(user)
+        try:
+            if user.role == User.SGM:
+                member_ids, handled_project_ids, handled_client_ids = self._get_sgm_scoped_team_member_ids(user)
 
-            members_queryset = User.objects.filter(
-                id__in=member_ids,
-                role__in=[User.EMPLOYEE, User.SGM]
-            ).order_by('first_name', 'last_name', 'username', 'email')
+                members_queryset = User.objects.filter(
+                    id__in=member_ids,
+                    role__in=[User.EMPLOYEE, User.SGM]
+                ).order_by('first_name', 'last_name', 'username', 'email')
 
-            scoped_tasks_queryset = Task.objects.filter(
-                assigned_to_id__in=member_ids,
-                assigned_to__role__in=[User.EMPLOYEE, User.SGM],
-            ).filter(
-                Q(project_id__in=handled_project_ids) |
-                Q(client_org_id__in=handled_client_ids) |
-                Q(project_id__isnull=True, client_org_id__isnull=True)
-            )
+                scoped_tasks_queryset = Task.objects.filter(
+                    assigned_to_id__in=member_ids,
+                    assigned_to__role__in=[User.EMPLOYEE, User.SGM],
+                ).filter(
+                    Q(project_id__in=handled_project_ids) |
+                    Q(client_org_id__in=handled_client_ids) |
+                    Q(project_id__isnull=True, client_org_id__isnull=True)
+                )
 
-            clients_queryset = Client.objects.filter(
-                Q(id__in=handled_client_ids) | Q(assigned_sgms=user)
-            ).distinct().order_by('company_name')
+                clients_queryset = Client.objects.filter(
+                    Q(id__in=handled_client_ids) | Q(assigned_sgms=user)
+                ).distinct().order_by('company_name')
 
-            projects_queryset = Project.objects.filter(
-                Q(id__in=handled_project_ids) | Q(client__assigned_sgms=user)
-            ).select_related('client').distinct().order_by('name')
-        elif user.role in [User.ADMIN, User.HQEPL, User.MLS]:
-            members_queryset = User.objects.filter(
-                role__in=[User.EMPLOYEE, User.SGM, User.HQEPL, User.MLS]
-            ).order_by('first_name', 'last_name', 'username', 'email')
+                projects_queryset = Project.objects.filter(
+                    Q(id__in=handled_project_ids) | Q(client__assigned_sgms=user)
+                ).select_related('client').distinct().order_by('name')
+            elif user.role in [User.ADMIN, User.HQEPL, User.MLS]:
+                members_queryset = User.objects.filter(
+                    role__in=[User.EMPLOYEE, User.SGM, User.HQEPL, User.MLS]
+                ).order_by('first_name', 'last_name', 'username', 'email')
 
-            scoped_tasks_queryset = Task.objects.filter(
-                assigned_to__role__in=[User.EMPLOYEE, User.SGM, User.HQEPL, User.MLS]
-            )
+                scoped_tasks_queryset = Task.objects.filter(
+                    assigned_to__role__in=[User.EMPLOYEE, User.SGM, User.HQEPL, User.MLS]
+                )
 
-            clients_queryset = Client.objects.all().order_by('company_name')
-            projects_queryset = Project.objects.all().select_related('client').order_by('name')
-        else:
-            scoped_tasks_queryset = self.get_queryset()
-            member_ids = scoped_tasks_queryset.values_list('assigned_to_id', flat=True).distinct()
-            members_queryset = User.objects.filter(id__in=member_ids).order_by(
-                'first_name', 'last_name', 'username', 'email'
-            )
+                clients_queryset = Client.objects.all().order_by('company_name')
+                projects_queryset = Project.objects.all().select_related('client').order_by('name')
+            else:
+                scoped_tasks_queryset = self.get_queryset()
+                member_ids = scoped_tasks_queryset.values_list('assigned_to_id', flat=True).distinct()
+                members_queryset = User.objects.filter(id__in=member_ids).order_by(
+                    'first_name', 'last_name', 'username', 'email'
+                )
 
-            clients_queryset = Client.objects.filter(
-                id__in=scoped_tasks_queryset.values_list('client_org_id', flat=True)
-            ).distinct().order_by('company_name')
+                clients_queryset = Client.objects.filter(
+                    id__in=scoped_tasks_queryset.values_list('client_org_id', flat=True)
+                ).distinct().order_by('company_name')
 
-            projects_queryset = Project.objects.filter(
-                id__in=scoped_tasks_queryset.values_list('project_id', flat=True)
-            ).select_related('client').distinct().order_by('name')
+                projects_queryset = Project.objects.filter(
+                    id__in=scoped_tasks_queryset.values_list('project_id', flat=True)
+                ).select_related('client').distinct().order_by('name')
 
-        tasks_queryset = scoped_tasks_queryset
+            tasks_queryset = scoped_tasks_queryset
 
-        if year is not None:
-            tasks_queryset = tasks_queryset.filter(target_date__year=year)
-        if month is not None:
-            tasks_queryset = tasks_queryset.filter(target_date__month=month)
+            if year is not None:
+                tasks_queryset = tasks_queryset.filter(target_date__year=year)
+            if month is not None:
+                tasks_queryset = tasks_queryset.filter(target_date__month=month)
 
-        tasks_queryset = tasks_queryset.select_related(
-            'assigned_to',
-            'assigned_by',
-            'project',
-            'client_org',
-        ).order_by('-id')
+            tasks_queryset = tasks_queryset.select_related(
+                'assigned_to',
+                'assigned_by',
+                'project',
+                'client_org',
+            ).order_by('-id')
 
-        members_data = [
-            {
-                "id": member.id,
-                "name": self._get_display_name(member),
-                "email": member.email,
-                "role": member.role,
-            }
-            for member in members_queryset
-        ]
-
-        clients_data = [
-            {
-                "id": client.id,
-                "name": client.company_name,
-            }
-            for client in clients_queryset
-        ]
-
-        projects_data = [
-            {
-                "id": project.id,
-                "name": project.name,
-                "client_id": project.client_id,
-                "client_name": project.client.company_name,
-            }
-            for project in projects_queryset
-        ]
-
-        serialized_tasks = self.get_serializer(tasks_queryset, many=True).data
-
-        # Build SGM-to-employees mapping for role-based UI organization
-        sgm_to_employees = {}
-        sgm_ids_in_view = set()
-        
-        for member in members_queryset:
-            if member.role == User.SGM:
-                sgm_ids_in_view.add(member.id)
-                sgm_to_employees[member.id] = []
-        
-        # For each SGM, find employees in their team
-        for sgm_id in sgm_ids_in_view:
-            sgm_user = User.objects.get(id=sgm_id)
-            # Get team members this SGM manages
-            handled_member_ids_set, _, _ = self._get_sgm_scoped_team_member_ids(sgm_user)
-            
-            # Find employees (not SGMs) in this set who are in the view
-            employee_ids_for_sgm = [
-                mid for mid in handled_member_ids_set 
-                if mid in [m.id for m in members_queryset if m.role == User.EMPLOYEE]
+            members_data = [
+                {
+                    "id": member.id,
+                    "name": self._get_display_name(member),
+                    "email": member.email,
+                    "role": member.role,
+                }
+                for member in members_queryset
             ]
-            sgm_to_employees[sgm_id] = employee_ids_for_sgm
 
-        return Response({
-            "members": members_data,
-            "tasks": serialized_tasks,
-            "clients": clients_data,
-            "projects": projects_data,
-            "current_user_id": user.id,
-            "current_user_role": user.role,
-            "sgm_to_employees": sgm_to_employees,
-        })
+            clients_data = [
+                {
+                    "id": client.id,
+                    "name": client.company_name,
+                }
+                for client in clients_queryset
+            ]
+
+            projects_data = [
+                {
+                    "id": project.id,
+                    "name": project.name,
+                    "client_id": project.client_id,
+                    "client_name": project.client.company_name,
+                }
+                for project in projects_queryset
+            ]
+
+            from .serializers import WeeklyScoreTaskSerializer
+            serialized_tasks = WeeklyScoreTaskSerializer(tasks_queryset, many=True).data
+
+            # Build SGM-to-employees mapping for role-based UI organization
+            sgm_to_employees = {}
+            sgm_ids_in_view = set()
+
+            for member in members_queryset:
+                if member.role == User.SGM:
+                    sgm_ids_in_view.add(member.id)
+                    sgm_to_employees[member.id] = []
+
+            # For each SGM, find employees in their team
+            for sgm_id in sgm_ids_in_view:
+                sgm_user = User.objects.get(id=sgm_id)
+                # Get team members this SGM manages
+                handled_member_ids_set, _, _ = self._get_sgm_scoped_team_member_ids(sgm_user)
+
+                # Find employees (not SGMs) in this set who are in the view
+                employee_ids_for_sgm = [
+                    mid for mid in handled_member_ids_set
+                    if mid in [m.id for m in members_queryset if m.role == User.EMPLOYEE]
+                ]
+                sgm_to_employees[sgm_id] = employee_ids_for_sgm
+
+            return Response({
+                "members": members_data,
+                "tasks": serialized_tasks,
+                "clients": clients_data,
+                "projects": projects_data,
+                "current_user_id": user.id,
+                "current_user_role": user.role,
+                "sgm_to_employees": sgm_to_employees,
+            })
+
+        except Exception as exc:
+            tb = traceback.format_exc()
+            print(f"[weekly_score_data] ERROR for user={user.id} role={user.role}: {exc}\n{tb}")
+            return Response(
+                {
+                    "detail": "An internal server error occurred while fetching weekly score data.",
+                    "error": str(exc),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=False, methods=['get'])
     def dashboard_stats(self, request):
@@ -549,7 +565,8 @@ class TaskViewSet(viewsets.ModelViewSet):
             .order_by('-id')
         )
 
-        serialized_tasks = self.get_serializer(tasks_queryset, many=True).data
+        from .serializers import WeeklyScoreTaskSerializer
+        serialized_tasks = WeeklyScoreTaskSerializer(tasks_queryset, many=True).data
         return Response(serialized_tasks)
 
     @action(detail=False, methods=['post'], parser_classes=(MultiPartParser, FormParser))
@@ -662,5 +679,128 @@ class TaskViewSet(viewsets.ModelViewSet):
                     "success": False,
                     "error": f"Server error processing Excel file: {str(e)}"
                 },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WeeklyScoreEmailView(APIView):
+    """
+    POST /api/tasks/send-weekly-score-email/
+
+    Generates the weekly score PDF for the previous week (or a supplied range)
+    and emails it to the configured recipients.
+
+    Access:
+      - ADMIN / MLS / HQEPL role via JWT
+      - OR a Render Cron Job bearing the X-Cron-Secret header matching CRON_SECRET env var
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _check_cron_secret(self, request):
+        import os
+        secret = os.environ.get('CRON_SECRET', '')
+        if secret and request.headers.get('X-Cron-Secret') == secret:
+            return True
+        return False
+
+    def get_permissions(self):
+        # Allow cron calls without JWT if they carry the correct secret
+        return []
+
+    def post(self, request, *args, **kwargs):
+        import os
+        from django.conf import settings
+
+        # Auth: either valid JWT admin user OR cron secret
+        cron_ok = self._check_cron_secret(request)
+        jwt_ok   = False
+        if not cron_ok:
+            from rest_framework_simplejwt.authentication import JWTAuthentication
+            try:
+                auth = JWTAuthentication()
+                user_auth = auth.authenticate(request)
+                if user_auth:
+                    jwt_user, _ = user_auth
+                    if jwt_user.role in [User.ADMIN, User.HQEPL, User.MLS]:
+                        jwt_ok = True
+            except Exception:
+                pass
+
+        if not cron_ok and not jwt_ok:
+            return Response(
+                {'detail': 'Authentication required. Must be ADMIN/MLS/HQEPL or supply cron secret.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Parse optional date params
+        week_start_str = request.data.get('week_start') or request.query_params.get('week_start')
+        week_end_str   = request.data.get('week_end')   or request.query_params.get('week_end')
+
+        week_start = None
+        week_end   = None
+        if week_start_str and week_end_str:
+            try:
+                week_start = date.fromisoformat(week_start_str)
+                week_end   = date.fromisoformat(week_end_str)
+            except ValueError:
+                return Response(
+                    {'detail': 'Invalid date format. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Optional recipient override
+        extra_recipients = request.data.get('recipients', [])
+        recipients = getattr(settings, 'WEEKLY_SCORE_EMAIL_RECIPIENTS', []) + list(extra_recipients)
+
+        from .weekly_email import send_weekly_score_email
+        result = send_weekly_score_email(
+            week_start=week_start,
+            week_end=week_end,
+            recipients=recipients,
+        )
+
+        http_status = status.HTTP_200_OK if result.get('success') else status.HTTP_500_INTERNAL_SERVER_ERROR
+        return Response(result, status=http_status)
+
+
+class WeeklyScorePDFDownloadView(APIView):
+    """
+    GET /api/tasks/download-weekly-score-pdf/
+    Generates and downloads the PDF report of the selected period range.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from django.http import HttpResponse
+        from .weekly_email import build_weekly_score_pdf
+        
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        title_prefix = request.query_params.get('title_prefix') or "HQ"
+
+        if not start_date_str or not end_date_str:
+            return Response(
+                {'detail': 'Both start_date and end_date query params are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        except ValueError:
+            return Response(
+                {'detail': 'Invalid date format. Use YYYY-MM-DD.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            pdf_bytes = build_weekly_score_pdf(start_date, end_date, title_prefix)
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="score_report_{start_date_str}_to_{end_date_str}.pdf"'
+            return response
+        except Exception as exc:
+            return Response(
+                {'detail': f'Failed to generate PDF: {str(exc)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

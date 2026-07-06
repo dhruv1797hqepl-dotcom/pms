@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import api from '../../api';
 import emailjs from '@emailjs/browser';
+import useDebounce from '../../hooks/useDebounce';
 import {
   UserPlus, Mail, Lock, User,
   Shield, ArrowLeft, Send, Loader2,
-  ShieldCheck, Fingerprint
+  ShieldCheck, Fingerprint,
+  CheckCircle, AlertCircle
 } from 'lucide-react';
 
 const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
@@ -16,6 +18,8 @@ const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID;
 const CreateUser = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [shortformStatus, setShortformStatus] = useState(''); // 'checking', 'unique', 'taken', ''
+  const [shortformError, setShortformError] = useState('');
 
   const [formData, setFormData] = useState({
     username: '',
@@ -27,9 +31,37 @@ const CreateUser = () => {
     role: 'Employee'
   });
 
+  const debouncedShortform = useDebounce(formData.shortform, 500);
+
+  useEffect(() => {
+    const checkShortform = async () => {
+      const sf = debouncedShortform.trim().toUpperCase();
+      if (!sf) {
+        setShortformStatus('');
+        return;
+      }
+      
+      setShortformStatus('checking');
+      try {
+        const res = await api.get(`/admin/check-shortform/?shortform=${encodeURIComponent(sf)}`);
+        if (res.data.exists) {
+          setShortformStatus('taken');
+        } else {
+          setShortformStatus('unique');
+        }
+      } catch (err) {
+        console.error("Failed to check shortform:", err);
+        setShortformStatus('');
+      }
+    };
+
+    checkShortform();
+  }, [debouncedShortform]);
+
   const handleCreateAndEmail = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setShortformError('');
 
     const normalizedShortform = String(formData.shortform || '').trim().toUpperCase();
 
@@ -94,11 +126,11 @@ const CreateUser = () => {
         errorMessage = err.message;
       }
 
-      const shortformError = err?.response?.data?.shortform;
-      if (shortformError) {
-        const message = Array.isArray(shortformError) ? shortformError.join(', ') : String(shortformError);
-        if (message.toLowerCase().includes('shortform already taken')) {
-          alert('Shortform already taken');
+      const apiShortformError = err?.response?.data?.shortform;
+      if (apiShortformError) {
+        const message = Array.isArray(apiShortformError) ? apiShortformError.join(', ') : String(apiShortformError);
+        if (message.toLowerCase().includes('already taken') || message.toLowerCase().includes('exists') || message.toLowerCase().includes('unique')) {
+          setShortformError('Short form already taken');
           setLoading(false);
           return;
         }
@@ -217,9 +249,25 @@ const CreateUser = () => {
                       <input
                         type="text"
                         placeholder="JD"
-                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl focus:border-blue-500 focus:bg-white outline-none transition-all text-sm font-semibold text-slate-700"
-                        onChange={(e) => setFormData({ ...formData, shortform: e.target.value.toUpperCase() })}
+                        className={`w-full px-4 py-3 bg-slate-50/50 border ${shortformStatus === 'taken' || shortformError ? 'border-red-400 focus:border-red-500' : shortformStatus === 'unique' ? 'border-emerald-400 focus:border-emerald-500' : 'border-slate-100 focus:border-blue-500'} rounded-xl focus:bg-white outline-none transition-all text-sm font-semibold text-slate-700`}
+                        onChange={(e) => {
+                          setFormData({ ...formData, shortform: e.target.value.toUpperCase() });
+                          if (shortformError) setShortformError('');
+                          if (shortformStatus === 'unique' || shortformStatus === 'taken') setShortformStatus('checking');
+                        }}
                       />
+                      {shortformStatus === 'checking' && (
+                        <p className="text-[10px] font-bold text-slate-500 ml-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Checking...</p>
+                      )}
+                      {shortformStatus === 'unique' && (
+                        <p className="text-[10px] font-bold text-emerald-500 ml-1 flex items-center gap-1"><CheckCircle size={10} /> Unique short form</p>
+                      )}
+                      {shortformStatus === 'taken' && (
+                        <p className="text-[10px] font-bold text-red-500 ml-1 flex items-center gap-1"><AlertCircle size={10} /> Already taken</p>
+                      )}
+                      {shortformError && shortformStatus !== 'taken' && (
+                        <p className="text-[10px] font-bold text-red-500 ml-1">{shortformError}</p>
+                      )}
                     </div>
                   </div>
 

@@ -5,7 +5,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import Sidebar from "../../components/Sidebar";
 import api from "../../api";
-
+import MonthYearPicker from "../../components/MonthYearPicker";
 const rgyOptions = [
 	{ value: "G", label: "G", className: "bg-green-500 text-white", bgClass: "bg-green-50" },
 	{ value: "Y", label: "Y", className: "bg-yellow-300 text-black", bgClass: "bg-yellow-50" },
@@ -524,9 +524,20 @@ const DDTMERYG = () => {
 									>
 										<ChevronLeft size={14} />
 									</button>
-									<span className="text-xs font-black uppercase tracking-[0.16em] text-slate-600 whitespace-nowrap">
-										{buildLongMonthLabel(selectedMonth, selectedYear)}
-									</span>
+									<MonthYearPicker
+										selectedMonth={selectedMonth}
+										selectedYear={selectedYear}
+										onChange={(y, m) => {
+											setSelectedYear(y);
+											setSelectedMonth(m);
+										}}
+										label={
+											<span className="text-xs font-black uppercase tracking-[0.16em] text-slate-600 whitespace-nowrap cursor-pointer block">
+												{buildLongMonthLabel(selectedMonth, selectedYear)}
+											</span>
+										}
+										className="flex items-center justify-center"
+									/>
 									<button
 										type="button"
 										onClick={handleNextMonth}

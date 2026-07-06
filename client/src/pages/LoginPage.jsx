@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ChevronRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import api from "../api";
 
 const LOGIN_ENDPOINTS = {
@@ -9,6 +9,22 @@ const LOGIN_ENDPOINTS = {
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where to send the user after a successful login.
+  // PrivateRoute stores the blocked path in location.state.from.
+  const getRedirectPath = (role) => {
+    if (location.state?.from?.pathname) return location.state.from.pathname;
+    const r = role?.toUpperCase();
+    if (r === "ADMIN")    return "/admin";
+    if (r === "HQEPL")   return "/hqepl";
+    if (r === "MLS")     return "/mls";
+    if (r === "EMPLOYEE") return "/employee";
+    if (r === "SGM")     return "/sgm";
+    if (r === "SENIOR")  return "/senior";
+    if (r === "CLIENT")  return "/client";
+    if (r === "EXTERNAL") return "/employee";
+    return "/";
+  };
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,14 +46,12 @@ const LoginPage = () => {
       });
       
       const { data } = response;
-      console.log("[LOGIN] Response data:", data); // Debug log
       // console.log("[LOGIN] Access token:", data.access);
 
       // Store tokens
       if (data.access) {
         localStorage.setItem("access_token", data.access);
         localStorage.setItem("token", data.access);
-        console.log("[LOGIN] Token stored successfully");
       } else {
         console.error("[LOGIN] No access token in response!");
         throw new Error("Login failed: No access token received");
@@ -53,20 +67,8 @@ const LoginPage = () => {
       localStorage.setItem("username", data.username || "Admin User");
       localStorage.setItem("email", data.email || email);
 
-      console.log("[LOGIN] All tokens and user info stored. Role:", data.role);
 
-      // Role-based navigation
-      const role = data.role?.toUpperCase();
-
-      if (role === "ADMIN") navigate("/admin");
-      else if (role === "HQEPL") navigate("/hqepl");
-      else if (role === "MLS") navigate("/mls");
-      else if (role === "EMPLOYEE") navigate("/employee");
-      else if (role === "SGM") navigate("/sgm");
-      else if (role === "SENIOR") navigate("/senior"); // Senior (external team manager) has dedicated interface
-      else if (role === "CLIENT") navigate("/client");
-      else if (role === "EXTERNAL") navigate("/employee");
-      else navigate("/");
+      navigate(getRedirectPath(data.role));
 
     } catch (err) {
       console.error("Login Error:", err);

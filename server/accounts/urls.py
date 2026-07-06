@@ -9,6 +9,7 @@ from .views import (
     AdminUserDetailView,
     HQEPLUserListView,
     AssignableUserListView,
+    CheckShortformView,
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
 
     # Admin management
     path('admin/create-user/', AdminCreateUserView.as_view(), name='admin_create_user'),
+    path('admin/check-shortform/', CheckShortformView.as_view(), name='check_shortform'),
     path('admin/users/', AdminUserListView.as_view(), name='admin_user_list'),
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin_user_detail'),
     path('assignable-users/', AssignableUserListView.as_view(), name='assignable_user_list'),

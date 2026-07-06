@@ -566,7 +566,7 @@ const VisitAgenda = () => {
                             <div className="flex flex-col items-center gap-2">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visit Date</span>
                                 <input
-                                    type="date"
+                                    type="date" lang="en-GB"
                                     value={visitDate}
                                     onChange={(e) => setVisitDate(e.target.value)}
                                     className="bg-slate-50 px-6 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all cursor-pointer"

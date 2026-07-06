@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, LayoutDashboard, Briefcase, Target, Box, Users2, LogOut, CalendarRange, MapPin, CircleUser, ChevronDown, ChevronUp, Trophy, Building2, ClipboardCheck, TrendingUp, CheckCircle2, FileSpreadsheet, FileBarChart, Menu, X } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import api from '../api';
 
@@ -323,10 +323,10 @@ const Sidebar = () => {
             {menuItems
               .filter(isMenuItemVisible)
               .map((item, index) => (
-                <button
+                <Link
                   key={index}
+                  to={item.path}
                   onClick={() => {
-                    navigate(item.path);
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-left transition-all ${isMenuItemActive(item)
@@ -336,7 +336,7 @@ const Sidebar = () => {
                 >
                   <span className="flex-shrink-0">{item.icon}</span>
                   <span className="text-sm font-semibold">{item.label}</span>
-                </button>
+                </Link>
               ))}
           </nav>
 
@@ -406,10 +406,10 @@ const Sidebar = () => {
                         }`}
                       title={!isOpen ? item.label : ''}
                     >
-                      <div
+                      <Link
+                        to="/clients"
                         className="flex-1 flex items-center gap-4 cursor-pointer"
                         onClick={() => {
-                          navigate('/clients');
                           setClientsExpanded(!clientsExpanded);
                         }}
                       >
@@ -421,7 +421,7 @@ const Sidebar = () => {
                             {item.label}
                           </span>
                         )}
-                      </div>
+                      </Link>
                       {isOpen && (
                         <button
                           className="flex-shrink-0 p-1 hover:bg-white/20 rounded-md"
@@ -441,12 +441,12 @@ const Sidebar = () => {
                         {clients.map((client) => (
                           <div key={client.id}>
                             <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-white/80 hover:bg-white/10 text-sm">
-                              <button
-                                onClick={() => navigate(`/clients/${client.id}`)}
-                                className="flex-1 text-left truncate hover:text-white"
+                              <Link
+                                to={`/clients/${client.id}`}
+                                className="flex-1 text-left truncate hover:text-white block"
                               >
                                 {client.company_name}
-                              </button>
+                              </Link>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -462,13 +462,13 @@ const Sidebar = () => {
                             {expandedClients[client.id] && clientProjects[client.id] && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {clientProjects[client.id].map((project) => (
-                                  <button
+                                  <Link
                                     key={project.id}
-                                    onClick={() => navigate(`/projects/${project.id}`)}
-                                    className="w-full text-left px-3 py-1.5 rounded-lg text-white/70 hover:bg-white hover:text-white/90 text-xs truncate transition-colors"
+                                    to={`/projects/${project.id}`}
+                                    className="w-full text-left px-3 py-1.5 rounded-lg text-white/70 hover:bg-white hover:text-white/90 text-xs truncate transition-colors block"
                                   >
                                     • {project.name}
-                                  </button>
+                                  </Link>
                                 ))}
                                 {clientProjects[client.id].length === 0 && (
                                   <div className="px-3 py-1.5 text-white/50 text-xs">No projects</div>
@@ -531,12 +531,12 @@ const Sidebar = () => {
                         {clients.map((client) => (
                           <div key={client.id}>
                             <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-white/80 hover:bg-white/10 text-sm">
-                              <button
-                                onClick={() => navigate(`/clients/${client.id}/actionplan`)}
-                                className={`flex-1 text-left truncate text-white hover:text-white transition-colors ${location.pathname === `/clients/${client.id}/actionplan` ? 'font-bold text-[#F58A4B]' : ''}`}
+                              <Link
+                                to={`/clients/${client.id}/actionplan`}
+                                className={`flex-1 text-left truncate text-white hover:text-white transition-colors block ${location.pathname === `/clients/${client.id}/actionplan` ? 'font-bold text-[#F58A4B]' : ''}`}
                               >
                                 {client.company_name}
-                              </button>
+                              </Link>
                             </div>
                           </div>
                         ))}
@@ -547,8 +547,8 @@ const Sidebar = () => {
                     )}
                   </>
                 ) : (
-                  <button
-                    onClick={() => navigate(item.path)}
+                  <Link
+                    to={item.path}
                     onMouseEnter={() => setHoveredItem(index)}
                     onMouseLeave={() => setHoveredItem(null)}
                     className={`w-full flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 ${isMenuItemActive(item) || hoveredItem === index
@@ -565,7 +565,7 @@ const Sidebar = () => {
                         {item.label}
                       </span>
                     )}
-                  </button>
+                  </Link>
                 )}
               </div>
             ))}

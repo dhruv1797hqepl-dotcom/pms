@@ -16,6 +16,9 @@ export const broadcastDdtmePlanningRefresh = () => {
 };
 
 export const subscribeToDdtmePlanningRefresh = (listener) => {
+  // Only fire on explicit refresh events (manual trigger or cross-tab broadcast).
+  // DO NOT listen on 'focus' or 'visibilitychange' — those would hammer the
+  // server API every time the user switches tabs or clicks the window.
   const handleStorage = (event) => {
     if (event.key === DDTME_PLANNING_REFRESH_KEY) {
       listener();
@@ -28,13 +31,9 @@ export const subscribeToDdtmePlanningRefresh = (listener) => {
 
   window.addEventListener(DDTME_PLANNING_REFRESH_EVENT, listener);
   window.addEventListener('storage', handleStorage);
-  window.addEventListener('focus', listener);
-  document.addEventListener('visibilitychange', listener);
 
   return () => {
     window.removeEventListener(DDTME_PLANNING_REFRESH_EVENT, listener);
     window.removeEventListener('storage', handleStorage);
-    window.removeEventListener('focus', listener);
-    document.removeEventListener('visibilitychange', listener);
   };
 };

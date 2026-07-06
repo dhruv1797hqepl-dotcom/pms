@@ -5,7 +5,7 @@ import api from '../../api';
 import { formatDateDDMMYYYY } from '../../utils/dateFormat';
 import { broadcastDdtmePlanningRefresh } from '../../utils/ddtmePlanningRefresh';
 import * as XLSX from 'xlsx';
-
+import MonthYearPicker from '../../components/MonthYearPicker';
 
 const DDTMETable = () => {
   const [objectives, setObjectives] = useState([]);
@@ -91,8 +91,7 @@ const DDTMETable = () => {
   const [clientEmployees, setClientEmployees] = useState([]);
   const [sgmName, setSgmName] = useState(null); // SGM name from project
   const [sgmId, setSgmId] = useState(null); // SGM user ID for hours mapping
-  const [hqeplName, setHqeplName] = useState(null); // Project/client HQEPL name
-  const [hqeplId, setHqeplId] = useState(null); // Project/client HQEPL user id
+  const [hqeplPeople, setHqeplPeople] = useState([]); // ALL assigned HQEPL people: [{ id, name }]
   const [mlsLabel, setMlsLabel] = useState('MLS'); // MLS role shortform label
   const [mlsId, setMlsId] = useState(null); // MLS user id for stable column mapping
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
@@ -108,6 +107,9 @@ const DDTMETable = () => {
   const [savingRemarkKey, setSavingRemarkKey] = useState(null);
   const [isRejecting, setIsRejecting] = useState(false);
   const hasInitializedManDayData = useRef(false);
+  // isDirtyRef: true only when user has actually edited a cell since last save.
+  // This prevents the auto-save from firing in an infinite loop.
+  const isDirtyRef = useRef(false);
   const [editingDeliverableKey, setEditingDeliverableKey] = useState(null);
   const [deliverableDraft, setDeliverableDraft] = useState({
     title: '',
@@ -153,7 +155,11 @@ const DDTMETable = () => {
   };
 
   const getHqeplDisplayLabel = (member) => {
-    return member?.shortform || 'SS';
+    return member?.shortform
+      || `${member?.first_name || ''} ${member?.last_name || ''}`.trim()
+      || member?.full_name
+      || member?.username
+      || 'HQEPL';
   };
 
   const handlePrevMonth = () => {
@@ -202,8 +208,7 @@ const DDTMETable = () => {
           // Reset per-client derived SGM so stale values don't leak across clients/months.
           setSgmName(null);
           setSgmId(null);
-          setHqeplName(null);
-          setHqeplId(null);
+          setHqeplPeople([]);
           setMlsLabel('MLS');
           setMlsId(null);
 
@@ -226,8 +231,7 @@ const DDTMETable = () => {
 
           let resolvedSgmName = null;
           let resolvedSgmId = null;
-          let resolvedHqeplName = null;
-          let resolvedHqeplId = null;
+          let resolvedHqeplPeople = [];
 
           // 0. Get User Role (Independent try/catch)
           try {
@@ -265,12 +269,12 @@ const DDTMETable = () => {
             const assignedHqepls = Array.isArray(clientRes?.data?.assigned_hqepls_details)
               ? clientRes.data.assigned_hqepls_details
               : [];
-            const primaryHqepl = assignedHqepls[0] || null;
-            if (primaryHqepl) {
-              resolvedHqeplName =
-                getHqeplDisplayLabel(primaryHqepl);
-              resolvedHqeplId = primaryHqepl.id || null;
-            }
+            resolvedHqeplPeople = assignedHqepls
+              .filter((member) => member && member.id)
+              .map((member) => ({
+                id: member.id,
+                name: getHqeplDisplayLabel(member)
+              }));
           } catch (clientErr) {
             console.error('Failed to fetch client details for SGM mapping', clientErr);
           }
@@ -322,18 +326,20 @@ const DDTMETable = () => {
             }
           }
 
-          if (Array.isArray(projData)) {
-            const projectWithHqepl = projData.find((project) =>
-              project?.assigned_hqepl || project?.assigned_hqepl_details?.id
-            );
-
-            if (projectWithHqepl) {
-              resolvedHqeplId = projectWithHqepl.assigned_hqepl || projectWithHqepl.assigned_hqepl_details?.id || resolvedHqeplId;
-              resolvedHqeplName =
-                projectWithHqepl.assigned_hqepl_details
-                  ? getHqeplDisplayLabel(projectWithHqepl.assigned_hqepl_details)
-                  : (projectWithHqepl.assigned_hqepl_name || resolvedHqeplName);
-            }
+          if (resolvedHqeplPeople.length === 0 && Array.isArray(projData)) {
+            const seenHqeplIds = new Set();
+            const collected = [];
+            projData.forEach((project) => {
+              const pid = project?.assigned_hqepl || project?.assigned_hqepl_details?.id;
+              if (!pid || seenHqeplIds.has(pid)) return;
+              const name = project?.assigned_hqepl_details
+                ? getHqeplDisplayLabel(project.assigned_hqepl_details)
+                : project?.assigned_hqepl_name;
+              if (!name) return;
+              seenHqeplIds.add(pid);
+              collected.push({ id: pid, name });
+            });
+            resolvedHqeplPeople = collected;
           }
 
           if (resolvedSgmName) {
@@ -342,11 +348,8 @@ const DDTMETable = () => {
           if (resolvedSgmId) {
             setSgmId(resolvedSgmId);
           }
-          if (resolvedHqeplName) {
-            setHqeplName(resolvedHqeplName);
-          }
-          if (resolvedHqeplId) {
-            setHqeplId(resolvedHqeplId);
+          if (resolvedHqeplPeople.length > 0) {
+            setHqeplPeople(resolvedHqeplPeople);
           }
           // 1.5 Fetch Additional Tasks
           const addTasksRes = await api.get(`ddtme/additional-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
@@ -497,6 +500,8 @@ const DDTMETable = () => {
 
     const canonicalEmpId = (empId === 'mls' && mlsId) ? `u-${mlsId}` : empId;
     const key = `${type}_${taskId}_${canonicalEmpId}`;
+    // Mark as dirty so auto-save knows the user has made a real edit.
+    isDirtyRef.current = true;
     setManDayData(prev => ({
       ...prev,
       [key]: {
@@ -527,12 +532,16 @@ const DDTMETable = () => {
 
   const mlsPersonKey = mlsId ? `u-${mlsId}` : 'mls';
   const sgmPersonKey = toUserKey(sgmId) || 'sgm';
-  const hqeplPersonKey = toUserKey(hqeplId) || 'hqepl';
+
+  // One column per assigned HQEPL person (supports multiple HQEPL assignments).
+  const hqeplPersonEntries = hqeplPeople
+    .map((person) => ({ id: toUserKey(person.id), label: person.name }))
+    .filter((person) => person.id);
 
   const reservedPersonKeys = new Set([
     mlsPersonKey,
     sgmName ? sgmPersonKey : null,
-    hqeplName ? hqeplPersonKey : null
+    ...hqeplPersonEntries.map((person) => person.id)
   ].filter(Boolean));
 
   const employeePeople = Array.isArray(clientEmployees)
@@ -546,7 +555,7 @@ const DDTMETable = () => {
 
   const tablePeople = [
     { id: mlsPersonKey, label: mlsLabel },
-    ...(hqeplName ? [{ id: hqeplPersonKey, label: hqeplName }] : []),
+    ...hqeplPersonEntries,
     ...(sgmName ? [{ id: sgmPersonKey, label: sgmName }] : []),
     ...employeePeople
   ];
@@ -655,7 +664,7 @@ const DDTMETable = () => {
   };
 
   const handleSaveManDays = async (options = {}) => {
-    const { showAlerts = true } = options;
+    const { showAlerts = true, isAutoSave = false } = options;
     setIsSaving(true);
     try {
       const entries = [];
@@ -684,7 +693,14 @@ const DDTMETable = () => {
         return false;
       }
 
-      broadcastDdtmePlanningRefresh();
+      // Mark data as clean after successful save.
+      isDirtyRef.current = false;
+
+      // Only broadcast to MandaysPlanning on explicit (non-auto) saves so we
+      // don't trigger the summary API on every auto-save cycle.
+      if (!isAutoSave) {
+        broadcastDdtmePlanningRefresh();
+      }
 
       if (showAlerts) {
         alert("Saved successfully!");
@@ -714,26 +730,29 @@ const DDTMETable = () => {
       )
     );
 
-    if (!canAutoSave) {
-      return;
-    }
+    if (!canAutoSave) return;
 
+    // Skip the very first population of manDayData (loaded from server — not a user edit).
     if (!hasInitializedManDayData.current) {
       hasInitializedManDayData.current = true;
       return;
     }
 
+    // Only auto-save when the user has ACTUALLY edited something.
+    // isDirtyRef is set in handleHourChange and cleared after a successful save.
+    if (!isDirtyRef.current || isSaving) return;
+
     const hasEntries = Object.keys(manDayData).length > 0;
-    if (!hasEntries || isSaving) {
-      return;
-    }
+    if (!hasEntries) return;
 
     const timeoutId = setTimeout(() => {
-      handleSaveManDays({ showAlerts: false });
-    }, 600);
+      handleSaveManDays({ showAlerts: false, isAutoSave: true });
+    }, 1500); // 1.5s debounce — user must pause typing before save fires
 
     return () => clearTimeout(timeoutId);
-  }, [manDayData, userRole, submission?.status, isSaving]);
+  // isSaving intentionally excluded from deps to avoid the save→isSaving→re-run loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manDayData, userRole, submission?.status]);
 
   const handleSendForApproval = async () => {
     const hasMonthlyMajorObjective = objectives.some((objectiveItem) =>
@@ -1268,6 +1287,17 @@ const DDTMETable = () => {
     }, 50);
   };
 
+  if (loading) {
+    return (
+      <div className="flex h-[80vh] w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600"></div>
+          <p className="text-sm font-semibold tracking-widest text-slate-400 uppercase">Loading DDTME...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
 
@@ -1338,9 +1368,19 @@ const DDTMETable = () => {
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 w-24 text-center">
-              {buildMonthLabel(selectedMonth, selectedYear)}
-            </span>
+            <MonthYearPicker
+              selectedMonth={selectedMonth}
+              selectedYear={selectedYear}
+              onChange={(y, m) => {
+                setSelectedYear(y);
+                setSelectedMonth(m);
+              }}
+              label={
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 w-24 text-center cursor-pointer block hover:text-blue-600">
+                  {buildMonthLabel(selectedMonth, selectedYear)}
+                </span>
+              }
+            />
             <button
               type="button"
               onClick={handleNextMonth}
@@ -1492,14 +1532,16 @@ const DDTMETable = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {loading && Array.from({ length: 3 }).map((_, idx) => (
-                <tr key={`skeleton-obj-${idx}`} className="hover:bg-slate-50 transition-colors animate-pulse">
-                  <td className="px-3 sm:px-6 py-3 sm:py-4"><div className="bg-slate-200 h-4 w-6 rounded" /></td>
-                  <td className="px-3 sm:px-6 py-3 sm:py-4"><div className="bg-slate-200 h-4 w-2/3 rounded" /></td>
-                  {showRowRemarks && <td className="px-3 sm:px-6 py-3 sm:py-4"><div className="bg-slate-200 h-4 w-1/3 rounded" /></td>}
-                  <td className="px-3 sm:px-6 py-3 sm:py-4"><div className="bg-slate-200 h-8 w-16 rounded mx-auto" /></td>
+              {loading && (
+                <tr>
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600"></div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Objectives...</p>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+              )}
               {!loading && visibleObjectives.map((obj, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-bold text-slate-900">{idx + 1}</td>
@@ -1631,14 +1673,14 @@ const DDTMETable = () => {
           )}
         </div>
 
-        <div className="border-2 border-slate-900 rounded-lg overflow-x-auto -mx-2 sm:mx-0">
+        <div className="no-scrollbar border-2 border-slate-900 rounded-lg overflow-x-auto overflow-y-auto -mx-2 sm:mx-0" style={{maxHeight: 'clamp(420px, calc(100vh - 220px), 900px)', minHeight: '300px'}}>
           <table className="w-full min-w-max text-sm">
-            <thead>
+            <thead className="sticky top-0 z-20">
               <tr className="bg-slate-900 text-white">
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-10 w-[32px] sm:w-10 min-w-[32px] sm:min-w-[40px] max-w-[32px] sm:max-w-[40px]">SR</th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-10 w-[280px] min-w-[280px] max-w-[280px]">Deliverable</th>
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[312px] sm:left-[320px] bg-slate-900 z-10 w-[120px] min-w-[120px] max-w-[120px]">Project</th>
-                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[432px] sm:left-[440px] bg-slate-900 z-10 w-[100px] min-w-[100px] max-w-[100px]">Target</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-30 w-[32px] sm:w-10 min-w-[32px] sm:min-w-[40px] max-w-[32px] sm:max-w-[40px]">SR</th>
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-30 w-[280px] min-w-[280px] max-w-[280px]">Deliverable</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[312px] sm:left-[320px] bg-slate-900 z-30 w-[120px] min-w-[120px] max-w-[120px]">Project</th>
+                <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[432px] sm:left-[440px] bg-slate-900 z-30 w-[100px] min-w-[100px] max-w-[100px]">Target</th>
                 {showRowRemarks && (
                   <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Comments</th>
                 )}
@@ -1662,10 +1704,10 @@ const DDTMETable = () => {
 
               </tr>
               <tr className="bg-slate-800 text-white">
-                <th className="sticky left-0 bg-slate-800 z-10"></th>
-                <th className="sticky left-[32px] sm:left-10 bg-slate-800 z-10"></th>
-                <th className="sticky left-[312px] sm:left-[320px] bg-slate-800 z-10"></th>
-                <th className="sticky left-[432px] sm:left-[440px] bg-slate-800 z-10"></th>
+                <th className="sticky left-0 bg-slate-800 z-30"></th>
+                <th className="sticky left-[32px] sm:left-10 bg-slate-800 z-30"></th>
+                <th className="sticky left-[312px] sm:left-[320px] bg-slate-800 z-30"></th>
+                <th className="sticky left-[432px] sm:left-[440px] bg-slate-800 z-30"></th>
                 {showRowRemarks && <th></th>}
                 {tablePeople.map((person) => (
                   <React.Fragment key={`sub-${person.id}`}>
@@ -1677,53 +1719,21 @@ const DDTMETable = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {loading && Array.from({ length: 5 }).map((_, idx) => (
-                <tr key={`skeleton-task-${idx}`} className="hover:bg-slate-50 transition-colors animate-pulse bg-white">
-                  {/* SR */}
-                  <td className="px-4 py-4 text-center sticky left-0 bg-white z-10 w-[32px] sm:w-10">
-                    <div className="bg-slate-200 h-4 w-4 rounded mx-auto" />
+              {loading && (
+                <tr>
+                  <td colSpan={showRowRemarks ? 5 + (tablePeople.length * 2) : 4 + (tablePeople.length * 2)} className="px-6 py-16 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600"></div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Tasks...</p>
+                    </div>
                   </td>
-                  {/* Title */}
-                  <td className="px-6 py-4 sticky left-[32px] sm:left-10 bg-white z-10 w-[280px] min-w-[280px] max-w-[280px]">
-                    <div className="bg-slate-200 h-4 w-5/6 rounded" />
-                  </td>
-                  {/* Project */}
-                  <td className="px-4 py-4 sticky left-[312px] sm:left-[320px] bg-white z-10 w-[120px] min-w-[120px] max-w-[120px]">
-                    <div className="bg-slate-200 h-4 w-16 rounded mx-auto" />
-                  </td>
-                  {/* Target Date */}
-                  <td className="px-4 py-4 text-center sticky left-[432px] sm:left-[440px] bg-white z-10 w-[120px] min-w-[120px] max-w-[120px]">
-                    <div className="bg-slate-200 h-4 w-20 rounded mx-auto" />
-                  </td>
-                  {/* Remarks */}
-                  {showRowRemarks && (
-                    <td className="px-4 py-4">
-                      <div className="bg-slate-200 h-4 w-20 rounded" />
-                    </td>
-                  )}
-                  {/* People columns */}
-                  {tablePeople.map((person) => (
-                    <React.Fragment key={`skeleton-person-${idx}-${person.id}`}>
-                      <td className="px-2 py-4 border-l border-slate-100">
-                        <div className="bg-slate-200 h-4 w-8 rounded mx-auto" />
-                      </td>
-                      <td className="px-2 py-4">
-                        <div className="bg-slate-200 h-4 w-8 rounded mx-auto" />
-                      </td>
-                    </React.Fragment>
-                  ))}
-                  {tablePeople.length === 0 && (
-                    <td className="px-4 py-4">
-                      <div className="bg-slate-200 h-4 w-12 rounded mx-auto" />
-                    </td>
-                  )}
                 </tr>
-              ))}
+              )}
               {/* BIG TASKS */}
               {!loading && visibleBigTasks.map((task, idx) => (
                 <tr key={task.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
+                  <td className="px-4 py-2 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{idx + 1}</td>
+                  <td className="px-6 py-2 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
                     {editingDeliverableKey === `big_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1792,36 +1802,14 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
-                    {editingDeliverableKey === `big_${task.id}` ? (
-                      <select
-                        value={deliverableDraft.projectId}
-                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
-                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
-                      >
-                        <option value="">Select Project</option>
-                        {clientProjects.map((project) => (
-                          <option key={project.id} value={project.id}>{project.name}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      task.project_name
-                    )}
+                  <td className="px-4 py-2 text-xs font-bold text-indigo-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
+                    {task.project_name}
                   </td>
-                  <td className="px-4 py-4 text-xs text-slate-600 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
-                    {editingDeliverableKey === `big_${task.id}` ? (
-                      <input
-                        type="date"
-                        value={deliverableDraft.targetDate}
-                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
-                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                      />
-                    ) : (
-                      formatDateDDMMYYYY(task.target_date)
-                    )}
+                  <td className="px-4 py-2 text-xs text-slate-600 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
+                    {formatDateDDMMYYYY(task.target_date)}
                   </td>
                   {showRowRemarks && (
-                    <td className="px-4 py-4 text-xs text-slate-600">
+                    <td className="px-4 py-2 text-xs text-slate-600">
                       {canEditRowRemarks ? (
                         editingRemarkKey === `big_${task.id}` ? (
                           <div className="flex items-center gap-2">
@@ -1874,7 +1862,7 @@ const DDTMETable = () => {
                     const canEditPersonHours = canEditHoursForPerson(personId);
                     return (
                       <React.Fragment key={`big-${task.id}-${personId}`}>
-                        <td className="px-2 py-4 text-center border-l border-slate-100">
+                        <td className="px-2 py-2 text-center border-l border-slate-100">
                           {renderHourCell({
                             taskId: task.id,
                             personId,
@@ -1883,7 +1871,7 @@ const DDTMETable = () => {
                             canEditPersonHours,
                           })}
                         </td>
-                        <td className="px-2 py-4 text-center">
+                        <td className="px-2 py-2 text-center">
                           {renderHourCell({
                             taskId: task.id,
                             personId,
@@ -1902,8 +1890,8 @@ const DDTMETable = () => {
               {/* ADDITIONAL TASKS */}
               {!loading && visibleAdditionalTasks.map((task, idx) => (
                 <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
-                  <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{visibleBigTasks.length + idx + 1}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
+                  <td className="px-4 py-2 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{visibleBigTasks.length + idx + 1}</td>
+                  <td className="px-6 py-2 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
                     {editingDeliverableKey === `add_${task.id}` ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -1972,36 +1960,14 @@ const DDTMETable = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
-                    {editingDeliverableKey === `add_${task.id}` ? (
-                      <select
-                        value={deliverableDraft.projectId}
-                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
-                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
-                      >
-                        <option value="">Select Project</option>
-                        {clientProjects.map((project) => (
-                          <option key={project.id} value={project.id}>{project.name}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      task.project_name || '-'
-                    )}
+                  <td className="px-4 py-2 text-xs font-bold text-slate-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
+                    {task.project_name || '-'}
                   </td>
-                  <td className="px-4 py-4 text-xs text-slate-400 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
-                    {editingDeliverableKey === `add_${task.id}` ? (
-                      <input
-                        type="date"
-                        value={deliverableDraft.targetDate}
-                        onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
-                        className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                      />
-                    ) : (
-                      formatDateDDMMYYYY(task.target_date)
-                    )}
+                  <td className="px-4 py-2 text-xs text-slate-400 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
+                    {formatDateDDMMYYYY(task.target_date)}
                   </td>
                   {showRowRemarks && (
-                    <td className="px-4 py-4 text-xs text-slate-600">
+                    <td className="px-4 py-2 text-xs text-slate-600">
                       {canEditRowRemarks ? (
                         editingRemarkKey === `add_${task.id}` ? (
                           <div className="flex items-center gap-2">
@@ -2054,7 +2020,7 @@ const DDTMETable = () => {
                     const canEditPersonHours = canEditHoursForPerson(personId);
                     return (
                       <React.Fragment key={`add-${task.id}-${personId}`}>
-                        <td className="px-2 py-4 text-center border-l border-slate-100">
+                        <td className="px-2 py-2 text-center border-l border-slate-100">
                           {renderHourCell({
                             taskId: task.id,
                             personId,
@@ -2063,7 +2029,7 @@ const DDTMETable = () => {
                             canEditPersonHours,
                           })}
                         </td>
-                        <td className="px-2 py-4 text-center">
+                        <td className="px-2 py-2 text-center">
                           {renderHourCell({
                             taskId: task.id,
                             personId,
@@ -2133,53 +2099,44 @@ const DDTMETable = () => {
                   </td>
                 </tr>
               ))}
+            </tbody>
 
-              {/* SPACER ROW to prevent last task overlap */}
-              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && (
-                <tr className="h-6 bg-transparent border-none">
-                  <td colSpan="100%"></td>
-                </tr>
-              )}
-
-              {/* Totals Row */}
-              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
-                <tr className="bg-yellow-50 font-bold sticky bottom-[53px] z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.02)]">
+            {/* ── Sticky Footer: Total Hours + Total Days ── */}
+            {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
+              <tfoot className="sticky bottom-0 z-10">
+                {/* Total Hours */}
+                <tr className="bg-yellow-50 font-bold shadow-[0_-2px_4px_rgba(0,0,0,0.06)]">
                   <td className="sticky left-0 bg-yellow-50 z-20"></td>
-                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
-
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-2 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
                   {tablePeople.map((person) => (
                     <React.Fragment key={`total-${person.id}`}>
-                      <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800 bg-yellow-50">
+                      <td className="px-3 py-2 text-center text-sm border-l border-yellow-100 text-blue-800 bg-yellow-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalHoursForEmp(person.id)}
                       </td>
-                      <td className="px-3 py-4 text-center text-sm text-slate-500 bg-yellow-50">
+                      <td className="px-3 py-2 text-center text-sm text-slate-500 bg-yellow-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffHoursForEmp(person.id)}
                       </td>
                     </React.Fragment>
                   ))}
-
                 </tr>
-              )}
-
-              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
-                <tr className="bg-slate-50 font-bold sticky bottom-0 z-10 border-t border-slate-200">
+                {/* Total Days */}
+                <tr className="bg-slate-50 font-bold border-t border-slate-200">
                   <td className="sticky left-0 bg-slate-50 z-20"></td>
-                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-slate-50 z-20">Total Days</td>
-
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-2 text-right text-sm sticky left-10 bg-slate-50 z-20">Total Days</td>
                   {tablePeople.map((person) => (
                     <React.Fragment key={`total-days-${person.id}`}>
-                      <td className="px-3 py-4 text-center text-sm border-l border-slate-200 text-blue-800 bg-slate-50">
+                      <td className="px-3 py-2 text-center text-sm border-l border-slate-200 text-blue-800 bg-slate-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOnDaysForEmp(person.id)}
                       </td>
-                      <td className="px-3 py-4 text-center text-sm text-slate-500 bg-slate-50">
+                      <td className="px-3 py-2 text-center text-sm text-slate-500 bg-slate-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffDaysForEmp(person.id)}
                       </td>
                     </React.Fragment>
                   ))}
-
                 </tr>
-              )}
-            </tbody>
+              </tfoot>
+            )}
+
           </table>
         </div>
       </div>

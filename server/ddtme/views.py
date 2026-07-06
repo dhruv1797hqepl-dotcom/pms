@@ -364,6 +364,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         year = request.query_params.get('year')
         employee_id = request.query_params.get('employee_id')
         client_id = request.query_params.get('client_id')
+        sgm_id = request.query_params.get('sgm_id')
 
         if not month or not year:
             return Response({"error": "Missing month or year"}, status=status.HTTP_400_BAD_REQUEST)
@@ -390,6 +391,10 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             approved_submissions = approved_submissions.filter(
                 client__assigned_sgms=request.user
             )
+        elif sgm_id:
+            approved_submissions = approved_submissions.filter(
+                client__assigned_sgms__id=sgm_id
+            )
 
         approved_client_ids = set()
         client_name_map = {}
@@ -397,11 +402,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             approved_client_ids.add(sub.client_id)
             client_name_map[str(sub.client_id)] = sub.client.company_name if sub.client else f'Client {sub.client_id}'
 
-        print(f"\n[Mandays Summary] === DEBUG START for month={m}, year={y} ===")
-        print(f"[Mandays Summary] Approved client IDs: {sorted(approved_client_ids)}")
-
         if not approved_client_ids:
-            print("[Mandays Summary] No approved clients found - returning empty.")
             return Response({"clients": [], "employees": []}, status=status.HTTP_200_OK)
 
         # ----------------------------------------------------------------
@@ -430,8 +431,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             ).values_list('id', flat=True)
         )
 
-        print(f"[Mandays Summary] Valid AdditionalTask IDs: {len(valid_addtask_ids)}")
-        print(f"[Mandays Summary] Valid BigTask IDs: {len(valid_bigtask_ids)}")
+        # ----------------------------------------------------------------
 
         # ----------------------------------------------------------------
         # Step 3: Query ManDayEntry rows for this month/year
@@ -460,7 +460,6 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         # Step 4: Aggregate per employee AND per client
         # ------------------------------------------------------------------
         raw_count = queryset.count()
-        print(f"[Mandays Summary] Raw ManDayEntry rows: {raw_count}")
 
         seen_ids = set()
         duplicate_ids = []
@@ -579,27 +578,11 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
 
         employees_list = sorted(employees_list, key=get_emp_sort_key)
 
-        # Debug
-        print(f"[Mandays Summary] Clients: {len(clients_list)}, Employees: {len(employees_list)}")
-        if duplicate_ids:
-            print(f"[Mandays Summary] WARNING: Duplicate IDs skipped: {sorted(set(duplicate_ids))}")
-        for emp in employees_list:
-            print(f"[Mandays Summary]   {emp['employee_name']}: total_days={emp['total_days']}")
-        print(f"[Mandays Summary] === DEBUG END ===\n")
 
         return Response({
             "clients": clients_list,
             "employees": employees_list,
         }, status=status.HTTP_200_OK)
-
-    def list(self, request, *args, **kwargs):
-        print("\n=== ManDayEntry LIST called ===")
-        print(f"Pagination class: {self.pagination_class}")
-        response = super().list(request, *args, **kwargs)
-        print(f"Response type: {type(response.data)}")
-        print(f"Response data (first 5): {response.data[:5] if isinstance(response.data, list) else response.data}")
-        print("=== End LIST ===\n")
-        return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -613,29 +596,25 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         if not _reviewer_can_view_ddtme_payload(self.request, client_id, month, year):
             return queryset.none()
 
-        print(f"\n=== ManDayEntry Query Debug ===")
-        print(f"User: {self.request.user} | Role: {getattr(self.request.user, 'role', 'N/A')}")
-        print(f"Client ID: {client_id} | Month: {month} | Year: {year} | Employee ID: {employee_id}")
-        print(f"Initial queryset count: {queryset.count()}")
 
         if client_id:
             queryset = queryset.filter(
                 models.Q(big_task__project__client__id=client_id) |
                 models.Q(additional_task__client_id=client_id)
             )
-            print(f"After client filter, count: {queryset.count()}")
+
         
         if month: 
             queryset = queryset.filter(month=month)
-            print(f"After month filter, count: {queryset.count()}")
+
             
         if year: 
             queryset = queryset.filter(year=year)
-            print(f"After year filter, count: {queryset.count()}")
+
             
         if employee_id: 
             queryset = queryset.filter(employee_id=employee_id)
-            print(f"After employee filter, count: {queryset.count()}")
+
 
         # Mandays planning should only consume approved DDTME values.
         if approved_only and client_id and month and year:
@@ -648,9 +627,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             if not is_approved:
                 return queryset.none()
 
-        print(f"Final queryset count: {queryset.count()}")
-        print(f"Sample entries: {list(queryset[:3].values())}")
-        print("=== End Debug ===\n")
+
         
         return queryset
 

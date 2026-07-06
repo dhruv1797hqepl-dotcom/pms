@@ -142,9 +142,10 @@ class Task(models.Model):
         return 0.0
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         if not self.task_id:
-            last_task = Task.objects.all().order_by('id').last()
-            self.task_id = f'T-{last_task.id + 101}' if last_task else 'T-101'
+            import uuid
+            self.task_id = f'tmp-{uuid.uuid4().hex[:8]}'
 
         # If completion_date is set, derive On Time vs Delayed from dates
         if self.completion_date:
@@ -170,3 +171,7 @@ class Task(models.Model):
              self.ats_score = None
             
         super().save(*args, **kwargs)
+
+        if is_new and self.task_id.startswith('tmp-'):
+            self.task_id = f'T-{self.id + 100}'
+            super().save(update_fields=['task_id'])

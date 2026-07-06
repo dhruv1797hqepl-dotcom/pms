@@ -9,9 +9,11 @@ import Sidebar from '../components/Sidebar';
 import api from '../api';
 import CreateWorkspaceModal from './createuser/CreateWorkspaceModal';
 import { resolveMediaUrl } from '../utils/media';
+import useDebounce from '../hooks/useDebounce';
 
 export default function ClientManagement() {
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [activeFilter, setActiveFilter] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -72,7 +74,7 @@ export default function ClientManagement() {
   };
 
   const filteredClients = clients.filter(c => {
-    const matchesSearch = c?.company_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = c?.company_name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     const matchesStatus = activeFilter === 'All' ||
       (activeFilter === 'Active' && c?.status?.toLowerCase() === 'active') ||
       (activeFilter === 'Hold' && c?.status?.toLowerCase() === 'hold') ||

@@ -187,8 +187,8 @@ const Achievement = () => {
     <div className="h-screen w-screen bg-slate-50 antialiased font-sans flex overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto py-8">
-        <div className="max-w-6xl mx-auto px-6 md:px-10 space-y-8 mt-10">
+      <main className="flex-1 overflow-y-auto py-4 sm:py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-10 space-y-6 sm:space-y-8 mt-4 sm:mt-10">
           <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-xl bg-orange-50 text-[#F58A4B] flex items-center justify-center">

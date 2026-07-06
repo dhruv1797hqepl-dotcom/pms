@@ -93,6 +93,21 @@ class AdminCreateUserView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+# =========================
+# CHECK SHORTFORM
+# =========================
+class CheckShortformView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        shortform = request.query_params.get('shortform', '').strip().upper()
+        if not shortform:
+            return Response({"error": "Shortform is required"}, status=400)
+            
+        exists = CustomUser.objects.filter(shortform__iexact=shortform).exists()
+        return Response({"exists": exists})
+
+
 
 # =========================
 # ADMIN LIST USERS

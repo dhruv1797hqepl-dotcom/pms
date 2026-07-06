@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload, Download } from 'lucide-react';
+import { Plus, X as CloseIcon, CheckCircle2, Clock, Zap, Calendar, Target, Trash2, Pencil, Upload, Download, Loader2 } from 'lucide-react';
 import api from '../api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -343,6 +343,8 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
     const [lastQuickAddedTaskId, setLastQuickAddedTaskId] = useState(null);
     const [pendingScrollTaskId, setPendingScrollTaskId] = useState(null);
     const [subtaskDrafts, setSubtaskDrafts] = useState({});
+    const [deletingTasks, setDeletingTasks] = useState(new Set());
+    const [deletingKpis, setDeletingKpis] = useState(new Set());
 
     const tasksTableScrollRef = useRef(null);
 
@@ -600,12 +602,19 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     const deleteTask = async (id) => {
         if (!window.confirm("Are you sure you want to delete this task?")) return;
+        setDeletingTasks(prev => new Set(prev).add(id));
         try {
             await api.delete(`ddtme/big-tasks/${id}/`);
             fetchTasks();
         } catch (error) {
             console.error("Delete failed", error);
             alert("Failed to delete task");
+        } finally {
+            setDeletingTasks(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(id);
+                return newSet;
+            });
         }
     };
 
@@ -1029,11 +1038,18 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
 
     const deleteKpi = async (id) => {
         if (!window.confirm("Are you sure you want to delete this KPI?")) return;
+        setDeletingKpis(prev => new Set(prev).add(id));
         try {
             await api.delete(`ddtme/kpis/${id}/`);
             fetchKPIs();
         } catch (error) {
             console.error("Delete KPI failed", error);
+        } finally {
+            setDeletingKpis(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(id);
+                return newSet;
+            });
         }
     };
 
@@ -1637,14 +1653,14 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                         <label className="text-[9px] text-slate-400 font-bold uppercase block">Start</label>
                                                         {isSubtask ? (
                                                             <input
-                                                                type="date"
+                                                                type="date" lang="en-GB"
                                                                 value={editingStartDate}
                                                                 disabled
                                                                 className="w-full px-1 py-0.5 border border-slate-200 rounded text-[10px] bg-slate-100 text-slate-500"
                                                             />
                                                         ) : (
                                                             <input
-                                                                type="date"
+                                                                type="date" lang="en-GB"
                                                                 min={task.id === lastQuickAddedTaskId ? (minimumStartDate || project?.start_date) : project?.start_date}
                                                                 max={project?.end_date}
                                                                 value={editingStartDate}
@@ -1656,7 +1672,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                     <div className="flex-1">
                                                         <label className="text-[9px] text-slate-400 font-bold uppercase block">End</label>
                                                         <input
-                                                            type="date"
+                                                            type="date" lang="en-GB"
                                                             min={editingStartDate || project?.start_date}
                                                             max={maxTargetDateForTask}
                                                             value={editingTargetDate}
@@ -1699,10 +1715,11 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                         </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
-                                                            className="p-1 text-slate-400 hover:text-red-600 rounded"
+                                                            className="p-1 text-slate-400 hover:text-red-600 rounded disabled:opacity-50"
                                                             title="Delete"
+                                                            disabled={deletingTasks.has(task.id)}
                                                         >
-                                                            <Trash2 size={12} />
+                                                            {deletingTasks.has(task.id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                                                         </button>
                                                     </div>
                                                 )}
@@ -1762,7 +1779,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                     <div>
                                                         <label className="text-[9px] text-slate-500 font-bold uppercase block">Start (Parent)</label>
                                                         <input
-                                                            type="date"
+                                                            type="date" lang="en-GB"
                                                             value={task.startDate || task.start_date || ''}
                                                             disabled
                                                             className="w-full px-1 py-0.5 border border-slate-200 rounded text-[10px] bg-slate-100 text-slate-500"
@@ -1771,7 +1788,7 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                     <div>
                                                         <label className="text-[9px] text-slate-500 font-bold uppercase block">Target Date</label>
                                                         <input
-                                                            type="date"
+                                                            type="date" lang="en-GB"
                                                             min={task.startDate || task.start_date || project?.start_date}
                                                             max={task.targetDate || task.target_date || project?.end_date}
                                                             value={subtaskDraft.targetDate || ''}
@@ -1861,7 +1878,9 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                                                 {canEdit && (
                                                     <div className="flex gap-1 opacity-0 group-hover/kpi:opacity-100 transition-opacity">
                                                         <button onClick={() => startEditingKpi(kpi)} className="p-1 text-slate-400 hover:text-blue-600"><Pencil size={12} /></button>
-                                                        <button onClick={() => deleteKpi(kpi.id)} className="p-1 text-slate-400 hover:text-red-600"><Trash2 size={12} /></button>
+                                                        <button onClick={() => deleteKpi(kpi.id)} disabled={deletingKpis.has(kpi.id)} className="p-1 text-slate-400 hover:text-red-600 disabled:opacity-50">
+                                                            {deletingKpis.has(kpi.id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
@@ -1929,11 +1948,11 @@ const BigTask = ({ projectId, onProgressUpdate }) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Start Date</label>
-                                    <input type="date" required min={minimumStartDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
+                                    <input type="date" lang="en-GB" required min={minimumStartDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Target Date</label>
-                                    <input type="date" required min={formData.startDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.targetDate} onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })} />
+                                    <input type="date" lang="en-GB" required min={formData.startDate || project?.start_date} max={project?.end_date} className="w-full bg-slate-50 border border-slate-300 rounded px-4 py-3 text-sm font-bold outline-none" value={formData.targetDate} onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })} />
                                 </div>
                             </div>
                         </div>

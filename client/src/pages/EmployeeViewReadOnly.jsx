@@ -204,7 +204,8 @@ export default function EmployeeViewReadOnly() {
                     </span>
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import api from '../api';
 import { subscribeToDdtmePlanningRefresh } from '../utils/ddtmePlanningRefresh';
 import * as XLSX from 'xlsx';
+import MonthYearPicker from '../components/MonthYearPicker';
 
 const formatDays = (value) => {
   const n = Number(value);
@@ -33,12 +34,19 @@ const MandaysPlanning = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
+  // Stable primitive derived from currentUser — avoids object reference churn in useEffect deps.
+  const [currentUserProfileId, setCurrentUserProfileId] = useState('');
   const [isCurrentUserLoading, setIsCurrentUserLoading] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
 
   // Data from backend
   const [clients, setClients] = useState([]);        // [{id, name}]
   const [employees, setEmployees] = useState([]);      // [{employee_id, employee_name, per_client, total_*}]
+
+  const [sgmList, setSgmList] = useState([]);
+  const [employeeList, setEmployeeList] = useState([]);
+  const [selectedSgm, setSelectedSgm] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState('');
 
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
@@ -59,7 +67,7 @@ const MandaysPlanning = () => {
     return fullName || currentUser.full_name || currentUser.shortform || currentUser.username || currentUser.employee_name || currentUser.email || '';
   }, [currentUser]);
 
-  // Fetch current user profile
+  // Fetch current user profile — runs once on mount.
   useEffect(() => {
     const fetchCurrentProfile = async () => {
       const role = (localStorage.getItem('role') || '').toUpperCase();
@@ -72,6 +80,15 @@ const MandaysPlanning = () => {
           try {
             const res = await api.get(endpoint);
             setCurrentUser(res.data);
+            // Extract a stable primitive ID so we don't re-trigger the data-fetch
+            // useEffect every time the user object reference changes.
+            const pid =
+              res.data?.employee_profile_id ??
+              res.data?.employee_profile?.id ??
+              res.data?.employee?.id ??
+              res.data?.employee_id ??
+              null;
+            setCurrentUserProfileId(pid !== null && pid !== undefined ? String(pid) : '');
             break;
           } catch (err) {
             if (err?.response?.status !== 404) break;
@@ -90,30 +107,69 @@ const MandaysPlanning = () => {
     return subscribeToDdtmePlanningRefresh(() => setRefreshTick((v) => v + 1));
   }, []);
 
-  // Fetch planning data
+  // Fetch filter dropdown lists
   useEffect(() => {
+    const fetchFilters = async () => {
+      try {
+        const role = (localStorage.getItem('role') || '').toUpperCase();
+        if (role !== 'SGM' && role !== 'EMPLOYEE') {
+          const sgmRes = await api.get('admin/users/?role=SGM');
+          setSgmList(sgmRes.data || []);
+        }
+        if (role !== 'EMPLOYEE') {
+          const empRes = await api.get('admin/users/?role=EMPLOYEE');
+          setEmployeeList(empRes.data || []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch filter lists:', err);
+      }
+    };
+    fetchFilters();
+  }, []);
+
+  // Guard: track a fetch key so we NEVER make duplicate API calls.
+  // The key changes only when the user intentionally changes something
+  // (month, year, filter, or an explicit refresh broadcast).
+  const fetchKeyRef = React.useRef(null);
+
+  useEffect(() => {
+    const role = (localStorage.getItem('role') || '').toUpperCase();
+    const isSgm = role === 'SGM';
+    const isEmployee = role === 'EMPLOYEE';
+
+    // For role-scoped users, skip until their profile has loaded.
+    if ((isSgm || isEmployee) && isCurrentUserLoading) {
+      console.log('[MandaysPlanning] Skipping fetch — user profile still loading');
+      return;
+    }
+
+    // Build a stable key for this particular fetch.
+    const fetchKey = `${selectedMonth}-${selectedYear}-${currentUserProfileId}-${refreshTick}-${selectedSgm}-${selectedEmployee}`;
+
+    console.log('[MandaysPlanning] useEffect fired | fetchKey:', fetchKey, '| prev:', fetchKeyRef.current, '| isLoading:', isCurrentUserLoading);
+
+    // Bail out if we already fetched for this exact key.
+    if (fetchKeyRef.current === fetchKey) {
+      console.log('[MandaysPlanning] BLOCKED duplicate fetch for key:', fetchKey);
+      return;
+    }
+    fetchKeyRef.current = fetchKey;
+
     const fetchPlanningData = async () => {
+      console.log('[MandaysPlanning] >>> ACTUALLY CALLING API for key:', fetchKey);
       try {
         setIsLoading(true);
         setErrorMessage('');
         setClients([]);
         setEmployees([]);
 
-        const role = (localStorage.getItem('role') || '').toUpperCase();
-        const isSgm = role === 'SGM';
-        const isEmployee = role === 'EMPLOYEE';
-
-        if ((isSgm || isEmployee) && isCurrentUserLoading) return;
-
-        const employeeScopedProfileId = getResolvedEmployeeProfileId(currentUser)
-          || String(currentUser?.employee_id || '').trim();
-
         const summaryResponse = await api.get('ddtme/man-day-entries/summary/', {
           params: {
             month: selectedMonth,
             year: selectedYear,
             view: 'mandays',
-            ...(isEmployee && employeeScopedProfileId ? { employee_id: employeeScopedProfileId } : {}),
+            ...(isEmployee && currentUserProfileId ? { employee_id: currentUserProfileId } : selectedEmployee ? { employee_id: selectedEmployee } : {}),
+            ...(selectedSgm ? { sgm_id: selectedSgm } : {}),
           },
         });
 
@@ -145,7 +201,8 @@ const MandaysPlanning = () => {
     };
 
     fetchPlanningData();
-  }, [selectedMonth, selectedYear, currentUser, isCurrentUserLoading, refreshTick]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedYear, currentUserProfileId, isCurrentUserLoading, refreshTick, selectedSgm, selectedEmployee]);
 
   // Compute column totals
   const columnTotals = useMemo(() => {
@@ -248,54 +305,93 @@ const MandaysPlanning = () => {
     <div className="h-screen w-screen bg-slate-50 font-sans text-slate-800 flex overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto px-6 py-8">
-        <section className="max-w-full mx-auto border border-slate-200 bg-white rounded-2xl shadow-sm overflow-hidden p-6 md:p-8 space-y-6">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-8">
+        <section className="max-w-full mx-auto border border-slate-200 bg-white rounded-2xl shadow-sm overflow-hidden p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 border border-slate-200 rounded-xl px-5 py-4 bg-white">
-            <div className="flex items-center gap-4">
-              <span className="h-12 w-12 rounded-xl bg-blue-600 text-white grid place-items-center shadow-md">
-                <CalendarDays size={22} />
+          <div className="flex flex-col gap-4 border border-slate-200 rounded-xl px-4 sm:px-5 py-4 bg-white">
+            {/* Title row */}
+            <div className="flex items-start gap-3 sm:gap-4">
+              <span className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-blue-600 text-white grid place-items-center shadow-md flex-shrink-0">
+                <CalendarDays size={20} />
               </span>
-              <div>
-                <p className="text-xs font-black tracking-[0.2em] uppercase text-slate-500">Planning Period</p>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-                  {currentUserDisplayName ? `${currentUserDisplayName} - Mandays Planning` : 'Mandays Planning'}
+              <div className="min-w-0">
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-slate-500">Planning Period</p>
+                <h1 className="text-lg sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight truncate">
+                  {currentUserDisplayName ? `${currentUserDisplayName} — Mandays Planning` : 'Mandays Planning'}
                 </h1>
-                <p className="mt-1 text-sm font-semibold text-slate-500">Source: monthly DDTME summary</p>
+                <p className="mt-0.5 text-xs sm:text-sm font-semibold text-slate-500">Source: monthly DDTME summary</p>
               </div>
             </div>
+            {/* Controls row */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center justify-between gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 min-w-[200px]">
+                <button
+                  type="button"
+                  onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                  className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-200 transition-colors flex items-center justify-center"
+                  title="Previous Month"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <MonthYearPicker
+                  selectedMonth={selectedMonth}
+                  selectedYear={selectedYear}
+                  onChange={(y, m) => {
+                    setCurrentDate(new Date(y, m - 1, 1));
+                  }}
+                  label={
+                    <span className="text-sm font-black uppercase tracking-widest text-slate-800 cursor-pointer select-none">
+                      {currentDate.toLocaleString('default', { month: 'short' })} {selectedYear}
+                    </span>
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                  className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-200 transition-colors flex items-center justify-center"
+                  title="Next Month"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
 
-            <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5">
+              {sgmList.length > 0 && (
+                <select
+                  value={selectedSgm}
+                  onChange={(e) => setSelectedSgm(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none h-10 sm:h-12"
+                >
+                  <option value="">All SGMs</option>
+                  {sgmList.map(sgm => (
+                    <option key={sgm.id} value={sgm.id}>{sgm.first_name} {sgm.last_name}</option>
+                  ))}
+                </select>
+              )}
+
+              {employeeList.length > 0 && (
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none h-10 sm:h-12"
+                >
+                  <option value="">All Employees</option>
+                  {employeeList.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.first_name} {emp.last_name}</option>
+                  ))}
+                </select>
+              )}
               <button
-                type="button"
-                onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                className="h-10 w-10 rounded-lg text-slate-700 hover:bg-white hover:shadow-sm transition-all"
-                title="Previous Month"
+                onClick={handleDownloadExcel}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-sm font-bold transition-all shadow-md active:scale-95"
               >
-                <ChevronLeft size={18} className="mx-auto" />
-              </button>
-              <span className="px-4 text-sm font-bold text-slate-700 min-w-45 text-center">{monthLabel}</span>
-              <button
-                type="button"
-                onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                className="h-10 w-10 rounded-lg text-slate-700 hover:bg-white hover:shadow-sm transition-all"
-                title="Next Month"
-              >
-                <ChevronRight size={18} className="mx-auto" />
+                <Download size={16} />
+                <span>Download Excel</span>
               </button>
             </div>
-
-            <button
-              onClick={handleDownloadExcel}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md active:scale-95"
-            >
-              <Download size={18} />
-              <span>Download Excel</span>
-            </button>
           </div>
 
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Employees</div>
               <div className="mt-1 text-2xl font-black text-slate-900">{summaryStats.employeeCount}</div>
@@ -319,125 +415,123 @@ const MandaysPlanning = () => {
           </div>
 
           {/* Table */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm" style={{ minWidth: `${200 + clients.length * 200 + 300}px` }}>
-                <thead>
-                  {/* Row 1: Client names spanning 2 columns each */}
-                  <tr className="bg-slate-800 text-white text-xs uppercase tracking-wider">
-                    <th rowSpan={2} className="border border-slate-600 px-3 py-3 text-left font-black w-16">Sr No</th>
-                    <th rowSpan={2} className="border border-slate-600 px-3 py-3 text-left font-black min-w-40">Name</th>
-                    {clients.map((c) => (
-                      <th key={c.id} colSpan={2} className="border border-slate-600 px-3 py-3 text-center font-black bg-slate-700">
-                        {c.name}
-                      </th>
-                    ))}
-                    <th colSpan={3} className="border border-slate-600 px-3 py-3 text-center font-black bg-blue-700">
-                      Total
+          <div className="border-2 border-slate-900 rounded-lg overflow-x-auto -mx-2 sm:mx-0">
+            <table className="w-full min-w-max text-sm">
+              <thead>
+                {/* Row 1: Client names spanning 2 columns each */}
+                <tr className="bg-slate-900 text-white">
+                  <th rowSpan={2} className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-0 bg-slate-900 z-20 w-[32px] sm:w-10 min-w-[32px] sm:min-w-[40px] max-w-[32px] sm:max-w-[40px]">SR</th>
+                  <th rowSpan={2} className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-20 w-[160px] min-w-[160px] max-w-[160px]">Name</th>
+                  {clients.map((c) => (
+                    <th key={c.id} colSpan={2} className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[9px] sm:text-[10px] font-black uppercase border-l border-slate-700 bg-slate-900">
+                      {c.name}
                     </th>
-                  </tr>
-                  {/* Row 2: OnSite Days / Offsite Days under each client */}
-                  <tr className="bg-slate-700 text-white text-[10px] uppercase tracking-wider">
-                    {clients.map((c) => (
-                      <React.Fragment key={`sub-${c.id}`}>
-                        <th className="border border-slate-600 px-2 py-2 text-center font-bold">OnSite Days</th>
-                        <th className="border border-slate-600 px-2 py-2 text-center font-bold">Offsite Days</th>
-                      </React.Fragment>
+                  ))}
+                  <th colSpan={3} className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[9px] sm:text-[10px] font-black uppercase border-l border-slate-700 bg-slate-900">
+                    Total
+                  </th>
+                </tr>
+                {/* Row 2: OnSite Days / Offsite Days under each client */}
+                <tr className="bg-slate-900 text-white">
+                  {clients.map((c) => (
+                    <React.Fragment key={`sub-${c.id}`}>
+                      <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold border-l border-slate-700 whitespace-nowrap">OnSite Days</th>
+                      <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold whitespace-nowrap">Offsite Days</th>
+                    </React.Fragment>
+                  ))}
+                  <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold border-l border-slate-700 whitespace-nowrap">Onsite Days</th>
+                  <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold whitespace-nowrap">Offsite Days</th>
+                  <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold border-l border-slate-700 whitespace-nowrap">Total Days</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <SkeletonTableRow key={idx} columns={totalColSpan || 8} />
+                  ))
+                ) : employees.length > 0 ? (
+                  <>
+                    {employees.map((emp, index) => (
+                      <tr key={emp.employee_id} className="bg-white hover:bg-slate-50 transition-colors">
+                        <td className="px-2 sm:px-4 py-2 sm:py-3 font-bold text-slate-600 sticky left-0 z-10 bg-white w-[32px] sm:w-10 text-center">{index + 1}</td>
+                        <td className="px-3 sm:px-6 py-2 sm:py-3 font-semibold text-slate-800 whitespace-nowrap sticky left-[32px] sm:left-10 bg-white min-w-[160px]">{emp.employee_name}</td>
+                        {clients.map((c) => {
+                          const pc = emp.per_client?.[c.id];
+                          return (
+                            <React.Fragment key={`${emp.employee_id}-${c.id}`}>
+                              <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-semibold text-slate-700 border-l border-slate-100">
+                                {formatDays(pc?.onsite_days)}
+                              </td>
+                              <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-semibold text-slate-700 border-l border-slate-100">
+                                {formatDays(pc?.offsite_days)}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                        <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-bold text-slate-800 bg-slate-50 border-l border-slate-200">
+                          {formatDays(emp.total_onsite_days)}
+                        </td>
+                        <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-bold text-slate-800 bg-slate-50 border-l border-slate-200">
+                          {formatDays(emp.total_offsite_days)}
+                        </td>
+                        <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-black text-slate-900 bg-slate-50 border-l border-slate-200">
+                          {formatDays(emp.total_days)}
+                        </td>
+                      </tr>
                     ))}
-                    <th className="border border-slate-600 px-2 py-2 text-center font-bold bg-blue-600">Onsite Days</th>
-                    <th className="border border-slate-600 px-2 py-2 text-center font-bold bg-blue-600">Offsite Days</th>
-                    <th className="border border-slate-600 px-2 py-2 text-center font-bold bg-blue-600">Total Days</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, idx) => (
-                      <SkeletonTableRow key={idx} columns={totalColSpan || 8} />
-                    ))
-                  ) : employees.length > 0 ? (
-                    <>
-                      {employees.map((emp, index) => (
-                        <tr key={emp.employee_id} className="bg-white hover:bg-slate-50 transition-colors">
-                          <td className="border border-slate-200 px-3 py-2 font-bold text-slate-600">{index + 1}</td>
-                          <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800 whitespace-nowrap">{emp.employee_name}</td>
-                          {clients.map((c) => {
-                            const pc = emp.per_client?.[c.id];
-                            return (
-                              <React.Fragment key={`${emp.employee_id}-${c.id}`}>
-                                <td className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-700">
-                                  {formatDays(pc?.onsite_days)}
-                                </td>
-                                <td className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-700">
-                                  {formatDays(pc?.offsite_days)}
-                                </td>
-                              </React.Fragment>
-                            );
-                          })}
-                          <td className="border border-slate-200 px-2 py-2 text-center font-bold text-slate-800 bg-blue-50">
-                            {formatDays(emp.total_onsite_days)}
+
+                    {/* Total row */}
+                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-slate-700 sticky left-0 z-10 bg-slate-100 text-center">-</td>
+                      <td className="px-3 sm:px-6 py-2 sm:py-3 text-slate-800 sticky left-[32px] sm:left-10 z-10 bg-slate-100">Total (All Employees)</td>
+                      {clients.map((c) => (
+                        <React.Fragment key={`total-${c.id}`}>
+                          <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-slate-800 border-l border-slate-300">
+                            {formatDaysNum(columnTotals.perClient[c.id]?.onsite)}
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center font-bold text-slate-800 bg-blue-50">
-                            {formatDays(emp.total_offsite_days)}
+                          <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-slate-800 border-l border-slate-300">
+                            {formatDaysNum(columnTotals.perClient[c.id]?.offsite)}
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center font-black text-slate-900 bg-blue-50">
-                            {formatDays(emp.total_days)}
-                          </td>
-                        </tr>
+                        </React.Fragment>
                       ))}
-
-                      {/* Total row */}
-                      <tr className="bg-slate-100 font-bold">
-                        <td className="border border-slate-300 px-3 py-2 text-slate-700">-</td>
-                        <td className="border border-slate-300 px-3 py-2 text-slate-800">Total (All Employees)</td>
-                        {clients.map((c) => (
-                          <React.Fragment key={`total-${c.id}`}>
-                            <td className="border border-slate-300 px-2 py-2 text-center text-slate-800">
-                              {formatDaysNum(columnTotals.perClient[c.id]?.onsite)}
-                            </td>
-                            <td className="border border-slate-300 px-2 py-2 text-center text-slate-800">
-                              {formatDaysNum(columnTotals.perClient[c.id]?.offsite)}
-                            </td>
-                          </React.Fragment>
-                        ))}
-                        <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-900 bg-blue-100">
-                          {formatDaysNum(columnTotals.totalOnsite)}
-                        </td>
-                        <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-900 bg-blue-100">
-                          {formatDaysNum(columnTotals.totalOffsite)}
-                        </td>
-                        <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-900 bg-blue-100">
-                          {formatDaysNum(columnTotals.totalDays)}
-                        </td>
-                      </tr>
-
-                      {/* Overall Days row */}
-                      <tr className="bg-slate-200 font-black">
-                        <td className="border border-slate-300 px-3 py-2 text-slate-700"></td>
-                        <td className="border border-slate-300 px-3 py-2 text-slate-900">Overall Days</td>
-                        {clients.map((c) => (
-                          <React.Fragment key={`overall-${c.id}`}>
-                            <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center text-slate-900">
-                              {formatDaysNum(overallPerClient[c.id])}
-                            </td>
-                          </React.Fragment>
-                        ))}
-                        <td className="border border-slate-300 px-2 py-2 text-center text-slate-600">-</td>
-                        <td className="border border-slate-300 px-2 py-2 text-center text-slate-600">-</td>
-                        <td className="border border-slate-300 px-2 py-2 text-center font-black text-slate-900 bg-blue-200">
-                          {formatDaysNum(columnTotals.totalDays)}
-                        </td>
-                      </tr>
-                    </>
-                  ) : (
-                    <tr>
-                      <td colSpan={totalColSpan} className="border border-slate-200 px-4 py-12 text-center text-slate-500 font-semibold">
-                        No DDTME records found for the selected month.
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-black text-slate-900 bg-slate-200 border-l border-slate-300">
+                        {formatDaysNum(columnTotals.totalOnsite)}
+                      </td>
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-black text-slate-900 bg-slate-200 border-l border-slate-300">
+                        {formatDaysNum(columnTotals.totalOffsite)}
+                      </td>
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-black text-slate-900 bg-slate-200 border-l border-slate-300">
+                        {formatDaysNum(columnTotals.totalDays)}
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+                    {/* Overall Days row */}
+                    <tr className="bg-slate-200 font-black border-t border-slate-300">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-slate-700 sticky left-0 z-10 bg-slate-200 text-center"></td>
+                      <td className="px-3 sm:px-6 py-2 sm:py-3 text-slate-900 sticky left-[32px] sm:left-10 z-10 bg-slate-200">Overall Days</td>
+                      {clients.map((c) => (
+                        <React.Fragment key={`overall-${c.id}`}>
+                          <td colSpan={2} className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-slate-900 border-l border-slate-300">
+                            {formatDaysNum(overallPerClient[c.id])}
+                          </td>
+                        </React.Fragment>
+                      ))}
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-slate-500 bg-slate-300 border-l border-slate-400">-</td>
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-slate-500 bg-slate-300 border-l border-slate-400">-</td>
+                      <td className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center font-black text-slate-900 bg-slate-300 border-l border-slate-400">
+                        {formatDaysNum(columnTotals.totalDays)}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <td colSpan={totalColSpan} className="px-4 py-12 text-center text-slate-500 font-semibold bg-white">
+                      No DDTME records found for the selected month.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           {errorMessage ? (
