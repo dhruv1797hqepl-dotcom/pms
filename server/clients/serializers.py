@@ -32,18 +32,15 @@ class ClientSerializer(serializers.ModelSerializer):
         members = obj.external_members.all()
         data = []
         for m in members:
-            # Try to find an active project assignment
-            # This follows the ExternalTeam -> User -> Projects (m2m) path
             assigned_project = m.user.projects.filter(status="ACTIVE").first()
             project_name = assigned_project.name if assigned_project else "Not Assigned"
-            
             data.append({
                 "id": m.user.id,
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
                 "shortform": m.user.shortform,
                 "email": m.user.email,
-                "role": m.user.role if m.user.role != "EXTERNAL" else "Client Team", 
-                "status": m.status,   # Active/Inactive from ExternalTeam
+                "role": m.user.role if m.user.role != "EXTERNAL" else "Client Team",
+                "status": m.status,
                 "project": project_name
             })
         return data
@@ -70,11 +67,9 @@ class ClientSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
 
-        # Include login identifiers in detail payloads for admin edit forms.
         ret["username"] = instance.user.username
         ret["email"] = instance.user.email
-        
-        # Helper to format user
+
         def format_user(user):
             if not user: return None
             return {
@@ -84,55 +79,42 @@ class ClientSerializer(serializers.ModelSerializer):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "shortform": user.shortform,
-                "full_name": f"{user.first_name} {user.last_name}".strip() or user.username
+                "full_name": f"{user.first_name} {user.last_name}".strip() or user.username,
+                "role": user.role,
             }
 
         ret['assigned_sgms_details'] = [format_user(u) for u in instance.assigned_sgms.all()]
         ret['assigned_hqepls_details'] = [format_user(u) for u in instance.assigned_hqepls.all()]
-        
-        # Aggregate internal team members:
-        # 1. Members directly in instance.internal_team
-        # 2. Members assigned to any of the client's projects
+
         internal_users = set(instance.internal_team.all())
-        
-        # Import here to avoid circular dependency if any
+
         from projects.models import Project
         from sgm.models import ProjectTeam
-        
+
         projects = Project.objects.filter(client=instance)
         for proj in projects:
-            # Add members from Project.assigned_employees
             for emp in proj.assigned_employees.all():
                 internal_users.add(emp.user)
-            
-            # Add members from ProjectTeam (legacy if still used)
             pt = ProjectTeam.objects.filter(project=proj).first()
             if pt:
                 for member in pt.internal_members.all():
                     internal_users.add(member)
 
-        # Sort members by full_name/username for consistency
         sorted_members = sorted(
             list(internal_users),
             key=lambda u: (u.first_name or "", u.last_name or "", u.username or "")
         )
-        
+
         ret['internal_team_details'] = [format_user(u) for u in sorted_members]
-        
-        # NEW: Add seniors_details - seniors that are assigned to this client
+
         seniors = [
             format_user(et.user) for et in instance.external_members.filter(user__role="SENIOR")
         ]
         ret['seniors_details'] = seniors
-        
+
         return ret
 
     def _extract_relation_ids(self, request, field_name, treat_missing_as_empty=False):
-        """
-        Normalize relation IDs from request payloads (multipart or JSON).
-        For PUT requests we treat a missing field as an empty list so team removals
-        are persisted when the client submits no values for that relation.
-        """
         if not request:
             return None
 
@@ -165,8 +147,7 @@ class ClientSerializer(serializers.ModelSerializer):
         raw_username = validated_data.pop("username")
         email = validated_data.pop("email")
         password = validated_data.pop("password")
-        
-        # Extract new fields
+
         assigned_sgms = validated_data.pop("assigned_sgms", [])
         assigned_hqepls = validated_data.pop("assigned_hqepls", [])
         internal_team = validated_data.pop("internal_team", [])
@@ -178,7 +159,7 @@ class ClientSerializer(serializers.ModelSerializer):
                 username=unique_username,
                 email=email,
                 password=password,
-                role="CLIENT"   # ✅ Assign role
+                role="CLIENT"
             )
             creator = request.user if request and request.user.is_authenticated else None
             client = Client.objects.create(
@@ -187,7 +168,6 @@ class ClientSerializer(serializers.ModelSerializer):
                 **validated_data
             )
 
-            # Persist explicit team selections (including empty lists on create).
             client.assigned_sgms.set(assigned_sgms)
             client.assigned_hqepls.set(assigned_hqepls)
             client.internal_team.set(internal_team)
@@ -197,7 +177,6 @@ class ClientSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         request = self.context.get("request")
 
-        # Optional user credential updates from edit modal.
         new_username = validated_data.pop("username", None)
         new_email = validated_data.pop("email", None)
         new_password = validated_data.pop("password", None)
@@ -236,29 +215,25 @@ class ClientSerializer(serializers.ModelSerializer):
             force_full_replace = bool(request and request.method == "PUT")
 
             assigned_sgm_ids = self._extract_relation_ids(
-                request,
-                "assigned_sgms",
-                treat_missing_as_empty=force_full_replace,
+                request, "assigned_sgms", treat_missing_as_empty=force_full_replace,
             )
             assigned_hqepl_ids = self._extract_relation_ids(
-                request,
-                "assigned_hqepls",
-                treat_missing_as_empty=force_full_replace,
+                request, "assigned_hqepls", treat_missing_as_empty=force_full_replace,
             )
             internal_team_ids = self._extract_relation_ids(
-                request,
-                "internal_team",
-                treat_missing_as_empty=force_full_replace,
+                request, "internal_team", treat_missing_as_empty=force_full_replace,
             )
 
             if assigned_sgm_ids is not None:
-                sgm_users = User.objects.filter(id__in=assigned_sgm_ids, role="SGM")
+                # Accept SGM and COO roles in the SGM slot
+                sgm_users = User.objects.filter(id__in=assigned_sgm_ids, role__in=["SGM", "COO"])
                 client.assigned_sgms.set(sgm_users)
             elif assigned_sgms is not serializers.empty:
                 client.assigned_sgms.set(assigned_sgms)
 
             if assigned_hqepl_ids is not None:
-                hqepl_users = User.objects.filter(id__in=assigned_hqepl_ids, role="HQEPL")
+                # Accept HQEPL and COO roles in the HQEPL slot
+                hqepl_users = User.objects.filter(id__in=assigned_hqepl_ids, role__in=["HQEPL", "COO"])
                 client.assigned_hqepls.set(hqepl_users)
             elif assigned_hqepls is not serializers.empty:
                 client.assigned_hqepls.set(assigned_hqepls)
@@ -270,6 +245,7 @@ class ClientSerializer(serializers.ModelSerializer):
                 client.internal_team.set(internal_team)
 
         return client
+
 
 class ClientListSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
@@ -294,7 +270,8 @@ class ClientListSerializer(serializers.ModelSerializer):
                 "id": u.id,
                 "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
                 "shortform": u.shortform,
-                "email": u.email
+                "email": u.email,
+                "role": u.role,
             }
             for u in obj.assigned_sgms.all()
         ]
@@ -305,10 +282,12 @@ class ClientListSerializer(serializers.ModelSerializer):
                 "id": u.id,
                 "full_name": f"{u.first_name} {u.last_name}".strip() or u.username,
                 "shortform": u.shortform,
-                "email": u.email
+                "email": u.email,
+                "role": u.role,
             }
             for u in obj.assigned_hqepls.all()
         ]
+
 
 # ---------------- External Team ---------------- #
 class ExternalMemberCreateSerializer(serializers.Serializer):
@@ -330,20 +309,16 @@ class ExternalMemberCreateSerializer(serializers.Serializer):
         password = validated_data["password"]
         role = validated_data.get("role", "EXTERNAL")
 
-        # 1. Check if User exists by email
         user = User.objects.filter(email=email).first()
 
         if not user:
-             # 2. Create new user. Ensure username is unique and valid.
             from django.utils.text import slugify
             base_username = slugify(raw_username) or "user"
             unique_username = base_username
-            
-            # Uniquify if taken
+
             while User.objects.filter(username=unique_username).exists():
                 unique_username = f"{base_username}_{uuid.uuid4().hex[:4]}"
 
-            # Split name into first/last
             names = raw_username.split(' ', 1)
             first_name = names[0]
             last_name = names[1] if len(names) > 1 else ""
@@ -367,17 +342,16 @@ class ExternalMemberCreateSerializer(serializers.Serializer):
         external = ExternalTeam.objects.create(
             user=user,
             client_org=client,
-            # role stored in user.role, not on ExternalTeam model
-            created_by=self.context.get("creator")  # optional
+            created_by=self.context.get("creator")
         )
 
         if user.role == "SENIOR":
-            # Senior should be available in every project under this client.
             from projects.models import Project
             for project in Project.objects.filter(client=client):
                 project.external_team.add(user)
 
         return external
+
 
 class ExternalTeamSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
@@ -390,7 +364,6 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
         required=False,
         default="EXTERNAL"
     )
-    # New Fields
     status = serializers.ChoiceField(choices=[("active", "Active"), ("hold", "Hold"), ("inactive", "Inactive")], required=False, default="active")
     credential_access = serializers.BooleanField(required=False, default=False)
 
@@ -407,27 +380,20 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
         email = validated_data.pop("email").lower().strip()
         password = validated_data.pop("password")
         role = validated_data.pop("role", "EXTERNAL")
-        
-        # External members created via this serializer (usually by SGM/Admin) 
-        # should default to inactive until credential permission is granted.
-        #However, if credential_access is explicitly True, then user should be active.
+
         credential_access = validated_data.get("credential_access", False)
-        is_active = credential_access # If credential access is False, user is inactive.
-        
-        # Override is_active to False initially if no credential access
-        # But if user serves other roles (which is unlikely for 'EXTERNAL'), we might need care.
-        # For now, assuming new EXTERNAL user.
+        is_active = credential_access
 
         user, created = User.objects.get_or_create(
             email=email,
             defaults={
-                "username": username, 
+                "username": username,
                 "shortform": shortform,
                 "role": role,
                 "is_active": is_active
             }
         )
-        
+
         if created:
             user.set_password(password)
             user.save()
@@ -438,29 +404,19 @@ class ExternalTeamSerializer(serializers.ModelSerializer):
                 updated_fields.append("shortform")
             if updated_fields:
                 user.save(update_fields=updated_fields)
-            # If user exists, we might need to update their active status based on this new team adding them?
-            # Plan says: "Newly created users are inactive... until SGM explicitly grants..."
-            # If user already exists, we probably shouldn't deactivate them if they are active elsewhere.
-            # But here we are just linking.
-            pass
 
-        # Check if already linked
         if ExternalTeam.objects.filter(client_org=validated_data.get('client_org'), user=user).exists():
-             raise serializers.ValidationError(f"User {email} is already a member of this client.")
+            raise serializers.ValidationError(f"User {email} is already a member of this client.")
 
         external = ExternalTeam.objects.create(
             user=user,
-            # role removed as it is not on ExternalTeam model
             **validated_data
         )
 
         if user.role == "SENIOR":
-            # Keep Senior synced across all existing projects for this client.
             from projects.models import Project
             client = external.client_org
             for project in Project.objects.filter(client=client):
                 project.external_team.add(user)
 
         return external
-    
-    

@@ -97,7 +97,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
         # ADMIN → All projects
         if user.role == "ADMIN":
             queryset = Project.objects.all()
-        
+
+        # COO → Projects where assigned as SGM (full involvement)
+        #        OR assigned as HQEPL (monitor only)
+        #        Both are visible; permission level differs at action time.
+        elif user.role == "COO":
+            queryset = Project.objects.filter(
+                Q(assigned_sgm=user) | Q(assigned_hqepl=user)
+            ).distinct()
+
         # HQEPL → Projects of assigned clients only
         elif user.role == "HQEPL":
             from clients.models import Client
@@ -204,6 +212,24 @@ class ProjectViewSet(viewsets.ModelViewSet):
             project.senior_team.set(seniors)
             return
 
+        # 4. COO can create projects (acts as SGM — full involvement)
+        if user.role == "COO":
+            if not client:
+                raise ValidationError({"client": "Client is required."})
+
+            if not client.assigned_sgms.filter(id=user.id).exists():
+                raise PermissionDenied(
+                    "You can only create projects for clients where you are assigned as SGM."
+                )
+
+            project = serializer.save(created_by=user, assigned_sgm=user)
+            seniors = User.objects.filter(
+                role="SENIOR",
+                externalteam__client_org=client
+            )
+            project.senior_team.set(seniors)
+            return
+
         raise PermissionDenied("You do not have permission to create projects.")
 
     # ---------------------------------
@@ -250,6 +276,22 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 raise e
             return
 
+        # COO acting as SGM → full update rights
+        # COO acting as HQEPL → monitor only, no update
+        if user.role == "COO":
+            if project.assigned_sgm_id == user.id:
+                # Full SGM-level update
+                if 'client' in serializer.validated_data:
+                    serializer.validated_data.pop('client')
+                serializer.save()
+                return
+            elif project.assigned_hqepl_id == user.id:
+                raise PermissionDenied(
+                    "You are assigned as HQEPL (monitor only) on this project. "
+                    "You cannot make changes."
+                )
+            raise PermissionDenied("You are not assigned to this project.")
+
         # CLIENT / EMPLOYEE / EXTERNAL → NO update
         raise PermissionDenied("You do not have permission to update this project.")
 
@@ -269,8 +311,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
             if not instance.client.assigned_sgms.filter(id=user.id).exists():
                 raise PermissionDenied("You can only delete projects from clients assigned to you.")
             instance.delete()
+        elif user.role == "COO":
+            # Only COO acting as SGM can delete; HQEPL-only COO is monitor, no delete
+            if instance.assigned_sgm_id == user.id:
+                instance.delete()
+            elif instance.assigned_hqepl_id == user.id:
+                raise PermissionDenied("You are assigned as HQEPL (monitor only) on this project.")
+            else:
+                raise PermissionDenied("You are not assigned to this project.")
         else:
-            raise PermissionDenied("Only Admin, HQEPL, or SGM can delete projects.")
+            raise PermissionDenied("Only Admin, HQEPL, SGM, or COO can delete projects.")
 
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer

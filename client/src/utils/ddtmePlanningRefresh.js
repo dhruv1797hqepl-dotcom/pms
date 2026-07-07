@@ -26,7 +26,7 @@ export const subscribeToDdtmePlanningRefresh = (listener) => {
   };
 
   if (typeof window === 'undefined') {
-    return () => {};
+    return () => { };
   }
 
   window.addEventListener(DDTME_PLANNING_REFRESH_EVENT, listener);

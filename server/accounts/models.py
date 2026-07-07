@@ -11,18 +11,20 @@ class CustomUser(AbstractUser):
     CLIENT = "CLIENT"
     EXTERNAL = "EXTERNAL"
     SENIOR = "SENIOR"
+    COO = "COO"   # NEW
 
     ROLE_CHOICES = [
-        (ADMIN, "Admin"),
-        (HQEPL, "HQEPL"),
-        (MLS, "MLS"),
-        (SGM, "SGM"),
-        (EMPLOYEE, "Employee"),
-        (CLIENT, "Client"),
-        (EXTERNAL, "External"),
-        (SENIOR, "Senior"),
-    ]
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES,  default='EMPLOYEE')
+    (ADMIN, "Admin"),
+    (HQEPL, "CEO"),
+    (MLS, "MLS"),
+    (SGM, "SGM"),
+    (EMPLOYEE, "Employee"),
+    (CLIENT, "Client"),
+    (EXTERNAL, "External"),
+    (SENIOR, "Senior"),
+    (COO, "COO"),
+]
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='EMPLOYEE')
     shortform = models.CharField(max_length=50, blank=True, null=True)
     email = models.EmailField(unique=True)
 

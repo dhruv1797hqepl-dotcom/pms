@@ -394,7 +394,7 @@ export default function ProjectDetails() {
                 <div className="space-y-4">
                   {/* Internal Team */}
                   <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">HQEPL's Team</p>
+        console.log(`Persisting Progress: ${calculatedProgress}% for Project ${projectId}`);
                     <p className="text-sm text-slate-900 leading-relaxed">
                       {[
                         project.assigned_sgm_name ? `${project.assigned_sgm_name} (SGM)` : null,

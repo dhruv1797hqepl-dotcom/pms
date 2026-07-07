@@ -101,8 +101,8 @@ const StaffManagement = () => {
                             ? allUsersRes.data.results
                             : [];
 
-                    // Filter for sgm and employee, then sort SGM to top
-                    const allowedRoles = ['sgm', 'employee'];
+                    // Filter for sgm, employee, and coo, then sort SGM/COO to top
+                    const allowedRoles = ['sgm', 'employee', 'coo'];
                     const hqeplStaff = allUsers
                         .filter(u => u.role && allowedRoles.includes(u.role.toLowerCase()))
                         .sort((a, b) => {
@@ -180,7 +180,7 @@ const StaffManagement = () => {
                  * Only allow users with roles: hqepl, mls, sgm, or employee.
                  * Case-insensitive check to avoid issues with backend formatting.
                  */
-                const allowedRoles = ['hqepl', 'mls', 'sgm', 'employee'];
+                const allowedRoles = ['hqepl', 'mls', 'sgm', 'employee', 'coo'];
                 const filteredByRole = response.data.filter(user =>
                     user.role && allowedRoles.includes(user.role.toLowerCase())
                 );
@@ -355,7 +355,7 @@ const StaffManagement = () => {
                         </div>
 
                         <div className="flex items-center gap-1 md:gap-1.5 bg-slate-100/50 p-1 md:p-1.5 rounded-xl md:rounded-2xl flex-wrap">
-                            {(isManagerMemberView ? ['All'] : ['All', 'HQEPL', 'MLS', 'SGM', 'Employee']).map((filter) => (
+                            {(isManagerMemberView ? ['All'] : ['All', 'HQEPL', 'MLS', 'SGM', 'COO', 'Employee']).map((filter) => (
                                 <button
                                     key={filter}
                                     onClick={() => setActiveFilter(filter)}
@@ -454,6 +454,7 @@ const StaffManagement = () => {
                                                                     ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
                                                                         member.role?.toLowerCase() === 'mls' ? 'bg-violet-50 text-violet-600 border-violet-100' :
                                                                     member.role?.toLowerCase() === 'sgm' ? 'bg-orange-50 text-[#F58A4B] border-orange-100' :
+                                                                        member.role?.toLowerCase() === 'coo' ? 'bg-purple-50 text-purple-600 border-purple-100' :
                                                                         'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                                                 {member.role || 'Employee'}
                                                             </span>
@@ -629,6 +630,7 @@ const StaffManagement = () => {
                                                     ${member.role?.toLowerCase() === 'hqepl' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
                                                                 member.role?.toLowerCase() === 'mls' ? 'bg-violet-50 text-violet-600 border-violet-100' :
                                                                 member.role?.toLowerCase() === 'sgm' ? 'bg-orange-50 text-[#F58A4B] border-orange-100' :
+                                                                        member.role?.toLowerCase() === 'coo' ? 'bg-purple-50 text-purple-600 border-purple-100' :
                                                                     'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                                             {member.role || 'Employee'}
                                                         </span>
@@ -819,6 +821,7 @@ const StaffManagement = () => {
                                         <option value="HQEPL">HQEPL</option>
                                         <option value="MLS">MLS</option>
                                         <option value="SGM">SGM</option>
+                                        <option value="COO">COO</option>
                                         <option value="EMPLOYEE">Employee</option>
                                     </select>
 

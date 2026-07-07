@@ -34,8 +34,9 @@ class Project(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name="assigned_projects",
-        limit_choices_to={"role": "SGM"}
+        limit_choices_to={"role__in": ["SGM", "COO"]}
     )
 
     assigned_hqepl = models.ForeignKey(
@@ -44,7 +45,7 @@ class Project(models.Model):
         null=True,
         blank=True,
         related_name="hqepl_projects",
-        limit_choices_to={"role": "HQEPL"}
+        limit_choices_to={"role__in": ["HQEPL", "COO"]}
     )
 
     external_lead = models.ForeignKey(
@@ -79,7 +80,7 @@ class Project(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         related_name="created_projects",
-        limit_choices_to={"role__in": ["ADMIN", "HQEPL", "MLS", "SGM"]}
+        limit_choices_to={"role__in": ["ADMIN", "HQEPL", "MLS", "SGM", "COO"]}
     )
 
     status = models.CharField(

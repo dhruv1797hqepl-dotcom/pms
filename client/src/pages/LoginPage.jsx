@@ -18,6 +18,7 @@ const LoginPage = () => {
     if (r === "ADMIN")    return "/admin";
     if (r === "HQEPL")   return "/hqepl";
     if (r === "MLS")     return "/mls";
+    if (r === "COO")     return "/coo";
     if (r === "EMPLOYEE") return "/employee";
     if (r === "SGM")     return "/sgm";
     if (r === "SENIOR")  return "/senior";
@@ -46,12 +47,14 @@ const LoginPage = () => {
       });
       
       const { data } = response;
+
       // console.log("[LOGIN] Access token:", data.access);
 
       // Store tokens
       if (data.access) {
         localStorage.setItem("access_token", data.access);
         localStorage.setItem("token", data.access);
+
       } else {
         console.error("[LOGIN] No access token in response!");
         throw new Error("Login failed: No access token received");
@@ -66,7 +69,6 @@ const LoginPage = () => {
       // Store user info
       localStorage.setItem("username", data.username || "Admin User");
       localStorage.setItem("email", data.email || email);
-
 
       navigate(getRedirectPath(data.role));
 

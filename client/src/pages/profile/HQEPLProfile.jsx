@@ -35,7 +35,7 @@ const HQEPLProfile = () => {
   const [loadingAchievements, setLoadingAchievements] = useState(false);
 
   const [adminProfile, setAdminProfile] = useState({
-    name: "HQEPL User",
+    name: "CEO User",
     email: "admin@hqepl.com",
     role: "Top Management"
   });
@@ -60,7 +60,7 @@ const HQEPLProfile = () => {
           const meRes = await api.get('me/');
           setFullUserData(meRes.data);
           const u = meRes.data;
-          let displayName = u.username || 'HQEPL User';
+          let displayName = u.username || 'CEO User';
 
           if (u.first_name || u.last_name) {
             displayName = `${u.first_name || ''} ${u.last_name || ''}`.trim();
@@ -144,7 +144,7 @@ const HQEPLProfile = () => {
     setStatsStartIndex((prev) => Math.min(maxStatsIndex, prev + 1));
   };
   const hqeplPhotoSrc = resolveMediaUrl(fullUserData?.photo);
-  const hqeplInitial = getDisplayInitial(adminProfile.name, adminProfile.email, 'HQEPL');
+  const hqeplInitial = getDisplayInitial(adminProfile.name, adminProfile.email, 'CEO');
   const sortedAchievements = [...achievements].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return (
@@ -323,7 +323,7 @@ const HQEPLProfile = () => {
                 </button>
 
                 <div className="p-8 md:p-10 space-y-6">
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">HQEPL Information</h2>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">CEO Information</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">

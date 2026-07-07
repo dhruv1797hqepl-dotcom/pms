@@ -25,6 +25,14 @@ def _is_hqepl_for_client(user, client):
     return user.role == "HQEPL" and client.assigned_hqepls.filter(id=user.id).exists()
 
 
+def _is_coo_for_client(user, client):
+    # COO is stored in assigned_sgms (full involvement) or assigned_hqepls (monitor)
+    return user.role == "COO" and (
+        client.assigned_sgms.filter(id=user.id).exists() or
+        client.assigned_hqepls.filter(id=user.id).exists()
+    )
+
+
 def _is_senior_for_client(user, client):
     return user.role == "SENIOR" and ExternalTeam.objects.filter(client_org=client, user=user).exists()
 
@@ -65,6 +73,13 @@ class ClientListView(ListAPIView):
                 return qs
             return qs.filter(assigned_sgms=user)
 
+        if user.role == "COO":
+            # COO is stored in assigned_sgms (as SGM) or assigned_hqepls (as monitor)
+            from django.db.models import Q
+            return qs.filter(
+                Q(assigned_sgms=user) | Q(assigned_hqepls=user)
+            ).distinct()
+
         if user.role in ["SENIOR", "EXTERNAL"]:
             return qs.filter(external_members__user=user).distinct()
 
@@ -103,6 +118,9 @@ class ClientDetailView(APIView):
         elif request.user.role == "SGM":
             if not _is_sgm_for_client(request.user, client):
                 raise PermissionDenied("You do not have permission to view this client.")
+        elif request.user.role == "COO":
+            if not _is_coo_for_client(request.user, client):
+                raise PermissionDenied("You do not have permission to view this client.")
         elif request.user.role in ["SENIOR", "EXTERNAL"]:
             if not _is_senior_for_client(request.user, client):
                 raise PermissionDenied("You do not have permission to view this client.")
@@ -126,6 +144,9 @@ class ClientDetailView(APIView):
                 raise PermissionDenied("You do not have permission to edit this client.")
         elif request.user.role == "MLS":
             pass  # MLS can edit any client
+        elif request.user.role == "COO":
+            if not _is_coo_for_client(request.user, client):
+                raise PermissionDenied("You do not have permission to edit this client.")
         else:
             raise PermissionDenied("You do not have permission to edit this client.")
 
@@ -155,6 +176,9 @@ class ClientDetailView(APIView):
             elif request.user.role == "SGM":
                 if not client.assigned_sgms.filter(id=request.user.id).exists():
                     raise PermissionDenied("You do not have permission to update this client.")
+            elif request.user.role == "COO":
+                if not _is_coo_for_client(request.user, client):
+                    raise PermissionDenied("You do not have permission to update this client.")
             else:
                 raise PermissionDenied("You do not have permission to update this client.")
 
@@ -183,6 +207,9 @@ class ClientDetailView(APIView):
             pass  # MLS can update any client
         elif request.user.role == "SGM":
             if not client.assigned_sgms.filter(id=request.user.id).exists():
+                raise PermissionDenied("You do not have permission to update this client.")
+        elif request.user.role == "COO":
+            if not _is_coo_for_client(request.user, client):
                 raise PermissionDenied("You do not have permission to update this client.")
         else:
             raise PermissionDenied("You do not have permission to update this client.")
@@ -243,6 +270,8 @@ class ClientExternalMemberView(APIView):
             if _is_hqepl_for_client(user, client):
                 return True
         if user.role == "MLS":
+            return True
+        if _is_coo_for_client(user, client):
             return True
         if _is_sgm_for_client(user, client):
             return True
@@ -337,6 +366,8 @@ class ClientExternalMemberDetailView(APIView):
                 return True
         if user.role == "MLS":
             return True
+        if _is_coo_for_client(user, client):
+            return True
         if _is_sgm_for_client(user, client):
             return True
         if _is_senior_for_client(user, client):
@@ -411,6 +442,8 @@ class ClientProjectsView(APIView):
             pass  # Allowed — all projects
         elif _is_sgm_for_client(user, client):
             pass  # Allowed — all projects
+        elif _is_coo_for_client(user, client):
+            pass  # Allowed — all projects
         elif _is_senior_for_client(user, client):
             pass  # Allowed — all projects (SENIOR or EXTERNAL in ExternalTeam)
         elif user.role == "CLIENT" and client.user_id == user.id:
@@ -444,6 +477,8 @@ class ClientEmployeesView(APIView):
         if user.role in ["ADMIN", "HQEPL", "MLS"]:
             is_allowed = True
         elif _is_sgm_for_client(user, client):
+            is_allowed = True
+        elif _is_coo_for_client(user, client):
             is_allowed = True
         elif _is_senior_for_client(user, client):
             is_allowed = True
@@ -499,6 +534,8 @@ class ClientActionTasksView(APIView):
             pass
         elif _is_sgm_for_client(user, client):
             pass
+        elif _is_coo_for_client(user, client):
+            pass
         elif _is_senior_for_client(user, client):
             pass
         elif user.role == "CLIENT" and client.user_id == user.id:
@@ -551,4 +588,3 @@ class SeniorClientView(APIView):
         client = external_team.client_org
         serializer = ClientSerializer(client)
         return Response(serializer.data)
-

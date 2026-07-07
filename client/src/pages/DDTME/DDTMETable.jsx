@@ -89,9 +89,13 @@ const DDTMETable = () => {
   const [clientProjects, setClientProjects] = useState([]); // [NEW] Active Projects
   const [additionalTasks, setAdditionalTasks] = useState([]); // [NEW] Ad-hoc tasks
   const [clientEmployees, setClientEmployees] = useState([]);
-  const [sgmName, setSgmName] = useState(null); // SGM name from project
-  const [sgmId, setSgmId] = useState(null); // SGM user ID for hours mapping
-  const [hqeplPeople, setHqeplPeople] = useState([]); // ALL assigned HQEPL people: [{ id, name }]
+  const [sgmPeople, setSgmPeople] = useState([]); // All assigned SGMs [{id, label}]
+  const [hqeplPeople, setHqeplPeople] = useState([]); // All assigned HQEPLs [{id, label}]
+  // Keep legacy single-value aliases for header display
+  const sgmName = sgmPeople.length > 0 ? sgmPeople[0].label : null;
+  const sgmId = sgmPeople.length > 0 ? sgmPeople[0].id : null;
+  const hqeplName = hqeplPeople.length > 0 ? hqeplPeople[0].label : null;
+  const hqeplId = hqeplPeople.length > 0 ? hqeplPeople[0].id : null;
   const [mlsLabel, setMlsLabel] = useState('MLS'); // MLS role shortform label
   const [mlsId, setMlsId] = useState(null); // MLS user id for stable column mapping
   const [submission, setSubmission] = useState(null); // [NEW] Submission status
@@ -107,9 +111,6 @@ const DDTMETable = () => {
   const [savingRemarkKey, setSavingRemarkKey] = useState(null);
   const [isRejecting, setIsRejecting] = useState(false);
   const hasInitializedManDayData = useRef(false);
-  // isDirtyRef: true only when user has actually edited a cell since last save.
-  // This prevents the auto-save from firing in an infinite loop.
-  const isDirtyRef = useRef(false);
   const [editingDeliverableKey, setEditingDeliverableKey] = useState(null);
   const [deliverableDraft, setDeliverableDraft] = useState({
     title: '',
@@ -155,11 +156,7 @@ const DDTMETable = () => {
   };
 
   const getHqeplDisplayLabel = (member) => {
-    return member?.shortform
-      || `${member?.first_name || ''} ${member?.last_name || ''}`.trim()
-      || member?.full_name
-      || member?.username
-      || 'HQEPL';
+    return member?.shortform || member?.full_name || member?.username || member?.email || null;
   };
 
   const handlePrevMonth = () => {
@@ -206,8 +203,7 @@ const DDTMETable = () => {
         try {
           setLoading(true);
           // Reset per-client derived SGM so stale values don't leak across clients/months.
-          setSgmName(null);
-          setSgmId(null);
+          setSgmPeople([]);
           setHqeplPeople([]);
           setMlsLabel('MLS');
           setMlsId(null);
@@ -229,9 +225,8 @@ const DDTMETable = () => {
             console.warn('Failed to fetch MLS shortform:', mlsErr);
           }
 
-          let resolvedSgmName = null;
-          let resolvedSgmId = null;
-          let resolvedHqeplPeople = [];
+          let resolvedSgmPeopleFromClient = [];
+          let resolvedHqeplPeopleFromClient = [];
 
           // 0. Get User Role (Independent try/catch)
           try {
@@ -248,35 +243,43 @@ const DDTMETable = () => {
             console.error("Failed to fetch user role", err);
           }
 
-          // 0.5 Prefer client-level assigned SGM as source of truth.
+          // 0.5 Client-level SGM and HQEPL resolution — authoritative source.
+          // Rules:
+          //   assigned_sgms slot: SGM role = full involvement → shows in DDTME
+          //                       COO role = only shows in DDTME if assigned as SGM
+          //   assigned_hqepls slot: HQEPL role → shows in DDTME
+          //                         COO role in HQEPL slot → does NOT show in DDTME (monitor only)
           try {
             const clientRes = await api.get(`clients/${clientId}/`);
+
             const assignedSgms = Array.isArray(clientRes?.data?.assigned_sgms_details)
               ? clientRes.data.assigned_sgms_details
               : [];
-            const primarySgm = assignedSgms[0] || null;
 
-            if (primarySgm) {
-              resolvedSgmName =
-                primarySgm.shortform ||
-                primarySgm.full_name ||
-                primarySgm.username ||
-                primarySgm.email ||
-                null;
-              resolvedSgmId = primarySgm.id || null;
-            }
+            // SGM slot: include SGM and COO users (COO here = full SGM involvement)
+            resolvedSgmPeopleFromClient = assignedSgms
+              .filter(u => u && u.id)
+              .map(u => ({
+                id: u.id,
+                label: u.shortform || u.full_name || u.username || u.email || `SGM-${u.id}`
+              }));
 
             const assignedHqepls = Array.isArray(clientRes?.data?.assigned_hqepls_details)
               ? clientRes.data.assigned_hqepls_details
               : [];
-            resolvedHqeplPeople = assignedHqepls
-              .filter((member) => member && member.id)
-              .map((member) => ({
-                id: member.id,
-                name: getHqeplDisplayLabel(member)
-              }));
+
+            // HQEPL slot: only include users whose role is HQEPL (not COO)
+            // COO in the HQEPL slot = monitor only → no DDTME column
+            resolvedHqeplPeopleFromClient = assignedHqepls
+              .filter(u => u && u.id && String(u.role || '').toUpperCase() === 'HQEPL')
+              .map(u => ({
+                id: u.id,
+                label: u.shortform || u.full_name || u.username || u.email || null
+              }))
+              .filter(p => p.label); // skip anyone with no displayable label
+
           } catch (clientErr) {
-            console.error('Failed to fetch client details for SGM mapping', clientErr);
+            console.error('Failed to fetch client details for SGM/HQEPL mapping', clientErr);
           }
 
           // 1. Fetch Big Tasks (Rows) with Month/Year Filter
@@ -290,10 +293,7 @@ const DDTMETable = () => {
           const leafTasks = filterToLeafTasks(tasksData);
           setClientBigTasks(sortByProject(leafTasks));
 
-          // Fallback to task-level SGM only if client-level assignment is unavailable.
-          if (!resolvedSgmName && tasksData.length > 0 && tasksData[0].sgm_name && tasksData[0].sgm_name !== '-') {
-            resolvedSgmName = tasksData[0].sgm_name;
-          }
+          // Task-level SGM fallback removed — client-level assigned_sgms_details is authoritative.
 
           // 1.2 Fetch Projects
           const projRes = await api.get(`projects/?client_id=${clientId}`);
@@ -303,53 +303,17 @@ const DDTMETable = () => {
             : [];
           setClientProjects(projData);
 
-          if (!resolvedSgmId && Array.isArray(projData) && projData.length > 0) {
-            const projectWithSgmId = projData.find((project) => project?.assigned_sgm || project?.assigned_sgm_details?.id);
-            if (projectWithSgmId) {
-              resolvedSgmId = projectWithSgmId.assigned_sgm || projectWithSgmId.assigned_sgm_details?.id || null;
-            }
-          }
+          // Project-level SGM fallback removed — client-level assigned_sgms_details is authoritative.
 
-          if (!resolvedSgmName && Array.isArray(projData)) {
-            const projectWithSgm = projData.find((project) =>
-              project?.assigned_sgm_name ||
-              project?.assigned_sgm_details?.username ||
-              project?.assigned_sgm_email
-            );
+          // Project-level HQEPL fallback removed — client-level assigned_hqepls_details
+          // is authoritative. Using project[0] was the cause of SS always showing.
 
-            if (projectWithSgm) {
-              resolvedSgmName =
-                projectWithSgm.assigned_sgm_name ||
-                projectWithSgm.assigned_sgm_details?.username ||
-                projectWithSgm.assigned_sgm_email ||
-                null;
-            }
+          // Set all SGM/HQEPL people arrays from client-level data
+          if (resolvedSgmPeopleFromClient && resolvedSgmPeopleFromClient.length > 0) {
+            setSgmPeople(resolvedSgmPeopleFromClient);
           }
-
-          if (resolvedHqeplPeople.length === 0 && Array.isArray(projData)) {
-            const seenHqeplIds = new Set();
-            const collected = [];
-            projData.forEach((project) => {
-              const pid = project?.assigned_hqepl || project?.assigned_hqepl_details?.id;
-              if (!pid || seenHqeplIds.has(pid)) return;
-              const name = project?.assigned_hqepl_details
-                ? getHqeplDisplayLabel(project.assigned_hqepl_details)
-                : project?.assigned_hqepl_name;
-              if (!name) return;
-              seenHqeplIds.add(pid);
-              collected.push({ id: pid, name });
-            });
-            resolvedHqeplPeople = collected;
-          }
-
-          if (resolvedSgmName) {
-            setSgmName(resolvedSgmName);
-          }
-          if (resolvedSgmId) {
-            setSgmId(resolvedSgmId);
-          }
-          if (resolvedHqeplPeople.length > 0) {
-            setHqeplPeople(resolvedHqeplPeople);
+          if (resolvedHqeplPeopleFromClient && resolvedHqeplPeopleFromClient.length > 0) {
+            setHqeplPeople(resolvedHqeplPeopleFromClient);
           }
           // 1.5 Fetch Additional Tasks
           const addTasksRes = await api.get(`ddtme/additional-tasks/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
@@ -531,17 +495,11 @@ const DDTMETable = () => {
   const toUserKey = (userId) => (userId ? `u-${userId}` : null);
 
   const mlsPersonKey = mlsId ? `u-${mlsId}` : 'mls';
-  const sgmPersonKey = toUserKey(sgmId) || 'sgm';
-
-  // One column per assigned HQEPL person (supports multiple HQEPL assignments).
-  const hqeplPersonEntries = hqeplPeople
-    .map((person) => ({ id: toUserKey(person.id), label: person.name }))
-    .filter((person) => person.id);
 
   const reservedPersonKeys = new Set([
     mlsPersonKey,
-    sgmName ? sgmPersonKey : null,
-    ...hqeplPersonEntries.map((person) => person.id)
+    ...sgmPeople.map(p => toUserKey(p.id)).filter(Boolean),
+    ...hqeplPeople.map(p => toUserKey(p.id)).filter(Boolean),
   ].filter(Boolean));
 
   const employeePeople = Array.isArray(clientEmployees)
@@ -555,8 +513,10 @@ const DDTMETable = () => {
 
   const tablePeople = [
     { id: mlsPersonKey, label: mlsLabel },
-    ...hqeplPersonEntries,
-    ...(sgmName ? [{ id: sgmPersonKey, label: sgmName }] : []),
+    // All assigned HQEPLs get their own column — label shows as 'CEO' per requirement
+    ...hqeplPeople.map(p => ({ id: toUserKey(p.id), label: p.label })),
+    // All assigned SGMs get their own column
+    ...sgmPeople.map(p => ({ id: toUserKey(p.id), label: p.label })),
     ...employeePeople
   ];
 
@@ -726,13 +686,14 @@ const DDTMETable = () => {
     const canAutoSave = (
       status !== 'APPROVED' && (
         (userRole === 'EMPLOYEE' || userRole === 'ADMIN') ? status !== 'SUBMITTED' :
-          (userRole === 'SGM' || userRole === 'HQEPL' || userRole === 'MLS')
+          (userRole === 'SGM' || userRole === 'COO' || userRole === 'HQEPL' || userRole === 'MLS')
       )
     );
 
-    if (!canAutoSave) return;
+    if (!canAutoSave) {
+      return;
+    }
 
-    // Skip the very first population of manDayData (loaded from server — not a user edit).
     if (!hasInitializedManDayData.current) {
       hasInitializedManDayData.current = true;
       return;
@@ -750,8 +711,8 @@ const DDTMETable = () => {
     }, 1500); // 1.5s debounce — user must pause typing before save fires
 
     return () => clearTimeout(timeoutId);
-  // isSaving intentionally excluded from deps to avoid the save→isSaving→re-run loop.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // isSaving intentionally excluded from deps to avoid the save→isSaving→re-run loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manDayData, userRole, submission?.status]);
 
   const handleSendForApproval = async () => {
@@ -798,8 +759,7 @@ const DDTMETable = () => {
         month: selectedMonth,
         year: selectedYear
       });
-
-      if (userRole === 'SGM') {
+      if (userRole === 'SGM' || userRole === 'COO') {
         const approvalRes = await api.post(`ddtme/submissions/${submitRes.data.id}/approve/`, {});
         setSubmission(approvalRes.data);
         alert('Submitted and approved successfully!');
@@ -1073,7 +1033,8 @@ const DDTMETable = () => {
   const visibleAdditionalTasks = canViewSubmittedPlan ? additionalTasks : [];
 
   // Permissions
-  const canEdit = !isReadOnly && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || userRole === 'SGM');
+  const isSgmLike = userRole === 'SGM' || userRole === 'COO';
+  const canEdit = !isReadOnly && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || isSgmLike);
   const canEditHoursForPerson = (personId) => {
     if (planStatus === 'APPROVED') {
       return false;
@@ -1083,7 +1044,7 @@ const DDTMETable = () => {
       return planStatus !== 'SUBMITTED';
     }
 
-    if (userRole === 'SGM') {
+    if (isSgmLike) {
       return planStatus !== 'SUBMITTED' || isSgmEditApproveMode;
     }
 
@@ -1124,18 +1085,18 @@ const DDTMETable = () => {
     );
   };
 
-  const canEditRowRemarks = showRowRemarks && (userRole === 'SGM' || userRole === 'ADMIN');
+  const canEditRowRemarks = showRowRemarks && (isSgmLike || userRole === 'ADMIN');
 
   // SGM and ADMIN can approve/reject. EMPLOYEE cannot.
-  const canApprove = userRole === 'SGM' && planStatus === 'SUBMITTED';
+  const canApprove = isSgmLike && planStatus === 'SUBMITTED';
   const canEditAndApprove = canApprove && !isSgmEditApproveMode;
-  const canSubmitEditAndApprove = userRole === 'SGM' && planStatus === 'SUBMITTED' && isSgmEditApproveMode;
-  const canAllowEdit = (userRole === 'SGM' || userRole === 'ADMIN') && planStatus === 'APPROVED';
+  const canSubmitEditAndApprove = isSgmLike && planStatus === 'SUBMITTED' && isSgmEditApproveMode;
+  const canAllowEdit = (isSgmLike || userRole === 'ADMIN') && planStatus === 'APPROVED';
 
-  const canSubmit = (planStatus === 'DRAFT' || planStatus === 'REJECTED') && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || userRole === 'SGM');
+  const canSubmit = (planStatus === 'DRAFT' || planStatus === 'REJECTED') && (userRole === 'EMPLOYEE' || userRole === 'ADMIN' || isSgmLike);
 
   useEffect(() => {
-    if (userRole !== 'SGM' || planStatus !== 'SUBMITTED') {
+    if (!isSgmLike || planStatus !== 'SUBMITTED') {
       setIsSgmEditApproveMode(false);
     }
   }, [userRole, planStatus, clientId, selectedMonth, selectedYear]);
@@ -1388,124 +1349,140 @@ const DDTMETable = () => {
             >
               <ChevronRight size={16} />
             </button>
-          </div>
+          </div >
 
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            {/* Download Excel Button */}
-            <button
-              onClick={handleDownloadExcel}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-              title="Download Deliverables Excel"
-            >
-              <Download size={14} />
-              Download
-            </button>
-            {/* Upload Excel Button */}
-            {canEdit && (
-              <button
-                onClick={handleOpenUploadModal}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-                title="Upload Excel to import deliverables"
-              >
-                <Upload size={14} />
-                Upload
-              </button>
-            )}
-            {/* Hidden file input for Excel upload */}
-            <input
-              ref={uploadFileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={handleUploadFileSelect}
-            />
-            {/* REJECTION REMARKS POPUP/IN-LINE */}
-            {planStatus === 'REJECTED' && rejectionRemarksText && (
-              <div className="hidden xl:block bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs max-w-[200px] truncate" title={rejectionRemarksText}>
-                {rejectionRemarksText}
-              </div>
-            )}
+  {/* Actions */ }
+  < div className = "flex items-center gap-3" >
+    {/* Download Excel Button */ }
+    < button
+onClick = { handleDownloadExcel }
+className = "flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+title = "Download Deliverables Excel"
+  >
+  <Download size={14} />
+Download
+            </button >
+  {/* Upload Excel Button */ }
+{
+  canEdit && (
+    <button
+      onClick={handleOpenUploadModal}
+      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+      title="Upload Excel to import deliverables"
+    >
+      <Upload size={14} />
+      Upload
+    </button>
+  )
+}
+{/* Hidden file input for Excel upload */ }
+<input
+  ref={uploadFileInputRef}
+  type="file"
+  accept=".xlsx,.xls"
+  className="hidden"
+  onChange={handleUploadFileSelect}
+/>
+{/* REJECTION REMARKS POPUP/IN-LINE */ }
+{
+  planStatus === 'REJECTED' && rejectionRemarksText && (
+    <div className="hidden xl:block bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs max-w-[200px] truncate" title={rejectionRemarksText}>
+      {rejectionRemarksText}
+    </div>
+  )
+}
 
-            {/* Submit / Approve / Reject Buttons */}
-            {canSubmit && !canApprove && (
-              <button
-                onClick={handleSendForApproval}
-                disabled={isSubmitting}
-                className="px-5 py-2 bg-black text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-              >
-                {isSubmitting ? '...' : (planStatus === 'REJECTED' ? 'Resubmit' : 'Send Approval')}
-              </button>
-            )}
+{/* Submit / Approve / Reject Buttons */ }
+{
+  canSubmit && !canApprove && (
+    <button
+      onClick={handleSendForApproval}
+      disabled={isSubmitting}
+      className="px-5 py-2 bg-black text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+    >
+      {isSubmitting ? '...' : (planStatus === 'REJECTED' ? 'Resubmit' : 'Send Approval')}
+    </button>
+  )
+}
 
-            {canAllowEdit && (
-              <button
-                onClick={handleAllowEdit}
-                disabled={isAllowingEdit}
-                className="px-5 py-2 bg-amber-500 text-white font-bold rounded-xl shadow-lg shadow-amber-200 hover:bg-amber-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-60"
-              >
-                {isAllowingEdit ? '...' : 'Allow Edit'}
-              </button>
-            )}
+{
+  canAllowEdit && (
+    <button
+      onClick={handleAllowEdit}
+      disabled={isAllowingEdit}
+      className="px-5 py-2 bg-amber-500 text-white font-bold rounded-xl shadow-lg shadow-amber-200 hover:bg-amber-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-60"
+    >
+      {isAllowingEdit ? '...' : 'Allow Edit'}
+    </button>
+  )
+}
 
-            {canApprove && !isRejecting && !isSgmEditApproveMode && (
-              <>
-                <button
-                  className="px-5 py-2 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-                  onClick={handleApprove}
-                >
-                  Approve
-                </button>
-                <button
-                  className="px-5 py-2 bg-red-50 text-red-600 border border-red-200 font-bold rounded-xl hover:bg-red-100 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-                  onClick={handleStartRejecting}
-                >
-                  Reject
-                </button>
-              </>
-            )}
+{
+  canApprove && !isRejecting && !isSgmEditApproveMode && (
+    <>
+      <button
+        className="px-5 py-2 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+        onClick={handleApprove}
+      >
+        Approve
+      </button>
+      <button
+        className="px-5 py-2 bg-red-50 text-red-600 border border-red-200 font-bold rounded-xl hover:bg-red-100 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+        onClick={handleStartRejecting}
+      >
+        Reject
+      </button>
+    </>
+  )
+}
 
-            {canEditAndApprove && (
-              <button
-                className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-                onClick={handleStartEditAndApprove}
-              >
-                Edit and Approve
-              </button>
-            )}
+{
+  canEditAndApprove && (
+    <button
+      className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+      onClick={handleStartEditAndApprove}
+    >
+      Edit and Approve
+    </button>
+  )
+}
 
-            {canSubmitEditAndApprove && (
-              <button
-                className="px-5 py-2 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-60"
-                onClick={handleSubmitEditAndApprove}
-                disabled={isSubmitting || isSaving}
-              >
-                {isSubmitting ? '...' : 'Submit'}
-              </button>
-            )}
+{
+  canSubmitEditAndApprove && (
+    <button
+      className="px-5 py-2 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-600 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-60"
+      onClick={handleSubmitEditAndApprove}
+      disabled={isSubmitting || isSaving}
+    >
+      {isSubmitting ? '...' : 'Submit'}
+    </button>
+  )
+}
 
-            {canApprove && isRejecting && !isSgmEditApproveMode && (
-              <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-red-200 shadow-lg absolute right-0 top-full mt-2 z-50 animate-in fade-in slide-in-from-top-2">
-                <button
-                  className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 text-[10px] uppercase"
-                  onClick={handleSubmitRejection}
-                >
-                  Confirm Reject
-                </button>
-                <button
-                  className="px-3 py-2 text-slate-500 hover:text-slate-800 font-bold text-[10px] uppercase"
-                  onClick={handleCancelRejecting}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+{
+  canApprove && isRejecting && !isSgmEditApproveMode && (
+    <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-red-200 shadow-lg absolute right-0 top-full mt-2 z-50 animate-in fade-in slide-in-from-top-2">
+      <button
+        className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 text-[10px] uppercase"
+        onClick={handleSubmitRejection}
+      >
+        Confirm Reject
+      </button>
+      <button
+        className="px-3 py-2 text-slate-500 hover:text-slate-800 font-bold text-[10px] uppercase"
+        onClick={handleCancelRejecting}
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+          </div >
+        </div >
+      </div >
 
-      {/* Monthly Major Objectives */}
-      <div className="space-y-4 sm:space-y-6">
+  {/* Monthly Major Objectives */ }
+  < div className = "space-y-4 sm:space-y-6" >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h2 className="text-lg sm:text-xl font-black text-slate-900">Monthly Major Objectives</h2>
           {canEdit && (
@@ -1543,120 +1520,123 @@ const DDTMETable = () => {
                 </tr>
               )}
               {!loading && visibleObjectives.map((obj, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-bold text-slate-900">{idx + 1}</td>
-                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">{obj.objective}</td>
-                  {showRowRemarks && (
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">
-                      {canEditRowRemarks ? (
-                        editingRemarkKey === `obj_${obj.id}` ? (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <input
-                              type="text"
-                              value={remarksDrafts[`obj_${obj.id}`] || ''}
-                              onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`obj_${obj.id}`]: e.target.value }))}
-                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`obj_${obj.id}`)}
-                              className="flex-1 min-w-[100px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                              placeholder="Write remark"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleSaveRemark(`obj_${obj.id}`)}
-                              disabled={savingRemarkKey === `obj_${obj.id}`}
-                              className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase whitespace-nowrap"
-                            >
-                              {savingRemarkKey === `obj_${obj.id}` ? 'Saving' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => setEditingRemarkKey(null)}
-                              className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase whitespace-nowrap"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleStartEditRemark(`obj_${obj.id}`)}
-                            className="flex items-center gap-2 text-left flex-wrap"
-                          >
-                            <span className={rowRemarks[`obj_${obj.id}`] ? 'text-slate-700 text-xs' : 'text-slate-400 text-xs'}>
-                              {rowRemarks[`obj_${obj.id}`] || 'No remark'}
-                            </span>
-                            <span className="text-blue-600 text-[10px] font-bold uppercase whitespace-nowrap">
-                              {rowRemarks[`obj_${obj.id}`] ? 'Edit' : 'Add'}
-                            </span>
-                          </button>
-                        )
-                      ) : (
-                        <span className={rowRemarks[`obj_${obj.id}`] ? 'text-slate-700 text-xs' : 'text-slate-300 text-[10px]'}>
-                          {rowRemarks[`obj_${obj.id}`] || '--'}
-                        </span>
-                      )}
-                    </td>
-                  )}
-                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
-                    {canEdit && (
-                      <button
-                        onClick={() => deleteObjective(idx, obj.id)}
-                        className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-                        title="Delete objective"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+      <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-bold text-slate-900">{idx + 1}</td>
+      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">{obj.objective}</td>
+      {showRowRemarks && (
+        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-slate-700">
+          {canEditRowRemarks ? (
+            editingRemarkKey === `obj_${obj.id}` ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={remarksDrafts[`obj_${obj.id}`] || ''}
+                  onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`obj_${obj.id}`]: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`obj_${obj.id}`)}
+                  className="flex-1 min-w-[100px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                  placeholder="Write remark"
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleSaveRemark(`obj_${obj.id}`)}
+                  disabled={savingRemarkKey === `obj_${obj.id}`}
+                  className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase whitespace-nowrap"
+                >
+                  {savingRemarkKey === `obj_${obj.id}` ? 'Saving' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditingRemarkKey(null)}
+                  className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase whitespace-nowrap"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleStartEditRemark(`obj_${obj.id}`)}
+                className="flex items-center gap-2 text-left flex-wrap"
+              >
+                <span className={rowRemarks[`obj_${obj.id}`] ? 'text-slate-700 text-xs' : 'text-slate-400 text-xs'}>
+                  {rowRemarks[`obj_${obj.id}`] || 'No remark'}
+                </span>
+                <span className="text-blue-600 text-[10px] font-bold uppercase whitespace-nowrap">
+                  {rowRemarks[`obj_${obj.id}`] ? 'Edit' : 'Add'}
+                </span>
+              </button>
+            )
+          ) : (
+            <span className={rowRemarks[`obj_${obj.id}`] ? 'text-slate-700 text-xs' : 'text-slate-300 text-[10px]'}>
+              {rowRemarks[`obj_${obj.id}`] || '--'}
+            </span>
+          )}
+        </td>
+      )}
+      <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
+        {canEdit && (
+          <button
+            onClick={() => deleteObjective(idx, obj.id)}
+            className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
+            title="Delete objective"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
+      </td>
+    </tr>
+  ))
+}
 
-              {/* NEW OBJECTIVE INPUT ROW */}
+{/* NEW OBJECTIVE INPUT ROW */ }
 
-              {/* NEW OBJECTIVE INPUT ROWS */}
-              {objectiveDrafts.map((draft, dIdx) => (
-                <tr key={`draft-${dIdx}`} className="bg-slate-50">
-                  <td className="px-6 py-4 text-sm font-bold text-slate-400">{objectives.length + dIdx + 1}</td>
-                  <td className="px-6 py-4">
-                    <input
-                      type="text"
-                      value={draft.text}
-                      onChange={(e) => {
-                        const next = [...objectiveDrafts];
-                        next[dIdx].text = e.target.value;
-                        setObjectiveDrafts(next);
-                      }}
-                      onKeyDown={(e) => e.key === 'Enter' && addObjective(dIdx)}
-                      placeholder="Enter new objective..."
-                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-black focus:outline-none"
-                      autoFocus={dIdx === objectiveDrafts.length - 1}
-                    />
-                  </td>
-                  {showRowRemarks && (
-                    <td className="px-6 py-4 text-sm text-slate-300">--</td>
-                  )}
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => addObjective(dIdx)}
-                        className="px-3 py-1.5 bg-black text-white rounded text-[10px] font-bold uppercase hover:bg-slate-800"
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => removeObjectiveDraftRow(dIdx)}
-                        className="text-slate-500 hover:text-slate-800 text-[10px] font-bold uppercase"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+{/* NEW OBJECTIVE INPUT ROWS */ }
+{
+  objectiveDrafts.map((draft, dIdx) => (
+    <tr key={`draft-${dIdx}`} className="bg-slate-50">
+      <td className="px-6 py-4 text-sm font-bold text-slate-400">{objectives.length + dIdx + 1}</td>
+      <td className="px-6 py-4">
+        <input
+          type="text"
+          value={draft.text}
+          onChange={(e) => {
+            const next = [...objectiveDrafts];
+            next[dIdx].text = e.target.value;
+            setObjectiveDrafts(next);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && addObjective(dIdx)}
+          placeholder="Enter new objective..."
+          className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-black focus:outline-none"
+          autoFocus={dIdx === objectiveDrafts.length - 1}
+        />
+      </td>
+      {showRowRemarks && (
+        <td className="px-6 py-4 text-sm text-slate-300">--</td>
+      )}
+      <td className="px-6 py-4 text-center">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => addObjective(dIdx)}
+            className="px-3 py-1.5 bg-black text-white rounded text-[10px] font-bold uppercase hover:bg-slate-800"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => removeObjectiveDraftRow(dIdx)}
+            className="text-slate-500 hover:text-slate-800 text-[10px] font-bold uppercase"
+          >
+            Cancel
+          </button>
         </div>
-      </div>
+      </td>
+    </tr>
+  ))
+}
+            </tbody >
+          </table >
+        </div >
+      </div >
 
-      {/* DYNAMIC MAN-DAYS PLAN */}
-      <div className="space-y-4 sm:space-y-6">
+  {/* DYNAMIC MAN-DAYS PLAN */ }
+  < div className = "space-y-4 sm:space-y-6" >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900">
@@ -1681,744 +1661,830 @@ const DDTMETable = () => {
                 <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[32px] sm:left-10 bg-slate-900 z-30 w-[280px] min-w-[280px] max-w-[280px]">Deliverable</th>
                 <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[312px] sm:left-[320px] bg-slate-900 z-30 w-[120px] min-w-[120px] max-w-[120px]">Project</th>
                 <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase sticky left-[432px] sm:left-[440px] bg-slate-900 z-30 w-[100px] min-w-[100px] max-w-[100px]">Target</th>
-                {showRowRemarks && (
-                  <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Comments</th>
-                )}
+                    {showRowRemarks && (
+                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-[9px] sm:text-[10px] font-black uppercase">Comments</th>
+                    )}
 
-                {/* Dynamic People Headers (SGM + Employees) */}
-                {tablePeople.length === 0 ? (
-                  <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[9px] sm:text-[10px] font-black uppercase border-l border-slate-700 text-slate-400">
-                    No Employees
-                  </th>
-                ) : (
-                  tablePeople.map((person) => (
-                    <th
-                      key={person.id}
-                      colSpan="2"
-                      className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[8px] sm:text-[10px] font-black uppercase border-l border-slate-700"
-                    >
-                      {person.label.length > 15 ? person.label.substring(0, 12) + '...' : person.label}
-                    </th>
-                  ))
-                )}
+                    {/* Dynamic People Headers (SGM + Employees) */}
+                    {tablePeople.length === 0 ? (
+                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[9px] sm:text-[10px] font-black uppercase border-l border-slate-700 text-slate-400">
+                        No Employees
+                      </th>
+                    ) : (
+                      tablePeople.map((person) => (
+                        <th
+                          key={person.id}
+                          colSpan="2"
+                          className="px-2 sm:px-4 py-2 sm:py-3 text-center text-[8px] sm:text-[10px] font-black uppercase border-l border-slate-700"
+                        >
+                          {person.label.length > 15 ? person.label.substring(0, 12) + '...' : person.label}
+                        </th>
+                      ))
+                    )}
 
-              </tr>
-              <tr className="bg-slate-800 text-white">
+                  </tr>
+                  <tr className="bg-slate-800 text-white">
                 <th className="sticky left-0 bg-slate-800 z-30"></th>
                 <th className="sticky left-[32px] sm:left-10 bg-slate-800 z-30"></th>
                 <th className="sticky left-[312px] sm:left-[320px] bg-slate-800 z-30"></th>
                 <th className="sticky left-[432px] sm:left-[440px] bg-slate-800 z-30"></th>
-                {showRowRemarks && <th></th>}
-                {tablePeople.map((person) => (
-                  <React.Fragment key={`sub-${person.id}`}>
-                    <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold border-l border-slate-700 whitespace-nowrap">Onsite Hrs</th>
-                    <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold whitespace-nowrap">Offsite Hrs</th>
-                  </React.Fragment>
-                ))}
-                {tablePeople.length === 0 && <th></th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {loading && (
-                <tr>
-                  <td colSpan={showRowRemarks ? 5 + (tablePeople.length * 2) : 4 + (tablePeople.length * 2)} className="px-6 py-16 text-center">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600"></div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Tasks...</p>
-                    </div>
-                  </td>
+{ showRowRemarks && <th></th> }
+{
+  tablePeople.map((person) => (
+    <React.Fragment key={`sub-${person.id}`}>
+      <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold border-l border-slate-700 whitespace-nowrap">Onsite Hrs</th>
+      <th className="px-1.5 sm:px-3 py-1.5 sm:py-2 text-center text-[8px] sm:text-[9px] font-bold whitespace-nowrap">Offsite Hrs</th>
+    </React.Fragment>
+  ))
+}
+{ tablePeople.length === 0 && <th></th> }
+              </tr >
+            </thead >
+  <tbody className="divide-y divide-slate-200">
+              {loading && Array.from({ length: 5 }).map((_, idx) => (
+        <tr key={`skeleton-task-${idx}`} className="hover:bg-slate-50 transition-colors animate-pulse bg-white">
+          {/* SR */}
+          <td className="px-4 py-4 text-center sticky left-0 bg-white z-10 w-[32px] sm:w-10">
+            <div className="bg-slate-200 h-4 w-4 rounded mx-auto" />
+          </td>
+          {/* Title */}
+          <td className="px-6 py-4 sticky left-[32px] sm:left-10 bg-white z-10 w-[280px] min-w-[280px] max-w-[280px]">
+            <div className="bg-slate-200 h-4 w-5/6 rounded" />
+          </td>
+          {/* Project */}
+          <td className="px-4 py-4 sticky left-[312px] sm:left-[320px] bg-white z-10 w-[120px] min-w-[120px] max-w-[120px]">
+            <div className="bg-slate-200 h-4 w-16 rounded mx-auto" />
+          </td>
+          {/* Target Date */}
+          <td className="px-4 py-4 text-center sticky left-[432px] sm:left-[440px] bg-white z-10 w-[120px] min-w-[120px] max-w-[120px]">
+            <div className="bg-slate-200 h-4 w-20 rounded mx-auto" />
+          </td>
+          {/* Remarks */}
+          {showRowRemarks && (
+            <td className="px-4 py-4">
+              <div className="bg-slate-200 h-4 w-20 rounded" />
+            </td>
+          )}
+          {/* People columns */}
+          {tablePeople.map((person) => (
+            <React.Fragment key={`skeleton-person-${idx}-${person.id}`}>
+              <td className="px-2 py-4 border-l border-slate-100">
+                <div className="bg-slate-200 h-4 w-8 rounded mx-auto" />
+              </td>
+              <td className="px-2 py-4">
+                <div className="bg-slate-200 h-4 w-8 rounded mx-auto" />
+              </td>
+            </React.Fragment>
+          ))}
+          {tablePeople.length === 0 && (
+            <td className="px-4 py-4">
+              <div className="bg-slate-200 h-4 w-12 rounded mx-auto" />
+            </td>
+          )}
+        </tr>
+      ))}
+        {/* BIG TASKS */}
+        {!loading && visibleBigTasks.map((task, idx) => (
+          <tr key={task.id} className="hover:bg-slate-50 transition-colors">
+            <td className="px-4 py-4 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{idx + 1}</td>
+            <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
+              {editingDeliverableKey === `big_${task.id}` ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="text"
+                    value={deliverableDraft.title}
+                    onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('big', task.id)}
+                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                    maxLength={500}
+                    autoFocus
+                  />
+                  <select
+                    value={deliverableDraft.projectId}
+                    onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+                    className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+                  >
+                    <option value="">Select Project</option>
+                    {clientProjects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={deliverableDraft.targetDate}
+                    onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+                    className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={() => handleSaveDeliverable('big', task.id)}
+                    disabled={savingDeliverableKey === `big_${task.id}`}
+                    className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+                  >
+                    {savingDeliverableKey === `big_${task.id}` ? 'Saving' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleCancelEditDeliverable}
+                    className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="line-clamp-2 break-words" title={task.ddtme_title || task.title}>{task.ddtme_title || task.title}</span>
+                    {canEdit && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleStartEditDeliverable('big', task)}
+                          className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          title="Edit deliverable"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDeliverableTask('big', task.id)}
+                          disabled={deletingDeliverableKey === `big_${task.id}`}
+                          className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
+                          title="Delete deliverable"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </td>
+                  <td className="px-4 py-4 text-xs font-bold text-indigo-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
+          {editingDeliverableKey === `big_${task.id}` ? (
+            <select
+              value={deliverableDraft.projectId}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+              className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+            >
+              <option value="">Select Project</option>
+              {clientProjects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          ) : (
+            task.project_name
+          )}
+        </td>
+        <td className="px-4 py-4 text-xs text-slate-600 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
+          {editingDeliverableKey === `big_${task.id}` ? (
+            <input
+              type="date"
+              value={deliverableDraft.targetDate}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+              className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+            />
+          ) : (
+            formatDateDDMMYYYY(task.target_date)
+          )}
+        </td>
+        {showRowRemarks && (
+          <td className="px-4 py-4 text-xs text-slate-600">
+            {canEditRowRemarks ? (
+              editingRemarkKey === `big_${task.id}` ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={remarksDrafts[`big_${task.id}`] || ''}
+                    onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`big_${task.id}`]: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`big_${task.id}`)}
+                    className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                    placeholder="Write remark"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleSaveRemark(`big_${task.id}`)}
+                    disabled={savingRemarkKey === `big_${task.id}`}
+                    className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+                  >
+                    {savingRemarkKey === `big_${task.id}` ? 'Saving' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingRemarkKey(null)}
+                    className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleStartEditRemark(`big_${task.id}`)}
+                  className="flex items-center gap-2 text-left"
+                >
+                  <span className={rowRemarks[`big_${task.id}`] ? 'text-slate-700' : 'text-slate-400'}>
+                    {rowRemarks[`big_${task.id}`] || 'No remark'}
+                  </span>
+                  <span className="text-blue-600 text-[10px] font-bold uppercase">
+                    {rowRemarks[`big_${task.id}`] ? 'Edit' : 'Add'}
+                  </span>
+                </button>
+              )
+            ) : (
+              <span className={rowRemarks[`big_${task.id}`] ? 'text-slate-700' : 'text-slate-300 text-[10px]'}>
+                {rowRemarks[`big_${task.id}`] || '--'}
+              </span>
+            )}
+          </td>
+        )}
+
+        {tablePeople.map((person) => {
+          const personId = person.id;
+          const canEditPersonHours = canEditHoursForPerson(personId);
+          return (
+            <React.Fragment key={`big-${task.id}-${personId}`}>
+                        <td className="px-2 py-4 text-center border-l border-slate-100">
+        {renderHourCell({
+          taskId: task.id,
+          personId,
+          field: 'on',
+          type: 'big',
+          canEditPersonHours,
+        })}
+      </td>
+                        <td className="px-2 py-4 text-center">
+        {renderHourCell({
+          taskId: task.id,
+          personId,
+          field: 'off',
+          type: 'big',
+          canEditPersonHours,
+        })}
+      </td>
+    </React.Fragment>
+  );
+})}
+
+                </tr >
+              ))}
+
+{/* ADDITIONAL TASKS */ }
+{
+  !loading && visibleAdditionalTasks.map((task, idx) => (
+    <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                  <td className="px-4 py-4 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{visibleBigTasks.length + idx + 1}</td>
+      <td className="px-6 py-4 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
+        {editingDeliverableKey === `add_${task.id}` ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              value={deliverableDraft.title}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('add', task.id)}
+              className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+              maxLength={500}
+              autoFocus
+            />
+            <select
+              value={deliverableDraft.projectId}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+              className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+            >
+              <option value="">Select Project</option>
+              {clientProjects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={deliverableDraft.targetDate}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+              className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+            />
+            <button
+              onClick={() => handleSaveDeliverable('add', task.id)}
+              disabled={savingDeliverableKey === `add_${task.id}`}
+              className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+            >
+              {savingDeliverableKey === `add_${task.id}` ? 'Saving' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancelEditDeliverable}
+              className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <span className="line-clamp-2 break-words" title={task.title}>{task.title}</span>
+              {canEdit && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleStartEditDeliverable('add', task)}
+                    className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                    title="Edit deliverable"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDeliverableTask('add', task.id)}
+                    disabled={deletingDeliverableKey === `add_${task.id}`}
+                    className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
+                    title="Delete deliverable"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </td>
+                  <td className="px-4 py-4 text-xs font-bold text-slate-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
+          {editingDeliverableKey === `add_${task.id}` ? (
+            <select
+              value={deliverableDraft.projectId}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
+              className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
+            >
+              <option value="">Select Project</option>
+              {clientProjects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          ) : (
+            task.project_name || '-'
+          )}
+        </td>
+        <td className="px-4 py-4 text-xs text-slate-400 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
+          {editingDeliverableKey === `add_${task.id}` ? (
+            <input
+              type="date"
+              value={deliverableDraft.targetDate}
+              onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
+              className="w-full min-w-[140px] px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+            />
+          ) : (
+            formatDateDDMMYYYY(task.target_date)
+          )}
+        </td>
+        {showRowRemarks && (
+          <td className="px-4 py-4 text-xs text-slate-600">
+            {canEditRowRemarks ? (
+              editingRemarkKey === `add_${task.id}` ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={remarksDrafts[`add_${task.id}`] || ''}
+                    onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`add_${task.id}`]: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`add_${task.id}`)}
+                    className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
+                    placeholder="Write remark"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleSaveRemark(`add_${task.id}`)}
+                    disabled={savingRemarkKey === `add_${task.id}`}
+                    className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
+                  >
+                    {savingRemarkKey === `add_${task.id}` ? 'Saving' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingRemarkKey(null)}
+                    className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleStartEditRemark(`add_${task.id}`)}
+                  className="flex items-center gap-2 text-left"
+                >
+                  <span className={rowRemarks[`add_${task.id}`] ? 'text-slate-700' : 'text-slate-400'}>
+                    {rowRemarks[`add_${task.id}`] || 'No remark'}
+                  </span>
+                  <span className="text-blue-600 text-[10px] font-bold uppercase">
+                    {rowRemarks[`add_${task.id}`] ? 'Edit' : 'Add'}
+                  </span>
+                </button>
+              )
+            ) : (
+              <span className={rowRemarks[`add_${task.id}`] ? 'text-slate-700' : 'text-slate-300 text-[10px]'}>
+                {rowRemarks[`add_${task.id}`] || '--'}
+              </span>
+            )}
+          </td>
+        )}
+
+        {tablePeople.map((person) => {
+          const personId = person.id;
+          const canEditPersonHours = canEditHoursForPerson(personId);
+          return (
+            <React.Fragment key={`add-${task.id}-${personId}`}>
+                        <td className="px-2 py-4 text-center border-l border-slate-100">
+        {renderHourCell({
+          taskId: task.id,
+          personId,
+          field: 'on',
+          type: 'add',
+          canEditPersonHours,
+        })}
+      </td>
+                        <td className="px-2 py-4 text-center">
+        {renderHourCell({
+          taskId: task.id,
+          personId,
+          field: 'off',
+          type: 'add',
+          canEditPersonHours,
+        })}
+      </td>
+    </React.Fragment>
+  );
+})}
+
+                </tr >
+              ))}
+
+{/* NEW DELIVERABLE INPUT ROWS */ }
+{
+  deliverableDrafts.map((draft, dIdx) => (
+    <tr key={`add-draft-${dIdx}`} className="bg-indigo-50">
+      <td className="text-center font-bold text-indigo-300">{visibleBigTasks.length + visibleAdditionalTasks.length + dIdx + 1}</td>
+      <td colSpan={3 + (tablePeople.length * 2) + (showRowRemarks ? 1 : 0)} className="p-2">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => {
+              const next = [...deliverableDrafts];
+              next[dIdx].name = e.target.value;
+              setDeliverableDrafts(next);
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddAdditionalTask(dIdx)}
+            placeholder="Enter deliverable..."
+            className="flex-[2] px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none"
+            maxLength={500}
+            autoFocus={dIdx === deliverableDrafts.length - 1}
+          />
+          <select
+            value={draft.projectId}
+            onChange={(e) => {
+              const next = [...deliverableDrafts];
+              next[dIdx].projectId = e.target.value;
+              setDeliverableDrafts(next);
+            }}
+            className="flex-1 px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none bg-white"
+          >
+            <option value="">Select Project</option>
+            {clientProjects.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={draft.targetDate}
+            onChange={(e) => {
+              const next = [...deliverableDrafts];
+              next[dIdx].targetDate = e.target.value;
+              setDeliverableDrafts(next);
+            }}
+            className="flex-1 px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none"
+          />
+          <button onClick={() => handleAddAdditionalTask(dIdx)} className="px-4 py-2 bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700">
+            ADD
+          </button>
+          <button onClick={() => removeDeliverableDraftRow(dIdx)} className="px-4 py-2 bg-transparent text-slate-500 hover:text-slate-800 text-xs font-bold">
+            CANCEL
+          </button>
+        </div>
+      </td>
+    </tr>
+  ))
+}
+
+              {/* SPACER ROW to prevent last task overlap */}
+              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && (
+                <tr className="h-6 bg-transparent border-none">
+                  <td colSpan="100%"></td>
                 </tr>
               )}
-              {/* BIG TASKS */}
-              {!loading && visibleBigTasks.map((task, idx) => (
-                <tr key={task.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-2 text-sm font-bold text-slate-900 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{idx + 1}</td>
-                  <td className="px-6 py-2 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
-                    {editingDeliverableKey === `big_${task.id}` ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <input
-                          type="text"
-                          value={deliverableDraft.title}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('big', task.id)}
-                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                          maxLength={500}
-                          autoFocus
-                        />
-                        <select
-                          value={deliverableDraft.projectId}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
-                          className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
-                        >
-                          <option value="">Select Project</option>
-                          {clientProjects.map((project) => (
-                            <option key={project.id} value={project.id}>{project.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="date"
-                          value={deliverableDraft.targetDate}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
-                          className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                        />
-                        <button
-                          onClick={() => handleSaveDeliverable('big', task.id)}
-                          disabled={savingDeliverableKey === `big_${task.id}`}
-                          className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
-                        >
-                          {savingDeliverableKey === `big_${task.id}` ? 'Saving' : 'Save'}
-                        </button>
-                        <button
-                          onClick={handleCancelEditDeliverable}
-                          className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="line-clamp-2 break-words" title={task.ddtme_title || task.title}>{task.ddtme_title || task.title}</span>
-                          {canEdit && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleStartEditDeliverable('big', task)}
-                                className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                                title="Edit deliverable"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDeliverableTask('big', task.id)}
-                                disabled={deletingDeliverableKey === `big_${task.id}`}
-                                className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
-                                title="Delete deliverable"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-xs font-bold text-indigo-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
-                    {task.project_name}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-600 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
-                    {formatDateDDMMYYYY(task.target_date)}
-                  </td>
-                  {showRowRemarks && (
-                    <td className="px-4 py-2 text-xs text-slate-600">
-                      {canEditRowRemarks ? (
-                        editingRemarkKey === `big_${task.id}` ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={remarksDrafts[`big_${task.id}`] || ''}
-                              onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`big_${task.id}`]: e.target.value }))}
-                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`big_${task.id}`)}
-                              className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                              placeholder="Write remark"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleSaveRemark(`big_${task.id}`)}
-                              disabled={savingRemarkKey === `big_${task.id}`}
-                              className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
-                            >
-                              {savingRemarkKey === `big_${task.id}` ? 'Saving' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => setEditingRemarkKey(null)}
-                              className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleStartEditRemark(`big_${task.id}`)}
-                            className="flex items-center gap-2 text-left"
-                          >
-                            <span className={rowRemarks[`big_${task.id}`] ? 'text-slate-700' : 'text-slate-400'}>
-                              {rowRemarks[`big_${task.id}`] || 'No remark'}
-                            </span>
-                            <span className="text-blue-600 text-[10px] font-bold uppercase">
-                              {rowRemarks[`big_${task.id}`] ? 'Edit' : 'Add'}
-                            </span>
-                          </button>
-                        )
-                      ) : (
-                        <span className={rowRemarks[`big_${task.id}`] ? 'text-slate-700' : 'text-slate-300 text-[10px]'}>
-                          {rowRemarks[`big_${task.id}`] || '--'}
-                        </span>
-                      )}
-                    </td>
-                  )}
 
-                  {tablePeople.map((person) => {
-                    const personId = person.id;
-                    const canEditPersonHours = canEditHoursForPerson(personId);
-                    return (
-                      <React.Fragment key={`big-${task.id}-${personId}`}>
-                        <td className="px-2 py-2 text-center border-l border-slate-100">
-                          {renderHourCell({
-                            taskId: task.id,
-                            personId,
-                            field: 'on',
-                            type: 'big',
-                            canEditPersonHours,
-                          })}
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          {renderHourCell({
-                            taskId: task.id,
-                            personId,
-                            field: 'off',
-                            type: 'big',
-                            canEditPersonHours,
-                          })}
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-
-                </tr>
-              ))}
-
-              {/* ADDITIONAL TASKS */}
-              {!loading && visibleAdditionalTasks.map((task, idx) => (
-                <tr key={`add-${task.id}`} className="hover:bg-slate-50 transition-colors bg-slate-50/50">
-                  <td className="px-4 py-2 text-sm font-bold text-slate-500 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 w-[32px] sm:w-10">{visibleBigTasks.length + idx + 1}</td>
-                  <td className="px-6 py-2 text-sm font-semibold text-slate-700 sticky left-[32px] sm:left-10 bg-white group-hover:bg-slate-50 z-10 w-[280px] min-w-[280px] max-w-[280px]">
-                    {editingDeliverableKey === `add_${task.id}` ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <input
-                          type="text"
-                          value={deliverableDraft.title}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, title: e.target.value }))}
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveDeliverable('add', task.id)}
-                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                          maxLength={500}
-                          autoFocus
-                        />
-                        <select
-                          value={deliverableDraft.projectId}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, projectId: e.target.value }))}
-                          className="w-40 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none bg-white"
-                        >
-                          <option value="">Select Project</option>
-                          {clientProjects.map((project) => (
-                            <option key={project.id} value={project.id}>{project.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="date"
-                          value={deliverableDraft.targetDate}
-                          onChange={(e) => setDeliverableDraft((prev) => ({ ...prev, targetDate: e.target.value }))}
-                          className="w-36 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                        />
-                        <button
-                          onClick={() => handleSaveDeliverable('add', task.id)}
-                          disabled={savingDeliverableKey === `add_${task.id}`}
-                          className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
-                        >
-                          {savingDeliverableKey === `add_${task.id}` ? 'Saving' : 'Save'}
-                        </button>
-                        <button
-                          onClick={handleCancelEditDeliverable}
-                          className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="line-clamp-2 break-words" title={task.title}>{task.title}</span>
-                          {canEdit && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleStartEditDeliverable('add', task)}
-                                className="p-1 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                                title="Edit deliverable"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDeliverableTask('add', task.id)}
-                                disabled={deletingDeliverableKey === `add_${task.id}`}
-                                className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 disabled:text-red-300"
-                                title="Delete deliverable"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-xs font-bold text-slate-600 uppercase sticky left-[312px] sm:left-[320px] bg-white group-hover:bg-slate-50 z-10">
-                    {task.project_name || '-'}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-400 font-mono sticky left-[432px] sm:left-[440px] bg-white group-hover:bg-slate-50 z-10">
-                    {formatDateDDMMYYYY(task.target_date)}
-                  </td>
-                  {showRowRemarks && (
-                    <td className="px-4 py-2 text-xs text-slate-600">
-                      {canEditRowRemarks ? (
-                        editingRemarkKey === `add_${task.id}` ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={remarksDrafts[`add_${task.id}`] || ''}
-                              onChange={(e) => setRemarksDrafts((prev) => ({ ...prev, [`add_${task.id}`]: e.target.value }))}
-                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRemark(`add_${task.id}`)}
-                              className="w-56 px-2 py-1 border border-slate-200 rounded text-xs focus:border-slate-500 focus:outline-none"
-                              placeholder="Write remark"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleSaveRemark(`add_${task.id}`)}
-                              disabled={savingRemarkKey === `add_${task.id}`}
-                              className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase"
-                            >
-                              {savingRemarkKey === `add_${task.id}` ? 'Saving' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => setEditingRemarkKey(null)}
-                              className="px-2 py-1 text-slate-500 text-[10px] font-bold uppercase"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleStartEditRemark(`add_${task.id}`)}
-                            className="flex items-center gap-2 text-left"
-                          >
-                            <span className={rowRemarks[`add_${task.id}`] ? 'text-slate-700' : 'text-slate-400'}>
-                              {rowRemarks[`add_${task.id}`] || 'No remark'}
-                            </span>
-                            <span className="text-blue-600 text-[10px] font-bold uppercase">
-                              {rowRemarks[`add_${task.id}`] ? 'Edit' : 'Add'}
-                            </span>
-                          </button>
-                        )
-                      ) : (
-                        <span className={rowRemarks[`add_${task.id}`] ? 'text-slate-700' : 'text-slate-300 text-[10px]'}>
-                          {rowRemarks[`add_${task.id}`] || '--'}
-                        </span>
-                      )}
-                    </td>
-                  )}
-
-                  {tablePeople.map((person) => {
-                    const personId = person.id;
-                    const canEditPersonHours = canEditHoursForPerson(personId);
-                    return (
-                      <React.Fragment key={`add-${task.id}-${personId}`}>
-                        <td className="px-2 py-2 text-center border-l border-slate-100">
-                          {renderHourCell({
-                            taskId: task.id,
-                            personId,
-                            field: 'on',
-                            type: 'add',
-                            canEditPersonHours,
-                          })}
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          {renderHourCell({
-                            taskId: task.id,
-                            personId,
-                            field: 'off',
-                            type: 'add',
-                            canEditPersonHours,
-                          })}
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-
-                </tr>
-              ))}
-
-              {/* NEW DELIVERABLE INPUT ROWS */}
-              {deliverableDrafts.map((draft, dIdx) => (
-                <tr key={`add-draft-${dIdx}`} className="bg-indigo-50">
-                  <td className="text-center font-bold text-indigo-300">{visibleBigTasks.length + visibleAdditionalTasks.length + dIdx + 1}</td>
-                  <td colSpan={3 + (tablePeople.length * 2) + (showRowRemarks ? 1 : 0)} className="p-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={draft.name}
-                        onChange={(e) => {
-                          const next = [...deliverableDrafts];
-                          next[dIdx].name = e.target.value;
-                          setDeliverableDrafts(next);
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddAdditionalTask(dIdx)}
-                        placeholder="Enter deliverable..."
-                        className="flex-[2] px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none"
-                        maxLength={500}
-                        autoFocus={dIdx === deliverableDrafts.length - 1}
-                      />
-                      <select
-                        value={draft.projectId}
-                        onChange={(e) => {
-                          const next = [...deliverableDrafts];
-                          next[dIdx].projectId = e.target.value;
-                          setDeliverableDrafts(next);
-                        }}
-                        className="flex-1 px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none bg-white"
-                      >
-                        <option value="">Select Project</option>
-                        {clientProjects.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="date"
-                        value={draft.targetDate}
-                        onChange={(e) => {
-                          const next = [...deliverableDrafts];
-                          next[dIdx].targetDate = e.target.value;
-                          setDeliverableDrafts(next);
-                        }}
-                        className="flex-1 px-4 py-2 border border-indigo-200 rounded text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                      <button onClick={() => handleAddAdditionalTask(dIdx)} className="px-4 py-2 bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700">
-                        ADD
-                      </button>
-                      <button onClick={() => removeDeliverableDraftRow(dIdx)} className="px-4 py-2 bg-transparent text-slate-500 hover:text-slate-800 text-xs font-bold">
-                        CANCEL
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-
-            {/* ── Sticky Footer: Total Hours + Total Days ── */}
-            {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
-              <tfoot className="sticky bottom-0 z-10">
-                {/* Total Hours */}
-                <tr className="bg-yellow-50 font-bold shadow-[0_-2px_4px_rgba(0,0,0,0.06)]">
+              {/* Totals Row */}
+              {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
+                <tr className="bg-yellow-50 font-bold sticky bottom-[53px] z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.02)]">
                   <td className="sticky left-0 bg-yellow-50 z-20"></td>
-                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-2 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
+                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-yellow-50 z-20">Total Hours</td>
+
                   {tablePeople.map((person) => (
                     <React.Fragment key={`total-${person.id}`}>
-                      <td className="px-3 py-2 text-center text-sm border-l border-yellow-100 text-blue-800 bg-yellow-50">
+                      <td className="px-3 py-4 text-center text-sm border-l border-yellow-100 text-blue-800 bg-yellow-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalHoursForEmp(person.id)}
                       </td>
-                      <td className="px-3 py-2 text-center text-sm text-slate-500 bg-yellow-50">
+                      <td className="px-3 py-4 text-center text-sm text-slate-500 bg-yellow-50">
                         {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffHoursForEmp(person.id)}
                       </td>
                     </React.Fragment>
                   ))}
+
                 </tr>
-                {/* Total Days */}
-                <tr className="bg-slate-50 font-bold border-t border-slate-200">
-                  <td className="sticky left-0 bg-slate-50 z-20"></td>
-                  <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-2 text-right text-sm sticky left-10 bg-slate-50 z-20">Total Days</td>
-                  {tablePeople.map((person) => (
-                    <React.Fragment key={`total-days-${person.id}`}>
-                      <td className="px-3 py-2 text-center text-sm border-l border-slate-200 text-blue-800 bg-slate-50">
-                        {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOnDaysForEmp(person.id)}
-                      </td>
-                      <td className="px-3 py-2 text-center text-sm text-slate-500 bg-slate-50">
-                        {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffDaysForEmp(person.id)}
-                      </td>
-                    </React.Fragment>
-                  ))}
-                </tr>
-              </tfoot>
-            )}
-
-          </table>
-        </div>
-      </div>
-
-      {/* ---- Upload Excel Column Mapping Modal ---- */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-xl">
-                  <FileSpreadsheet size={20} className="text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">
-                    {uploadStep === 1 && 'Upload Excel'}
-                    {uploadStep === 2 && 'Map Columns'}
-                    {uploadStep === 3 && 'Import Complete'}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {uploadStep === 1 && 'Select an Excel file (.xlsx) to import deliverables'}
-                    {uploadStep === 2 && 'Map your Excel columns to DDTME fields'}
-                    {uploadStep === 3 && 'Review the import results below'}
-                  </p>
-                </div>
-              </div>
-              <button onClick={handleCloseUploadModal} className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-all">
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-
-              {/* Step 1: File Selection */}
-              {uploadStep === 1 && (
-                <div className="flex flex-col items-center justify-center py-12 space-y-5">
-                  <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                    <Upload size={36} className="text-indigo-400" />
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-sm font-bold text-slate-700">Drag & drop or click to select</p>
-                    <p className="text-xs text-slate-400">Supports .xlsx and .xls files</p>
-                  </div>
-                  <button
-                    onClick={() => uploadFileInputRef.current?.click()}
-                    disabled={isUploadingHeaders}
-                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-sm uppercase tracking-wider disabled:opacity-60"
-                  >
-                    {isUploadingHeaders ? 'Reading file...' : 'Choose File'}
-                  </button>
-                </div>
               )}
 
-              {/* Step 2: Column Mapping */}
-              {uploadStep === 2 && (
-                <>
-                  {/* Mapping Fields */}
-                  <div className="space-y-3">
-                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Column Mapping</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Deliverable (required) */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                          Deliverable <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={uploadMapping.deliverable}
-                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, deliverable: e.target.value }))}
-                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
-                            uploadMapping.deliverable
-                              ? 'border-indigo-300 bg-indigo-50/50 focus:ring-indigo-200 text-slate-800'
-                              : 'border-red-300 bg-red-50/30 focus:ring-red-200 text-slate-500'
-                          }`}
-                        >
-                          <option value="">— Select Excel Column —</option>
-                          {uploadHeaders.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
+        {(visibleBigTasks.length > 0 || visibleAdditionalTasks.length > 0) && tablePeople.length > 0 && (
+          <tr className="bg-slate-50 font-bold sticky bottom-0 z-10 border-t border-slate-200">
+            <td className="sticky left-0 bg-slate-50 z-20"></td>
+            <td colSpan={showRowRemarks ? 4 : 3} className="px-6 py-4 text-right text-sm sticky left-10 bg-slate-50 z-20">Total Days</td>
 
-                      {/* Project */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700">Project</label>
-                        <select
-                          value={uploadMapping.project}
-                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, project: e.target.value }))}
-                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
-                            uploadMapping.project
-                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
-                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
-                          }`}
-                        >
-                          <option value="">— Not Mapped —</option>
-                          {uploadHeaders.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
+            {tablePeople.map((person) => (
+              <React.Fragment key={`total-days-${person.id}`}>
+                <td className="px-3 py-4 text-center text-sm border-l border-slate-200 text-blue-800 bg-slate-50">
+                  {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOnDaysForEmp(person.id)}
+                </td>
+                <td className="px-3 py-4 text-center text-sm text-slate-500 bg-slate-50">
+                  {shouldMaskHoursForViewer(person.id) ? '-' : getTotalOffDaysForEmp(person.id)}
+                </td>
+              </React.Fragment>
+            ))}
 
-                      {/* Target Date */}
+                </tr>
+              )}
+            </tbody>
+          </table >
+        </div >
+      </div >
 
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700">Target Date</label>
-                        <select
-                          value={uploadMapping.target_date}
-                          onChange={(e) => setUploadMapping((prev) => ({ ...prev, target_date: e.target.value }))}
-                          className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${
-                            uploadMapping.target_date
-                              ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
-                              : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+    {/* ---- Upload Excel Column Mapping Modal ---- */ }
+  {
+    showUploadModal && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+          {/* Modal Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 rounded-xl">
+                <FileSpreadsheet size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">
+                  {uploadStep === 1 && 'Upload Excel'}
+                  {uploadStep === 2 && 'Map Columns'}
+                  {uploadStep === 3 && 'Import Complete'}
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {uploadStep === 1 && 'Select an Excel file (.xlsx) to import deliverables'}
+                  {uploadStep === 2 && 'Map your Excel columns to DDTME fields'}
+                  {uploadStep === 3 && 'Review the import results below'}
+                </p>
+              </div>
+            </div>
+            <button onClick={handleCloseUploadModal} className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-all">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+            {/* Step 1: File Selection */}
+            {uploadStep === 1 && (
+              <div className="flex flex-col items-center justify-center py-12 space-y-5">
+                <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <Upload size={36} className="text-indigo-400" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold text-slate-700">Drag & drop or click to select</p>
+                  <p className="text-xs text-slate-400">Supports .xlsx and .xls files</p>
+                </div>
+                <button
+                  onClick={() => uploadFileInputRef.current?.click()}
+                  disabled={isUploadingHeaders}
+                  className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-sm uppercase tracking-wider disabled:opacity-60"
+                >
+                  {isUploadingHeaders ? 'Reading file...' : 'Choose File'}
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: Column Mapping */}
+            {uploadStep === 2 && (
+              <>
+                {/* Mapping Fields */}
+                <div className="space-y-3">
+                  <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Column Mapping</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Deliverable (required) */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        Deliverable <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={uploadMapping.deliverable}
+                        onChange={(e) => setUploadMapping((prev) => ({ ...prev, deliverable: e.target.value }))}
+                        className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${uploadMapping.deliverable
+                            ? 'border-indigo-300 bg-indigo-50/50 focus:ring-indigo-200 text-slate-800'
+                            : 'border-red-300 bg-red-50/30 focus:ring-red-200 text-slate-500'
                           }`}
-                        >
-                          <option value="">— Not Mapped —</option>
-                          {uploadHeaders.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
+                      >
+                        <option value="">— Select Excel Column —</option>
+                        {uploadHeaders.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Project */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700">Project</label>
+                      <select
+                        value={uploadMapping.project}
+                        onChange={(e) => setUploadMapping((prev) => ({ ...prev, project: e.target.value }))}
+                        className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${uploadMapping.project
+                            ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
+                            : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+                          }`}
+                      >
+                        <option value="">— Not Mapped —</option>
+                        {uploadHeaders.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Target Date */}
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700">Target Date</label>
+                      <select
+                        value={uploadMapping.target_date}
+                        onChange={(e) => setUploadMapping((prev) => ({ ...prev, target_date: e.target.value }))}
+                        className={`w-full px-3 py-2.5 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${uploadMapping.target_date
+                            ? 'border-emerald-300 bg-emerald-50/50 focus:ring-emerald-200 text-slate-800'
+                            : 'border-slate-200 bg-white focus:ring-slate-200 text-slate-500'
+                          }`}
+                      >
+                        <option value="">— Not Mapped —</option>
+                        {uploadHeaders.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+                </div>
 
-                  {/* Data Preview */}
-                  {uploadPreview.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Data Preview (first {uploadPreview.length} rows)</p>
-                      <div className="border border-slate-200 rounded-xl overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-slate-100">
+                {/* Data Preview */}
+                {uploadPreview.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Data Preview (first {uploadPreview.length} rows)</p>
+                    <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-100">
+                            {uploadHeaders.map((h) => {
+                              const isMapped = Object.values(uploadMapping).includes(h);
+                              return (
+                                <th
+                                  key={h}
+                                  className={`px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap ${isMapped ? 'text-indigo-700 bg-indigo-50' : 'text-slate-500'
+                                    }`}
+                                >
+                                  {h}
+                                  {isMapped && (
+                                    <span className="ml-1 text-[9px] text-indigo-400 font-black">
+                                      ✓
+                                    </span>
+                                  )}
+                                </th>
+                              );
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {uploadPreview.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50">
                               {uploadHeaders.map((h) => {
                                 const isMapped = Object.values(uploadMapping).includes(h);
                                 return (
-                                  <th
+                                  <td
                                     key={h}
-                                    className={`px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap ${
-                                      isMapped ? 'text-indigo-700 bg-indigo-50' : 'text-slate-500'
-                                    }`}
+                                    className={`px-3 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate ${isMapped ? 'bg-indigo-50/30 font-medium' : ''
+                                      }`}
                                   >
-                                    {h}
-                                    {isMapped && (
-                                      <span className="ml-1 text-[9px] text-indigo-400 font-black">
-                                        ✓
-                                      </span>
-                                    )}
-                                  </th>
+                                    {row[h] || ''}
+                                  </td>
                                 );
                               })}
                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {uploadPreview.map((row, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                {uploadHeaders.map((h) => {
-                                  const isMapped = Object.values(uploadMapping).includes(h);
-                                  return (
-                                    <td
-                                      key={h}
-                                      className={`px-3 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate ${
-                                        isMapped ? 'bg-indigo-50/30 font-medium' : ''
-                                      }`}
-                                    >
-                                      {row[h] || ''}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
-                </>
-              )}
+                  </div>
+                )}
+              </>
+            )}
 
-              {/* Step 3: Results */}
-              {uploadStep === 3 && importResult && (
-                <div className="space-y-4 py-4">
-                  <div className="flex items-center justify-center">
-                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
-                      importResult.created > 0 ? 'bg-green-100' : 'bg-amber-100'
+            {/* Step 3: Results */}
+            {uploadStep === 3 && importResult && (
+              <div className="space-y-4 py-4">
+                <div className="flex items-center justify-center">
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${importResult.created > 0 ? 'bg-green-100' : 'bg-amber-100'
                     }`}>
-                      {importResult.created > 0
-                        ? <CheckCircle2 size={32} className="text-green-600" />
-                        : <AlertTriangle size={32} className="text-amber-600" />
-                      }
-                    </div>
+                    {importResult.created > 0
+                      ? <CheckCircle2 size={32} className="text-green-600" />
+                      : <AlertTriangle size={32} className="text-amber-600" />
+                    }
                   </div>
+                </div>
 
-                  <div className="text-center space-y-1">
-                    <p className="text-2xl font-black text-slate-900">
-                      {importResult.created} Deliverable{importResult.created !== 1 ? 's' : ''} Imported
+                <div className="text-center space-y-1">
+                  <p className="text-2xl font-black text-slate-900">
+                    {importResult.created} Deliverable{importResult.created !== 1 ? 's' : ''} Imported
+                  </p>
+                  {importResult.skipped > 0 && (
+                    <p className="text-sm text-amber-600 font-bold">
+                      {importResult.skipped} row{importResult.skipped !== 1 ? 's' : ''} skipped
                     </p>
-                    {importResult.skipped > 0 && (
-                      <p className="text-sm text-amber-600 font-bold">
-                        {importResult.skipped} row{importResult.skipped !== 1 ? 's' : ''} skipped
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Errors */}
-                  {importResult.errors?.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
-                      <p className="text-[11px] font-black text-red-700 uppercase tracking-wider">Errors</p>
-                      <ul className="text-xs text-red-600 space-y-0.5 max-h-32 overflow-y-auto">
-                        {importResult.errors.map((err, i) => (
-                          <li key={i}>• {err}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Warnings */}
-                  {importResult.warnings?.length > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
-                      <p className="text-[11px] font-black text-amber-700 uppercase tracking-wider">Warnings</p>
-                      <ul className="text-xs text-amber-600 space-y-0.5 max-h-32 overflow-y-auto">
-                        {importResult.warnings.map((w, i) => (
-                          <li key={i}>• {w}</li>
-                        ))}
-                      </ul>
-                    </div>
                   )}
                 </div>
-              )}
 
-            </div>
+                {/* Errors */}
+                {importResult.errors?.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
+                    <p className="text-[11px] font-black text-red-700 uppercase tracking-wider">Errors</p>
+                    <ul className="text-xs text-red-600 space-y-0.5 max-h-32 overflow-y-auto">
+                      {importResult.errors.map((err, i) => (
+                        <li key={i}>• {err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
-              <div className="text-[10px] text-slate-400 font-medium">
-                {uploadFile && (
-                  <span className="flex items-center gap-1.5">
-                    <FileSpreadsheet size={12} />
-                    {uploadFile.name}
-                  </span>
+                {/* Warnings */}
+                {importResult.warnings?.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+                    <p className="text-[11px] font-black text-amber-700 uppercase tracking-wider">Warnings</p>
+                    <ul className="text-xs text-amber-600 space-y-0.5 max-h-32 overflow-y-auto">
+                      {importResult.warnings.map((w, i) => (
+                        <li key={i}>• {w}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {uploadStep === 2 && (
-                  <>
-                    <button
-                      onClick={() => { setUploadStep(1); setUploadFile(null); setUploadHeaders([]); setUploadPreview([]); if (uploadFileInputRef.current) uploadFileInputRef.current.value = ''; }}
-                      className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold text-[11px] uppercase tracking-wider transition-colors"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={handleImportExcel}
-                      disabled={!uploadMapping.deliverable || isImporting}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-50 disabled:hover:translate-y-0"
-                    >
-                      {isImporting ? 'Importing...' : <><ArrowRight size={14} /> Import</>}
-                    </button>
-                  </>
-                )}
-                {uploadStep === 3 && (
+            )}
+
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="text-[10px] text-slate-400 font-medium">
+              {uploadFile && (
+                <span className="flex items-center gap-1.5">
+                  <FileSpreadsheet size={12} />
+                  {uploadFile.name}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {uploadStep === 2 && (
+                <>
                   <button
-                    onClick={handleFinishUpload}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
-                  >
-                    <CheckCircle2 size={14} /> Done
-                  </button>
-                )}
-                {uploadStep === 1 && (
-                  <button
-                    onClick={handleCloseUploadModal}
+                    onClick={() => { setUploadStep(1); setUploadFile(null); setUploadHeaders([]); setUploadPreview([]); if (uploadFileInputRef.current) uploadFileInputRef.current.value = ''; }}
                     className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold text-[11px] uppercase tracking-wider transition-colors"
                   >
-                    Cancel
+                    Back
                   </button>
-                )}
-              </div>
+                  <button
+                    onClick={handleImportExcel}
+                    disabled={!uploadMapping.deliverable || isImporting}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase disabled:opacity-50 disabled:hover:translate-y-0"
+                  >
+                    {isImporting ? 'Importing...' : <><ArrowRight size={14} /> Import</>}
+                  </button>
+                </>
+              )}
+              {uploadStep === 3 && (
+                <button
+                  onClick={handleFinishUpload}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 hover:-translate-y-0.5 transition-all text-[11px] tracking-wider uppercase"
+                >
+                  <CheckCircle2 size={14} /> Done
+                </button>
+              )}
+              {uploadStep === 1 && (
+                <button
+                  onClick={handleCloseUploadModal}
+                  className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold text-[11px] uppercase tracking-wider transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )
+  }
 
-    </div>
+    </div >
   );
 };
 

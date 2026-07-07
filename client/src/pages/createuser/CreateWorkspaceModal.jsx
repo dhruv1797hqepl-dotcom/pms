@@ -82,9 +82,10 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
 
         const fetchOptions = async () => {
             try {
-                const [sgmRes, hqeplRes, empRes] = await Promise.all([
+                const [sgmRes, hqeplRes, cooRes, empRes] = await Promise.all([
                     api.get('admin/users/?role=SGM', { headers }),
                     api.get('admin/users/?role=HQEPL', { headers }),
+                    api.get('admin/users/?role=COO', { headers }),
                     api.get('admin/users/?role=EMPLOYEE', { headers })
                 ]);
 
@@ -97,8 +98,10 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                 };
 
                 if (!isCancelled) {
-                    setSgmOptions(sgmRes.data.map(formatUser));
-                    setHqeplOptions(hqeplRes.data.map(formatUser));
+                    // COO appears in both SGM and HQEPL lists
+                    const cooFormatted = cooRes.data.map(formatUser);
+                    setSgmOptions([...sgmRes.data.map(formatUser), ...cooFormatted]);
+                    setHqeplOptions([...hqeplRes.data.map(formatUser), ...cooFormatted]);
                     setEmployeeOptions(empRes.data.map(formatUser));
                 }
             } catch (error) {
@@ -168,7 +171,7 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
             } else if (key === 'assigned_hqepls') {
                 formData[key].forEach(val => data.append('assigned_hqepls', val));
             } else if (key === 'logo' && typeof formData[key] === 'string') {
-                // Do not append existing logo URL, backend expects File
+        
             } else if (formData[key] !== null && formData[key] !== '') {
                 data.append(key, formData[key]);
             }
@@ -301,14 +304,13 @@ const CreateWorkspaceModal = ({ isOpen, onClose, onClientCreated, initialData })
                                     icon={Briefcase}
                                     label="Assign SGM"
                                     multiple
-                                    singleSelect
                                     options={sgmOptions}
                                     value={formData.assigned_sgms}
                                     onChange={(v) => setFormData({ ...formData, assigned_sgms: normalizeIdList(v) })}
                                 />
                                 <ModalSelect
                                     icon={ShieldCheck}
-                                    label="Assign HQEPL"
+                                    label="Assign Mentor"
                                     multiple
                                     options={hqeplOptions}
                                     value={formData.assigned_hqepls}

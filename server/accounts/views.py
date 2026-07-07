@@ -148,6 +148,7 @@ class AssignableUserListView(generics.ListAPIView):
             return CustomUser.objects.filter(
                 role__in=[
                     CustomUser.ADMIN,
+                    CustomUser.COO,
                     CustomUser.HQEPL,
                     CustomUser.SGM,
                     CustomUser.EMPLOYEE,

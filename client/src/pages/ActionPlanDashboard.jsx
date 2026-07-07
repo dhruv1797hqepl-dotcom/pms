@@ -773,7 +773,7 @@ const ActionPlanDashboard = () => {
               {['ALL', 'MY', 'HQEPL', 'CLIENT'].map((filter) => {
                 const label = filter === 'ALL' ? 'All Actions'
                   : filter === 'MY' ? 'My Actions'
-                    : filter === 'HQEPL' ? 'HQEPL Actions'
+                    : filter === 'HQEPL' ? 'CEO Actions'
                       : 'Client Actions';
                 const isActive = activeFilter === filter;
                 return (
@@ -958,7 +958,7 @@ const ActionPlanDashboard = () => {
                             </div>
                             <span className="text-[10px] font-black text-slate-900 tracking-tight">
                               {isExternal && internalIds.includes(item.assigned_to)
-                                ? "HQEPL Team"
+                                ? "CEO Team"
                                 : (item.assigned_to_name || `User ${item.assigned_to}`)}
                             </span>
                           </div>

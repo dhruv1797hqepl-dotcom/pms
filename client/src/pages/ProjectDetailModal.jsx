@@ -83,7 +83,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
         client: clientId || '',
         assigned_sgm: '',
         assigned_hqepl: '',
-        internal_team_selection: [],
+            internal_team_selection: [],
         external_team_selection: [],
         senior_team_selection: [],
         start_date: '',
@@ -145,8 +145,18 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
               }
             }
 
+            // Fetch COO users and merge into both HQEPL and SGM option lists.
+            // COO assigned as HQEPL = monitor only. COO assigned as SGM = full involvement.
+            let cooUsersFormatted = [];
+            try {
+              const cooRes = await api.get('admin/users/?role=COO');
+              cooUsersFormatted = Array.isArray(cooRes.data) ? cooRes.data : [];
+            } catch (cooError) {
+              console.warn('Failed to load COO users', cooError);
+            }
+
             const mergedHqeplOptions = mergeMemberOptions(
-              assignedHqepls,
+              [...assignedHqepls, ...cooUsersFormatted],
               projectToEdit?.assigned_hqepl_details ? [projectToEdit.assigned_hqepl_details] : []
             );
             setHqeplOptions(mergedHqeplOptions);
@@ -276,17 +286,33 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
                 <p className="text-sm font-bold text-slate-700">{currentClient?.company_name || 'Loading...'}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-[9px] uppercase font-black text-slate-400 tracking-widest">Lead SGM</p>
-                <p className="text-sm font-bold text-slate-700">
-                  {currentClient?.assigned_sgms_details?.[0]?.full_name || 'Unassigned'}
-                </p>
+                <label className="text-[9px] uppercase font-black text-slate-400 tracking-widest">Lead SGM</label>
+                {(currentClient?.assigned_sgms_details?.length || 0) > 1 ? (
+                  <select
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:border-[#f5914e] outline-none transition-all"
+                    value={formData.assigned_sgm || ''}
+                    onChange={(e) => setFormData({ ...formData, assigned_sgm: e.target.value ? Number(e.target.value) : '' })}
+                  >
+                    <option value="">Unassigned</option>
+                    {currentClient.assigned_sgms_details.map((sgm) => (
+                      <option key={sgm.id} value={sgm.id}>{sgm.full_name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm font-bold text-slate-700">
+                    {currentClient?.assigned_sgms_details?.[0]?.full_name || 'Unassigned'}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Dropdowns Row - ONLY Status remaining */}
+            {/* Dropdowns Row - Top Management (HQEPL/COO) + Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1">
-                <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">Include Top Management</label>
+                <label className="text-[9px] uppercase font-black text-slate-400 ml-4 tracking-widest">
+                  Include Top Management
+                  <span className="ml-1 text-slate-300">(HQEPL / COO — monitor only)</span>
+                </label>
                 <select
                   className="w-full px-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold appearance-none outline-none focus:border-[#f5914e]"
                   value={formData.assigned_hqepl || ''}
@@ -296,6 +322,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
                   {hqeplOptions.map((member) => (
                     <option key={member.id} value={member.id}>
                       {member.full_name || member.username || member.email}
+                      {member.role === 'COO' ? ' (COO)' : ''}
                     </option>
                   ))}
                 </select>
@@ -310,6 +337,7 @@ const ProjectDetailModal = ({ isOpen, onClose, onProjectCreated, clientId, proje
                           }`}
                       >
                         {member.full_name || member.username || member.email}
+                        {member.role === 'COO' ? ' ★' : ''}
                       </span>
                     ))}
                   </div>

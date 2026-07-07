@@ -23,14 +23,14 @@ class Client(models.Model):
         settings.AUTH_USER_MODEL,
         related_name="assigned_clients",
         blank=True,
-        limit_choices_to={"role": "SGM"}
+        limit_choices_to={"role__in": ["SGM", "COO"]}
     )
 
     assigned_hqepls = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="assigned_hqepl_clients",
         blank=True,
-        limit_choices_to={"role": "HQEPL"}
+        limit_choices_to={"role__in": ["HQEPL", "COO"]}
     )
 
     internal_team = models.ManyToManyField(
@@ -87,4 +87,3 @@ class ExternalTeam(models.Model):
 
     def __str__(self):
         return f"{self.user.email} ({self.client_org.company_name})"
-    

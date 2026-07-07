@@ -35,6 +35,7 @@ const MCTC = () => {
     // History popup state
     const [historyPopup, setHistoryPopup] = useState(null);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [quickTaskInput, setQuickTaskInput] = useState({ label: "", half: "first_half" });
 
     const memberViewContext = useMemo(() => {
         const params = new URLSearchParams(location.search);
@@ -166,9 +167,8 @@ const MCTC = () => {
     const parsePlaceLabel = (label) => {
         const raw = String(label || "");
 
-        if (raw.startsWith(PLACE_PREFIX)) {
-            const withoutPrefix = raw.replace(PLACE_PREFIX, "").replace(/^\|/, "");
-            const [dayType, halfKey, mode, ...companyChunks] = withoutPrefix.split("|");
+        if (raw.startsWith(`${PLACE_PREFIX}|`)) {
+            const [, dayType, halfKey, mode, ...companyChunks] = raw.split("|");
             const company = companyChunks.join("|");
             return {
                 isPlace: true,
@@ -506,21 +506,32 @@ const MCTC = () => {
     const removeTask = async (dayKey, taskId) => {
         if (!canManageEntries || !taskId) return;
 
+        const allDayTasks = tasks[dayKey] || [];
+        const task = allDayTasks.find((t) => t.id === taskId);
+        if (!task) return;
+
         try {
             setIsSaving(true);
-            await api.delete(`/mctc/entries/${taskId}/`);
+
+            if (task.isDashboardTask) {
+                // Dashboard task — delete the linked Task record
+                // The MCTC entry doesn't exist separately for these
+                if (task.linkedTaskId) {
+                    await api.delete(`/tasks/${task.linkedTaskId}/`);
+                }
+            } else {
+                // MCTC entry — delete it (this also deletes the linked task via backend cascade)
+                await api.delete(`/mctc/entries/${taskId}/`);
+            }
 
             setTasks((prev) => {
                 const currentDayTasks = prev[dayKey] || [];
                 const newDayTasks = currentDayTasks.filter((t) => t.id !== taskId);
-
-                return {
-                    ...prev,
-                    [dayKey]: newDayTasks,
-                };
+                return { ...prev, [dayKey]: newDayTasks };
             });
         } catch (error) {
-            console.error("Failed to auto-delete MCTC entry:", error);
+            console.error("Failed to delete task:", error);
+            alert("Failed to delete task. You may not have permission to delete it.");
         } finally {
             setIsSaving(false);
         }
@@ -682,7 +693,21 @@ const MCTC = () => {
     const saveDayPopup = async () => {
         if (!activeDayPopup) return;
 
-        const normalizedRows = placePopupRows.map((row) => ({
+        const isFullDayVisit = placePopupRows[0]?.mode === "full_day_visit";
+
+        const baseRows = isFullDayVisit
+            ? [
+                { ...placePopupRows[0], mode: "visit" },
+                {
+                    ...placePopupRows[1],
+                    mode: "visit",
+                    companyName: placePopupRows[0].companyName,
+                    tasks: placePopupRows[0].tasks,
+                },
+            ]
+            : placePopupRows;
+
+        const normalizedRows = baseRows.map((row) => ({
             ...row,
             companyName: String(row.companyName || "").trim(),
         }));
@@ -760,107 +785,148 @@ const MCTC = () => {
         const totalDays = getDaysInMonth(currentDate);
         const monthLabel = `${monthNames[month]} ${year}`;
 
-        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 10;
 
         // Title
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.text(`MCTC Place Report`, 14, 18);
+        doc.text(`MCTC Place Report`, margin, 16);
         doc.setFontSize(11);
         doc.setFont("helvetica", "normal");
-        doc.text(monthLabel, 14, 25);
+        doc.text(monthLabel, margin, 23);
+        let gridTop = 30;
         if (isMemberView) {
             doc.setFontSize(10);
-            doc.text(`Employee: ${targetUserLabel}`, 14, 31);
+            doc.text(`Employee: ${targetUserLabel}`, margin, 29);
+            gridTop = 36;
         }
 
-        const tableBody = [];
         const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const weeks = calendarWeeks;
+        const gridX = margin;
+        const gridWidth = pageW - margin * 2;
+        const colWidth = gridWidth / 7;
+        const headerRowHeight = 9;
+        const footerReserve = 12;
+        const availableHeight = pageH - gridTop - headerRowHeight - footerReserve;
+        const rowHeight = availableHeight / Math.max(weeks.length, 1);
 
-        for (let day = 1; day <= totalDays; day++) {
-            const dayKey = toDayKey(year, month, day);
-            const dayDate = new Date(year, month, day);
-            const dayName = dayNames[dayDate.getDay()];
-
-            if (dayDate.getDay() === 0) {
-                // Sunday — mark as holiday
-                tableBody.push([`${String(day).padStart(2, "0")} (${dayName})`, "Sunday", "-", "-", "-"]);
-                continue;
+        const truncateText = (text, maxWidth, fontSize) => {
+            doc.setFontSize(fontSize);
+            let str = String(text || "");
+            if (doc.getTextWidth(str) <= maxWidth) return str;
+            while (str.length > 0 && doc.getTextWidth(`${str}…`) > maxWidth) {
+                str = str.slice(0, -1);
             }
+            return `${str}…`;
+        };
 
-            const half1Place = getPlaceModeForHalf(dayKey, "first_half");
-            const half2Place = getPlaceModeForHalf(dayKey, "second_half");
+        const getPlaceDisplay = (placeInfo) => {
+            if (!placeInfo) return { text: "-", color: [148, 163, 184] };
+            if (placeInfo.mode === "visit") {
+                return { text: placeInfo.companyName ? `Offsite (${placeInfo.companyName})` : "Offsite", color: [67, 56, 202] };
+            }
+            if (placeInfo.mode === "leave") {
+                return { text: "Leave", color: [194, 65, 12] };
+            }
+            return { text: "Onsite", color: [4, 120, 87] };
+        };
 
-            const getPlaceDisplay = (placeInfo) => {
-                if (!placeInfo) return { status: "-", company: "-" };
-                if (placeInfo.mode === "visit") {
-                    return { status: "Offsite", company: placeInfo.companyName || "-" };
+        // Header row (day names)
+        weeks.length && dayNames.forEach((name, idx) => {
+            const x = gridX + idx * colWidth;
+            const isSun = idx === 0;
+            doc.setFillColor(...(isSun ? [254, 226, 226] : [241, 245, 249]));
+            doc.rect(x, gridTop, colWidth, headerRowHeight, "F");
+            doc.setDrawColor(203, 213, 225);
+            doc.rect(x, gridTop, colWidth, headerRowHeight, "S");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(...(isSun ? [185, 28, 28] : [51, 65, 85]));
+            doc.text(name.toUpperCase(), x + colWidth / 2, gridTop + headerRowHeight / 2 + 1.2, { align: "center" });
+        });
+
+        // Body grid
+        weeks.forEach((week, weekIndex) => {
+            const y = gridTop + headerRowHeight + weekIndex * rowHeight;
+
+            week.forEach((cell, dayIndex) => {
+                const x = gridX + dayIndex * colWidth;
+                const isSun = dayIndex === 0;
+
+                doc.setDrawColor(226, 232, 240);
+                if (!cell) {
+                    doc.setFillColor(250, 250, 251);
+                    doc.rect(x, y, colWidth, rowHeight, "F");
+                    doc.rect(x, y, colWidth, rowHeight, "S");
+                    return;
                 }
-                if (placeInfo.mode === "leave") {
-                    return { status: "Leave", company: "-" };
+
+                doc.setFillColor(...(isSun ? [254, 242, 242] : [255, 255, 255]));
+                doc.rect(x, y, colWidth, rowHeight, "F");
+                doc.rect(x, y, colWidth, rowHeight, "S");
+
+                // Day badge
+                const badgeSize = 6;
+                const badgeX = x + 3;
+                const badgeY = y + 3;
+                doc.setFillColor(...(isSun ? [185, 28, 28] : [30, 41, 59]));
+                doc.roundedRect(badgeX, badgeY, badgeSize, badgeSize, 1.2, 1.2, "F");
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                doc.text(String(cell.day), badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 1.1, { align: "center" });
+
+                const textX = x + 3;
+                let cursorY = badgeY + badgeSize + 4;
+
+                if (isSun) {
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(7);
+                    doc.setTextColor(185, 28, 28);
+                    doc.text("SUNDAY", textX, cursorY);
+                    return;
                 }
-                return { status: "Onsite", company: "-" };
-            };
 
-            const h1 = getPlaceDisplay(half1Place);
-            const h2 = getPlaceDisplay(half2Place);
+                const half1Place = getPlaceModeForHalf(cell.key, "first_half");
+                const half2Place = getPlaceModeForHalf(cell.key, "second_half");
+                const h1 = getPlaceDisplay(half1Place);
+                const h2 = getPlaceDisplay(half2Place);
+                const maxTextWidth = colWidth - 6;
 
-            // Combine half 1 and half 2 into the row
-            const h1Text = h1.status === "Offsite" ? `Offsite (${h1.company})` : h1.status;
-            const h2Text = h2.status === "Offsite" ? `Offsite (${h2.company})` : h2.status;
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(6.5);
+                doc.setTextColor(148, 163, 184);
+                doc.text("1ST", textX, cursorY);
+                cursorY += 3.2;
 
-            tableBody.push([
-                `${String(day).padStart(2, "0")} (${dayName})`,
-                h1Text,
-                h2Text,
-            ]);
-        }
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7);
+                doc.setTextColor(...h1.color);
+                doc.text(truncateText(h1.text, maxTextWidth, 7), textX, cursorY);
+                cursorY += 4;
 
-        autoTable(doc, {
-            startY: isMemberView ? 36 : 30,
-            head: [["Date", "Half 1", "Half 2"]],
-            body: tableBody,
-            theme: "grid",
-            headStyles: {
-                fillColor: [30, 41, 59],
-                textColor: 255,
-                fontStyle: "bold",
-                fontSize: 9,
-                halign: "center",
-            },
-            bodyStyles: {
-                fontSize: 8.5,
-                cellPadding: 2.5,
-            },
-            columnStyles: {
-                0: { cellWidth: 50, fontStyle: "bold" },
-                1: { halign: "center", cellWidth: 60 },
-                2: { halign: "center", cellWidth: 60 },
-            },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-            didParseCell: (data) => {
-                if (data.section === "body") {
-                    const text = String(data.cell.raw || "");
-                    if (text === "Sunday") {
-                        data.cell.styles.fillColor = [254, 226, 226];
-                        data.cell.styles.textColor = [185, 28, 28];
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (text.startsWith("Offsite")) {
-                        data.cell.styles.textColor = [67, 56, 202];
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (text === "Leave") {
-                        data.cell.styles.textColor = [194, 65, 12];
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (text === "Onsite") {
-                        data.cell.styles.textColor = [4, 120, 87];
-                    }
-                    // Highlight the date column for Sunday rows
-                    if (data.column.index === 0 && data.row.raw && String(data.row.raw[1]) === "Sunday") {
-                        data.cell.styles.fillColor = [254, 226, 226];
-                        data.cell.styles.textColor = [185, 28, 28];
-                    }
-                }
-            },
+                // Dashed divider
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineDashPattern([0.8, 0.8], 0);
+                doc.line(textX, cursorY, x + colWidth - 3, cursorY);
+                doc.setLineDashPattern([], 0);
+                cursorY += 3.5;
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(6.5);
+                doc.setTextColor(148, 163, 184);
+                doc.text("2ND", textX, cursorY);
+                cursorY += 3.2;
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7);
+                doc.setTextColor(...h2.color);
+                doc.text(truncateText(h2.text, maxTextWidth, 7), textX, cursorY);
+            });
         });
 
         // Footer
@@ -872,8 +938,8 @@ const MCTC = () => {
             doc.setTextColor(150);
             doc.text(
                 `Generated on ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}  •  Page ${i} of ${pageCount}`,
-                14,
-                doc.internal.pageSize.getHeight() - 8
+                margin,
+                pageH - 6
             );
         }
 
@@ -1030,21 +1096,16 @@ const MCTC = () => {
                                         return (
                                             <div
                                                 key={key}
-                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-rose-50/40 relative overflow-hidden group`}
+                                                className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-red-50/40`}
                                             >
-                                                <div className="absolute inset-0 bg-linear-to-b from-rose-100/20 to-transparent"></div>
-                                                <div className="relative flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
-                                                    <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] md:text-xs font-black transition-colors ${
-                                                        isToday ? "bg-rose-500 text-white shadow-sm shadow-rose-500/30 ring-2 ring-rose-200" : "bg-rose-100 text-rose-600 group-hover:bg-rose-200"
-                                                    }`}>
+                                                <div className="flex items-center justify-between px-1.5 md:px-2.5 pt-1.5 md:pt-2">
+                                                    <span className="flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-md text-[9px] md:text-[10px] font-black bg-[#b91c1c] text-white">
                                                         {cell.day}
                                                     </span>
                                                 </div>
-                                                <div className="relative flex flex-1 items-center justify-center pb-2 opacity-60">
-                                                    <p className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] text-rose-300 -rotate-12 scale-110 select-none">
-                                                        Sunday
-                                                    </p>
-                                                </div>
+                                                <p className="px-1.5 md:px-2.5 pt-1 md:pt-2 text-[7px] md:text-[9px] font-black uppercase tracking-[0.14em] text-red-500/80">
+                                                    Sunday
+                                                </p>
                                             </div>
                                         );
                                     }
@@ -1068,9 +1129,9 @@ const MCTC = () => {
                                                     </span>
                                                 </div>
 
-                                                <div className="flex flex-1 min-h-0 flex-col mt-0.5 px-0.5 pb-1">
+                                                <div className="flex flex-1 min-h-0 flex-col mt-0.5">
                                                     {renderHalfSection(key, "first_half", "1st")}
-                                                    <div className="border-t border-dashed border-slate-200/80 my-0.5 mx-1" />
+                                                    <div className="border-t border-dashed border-slate-200 mx-1" />
                                                     {renderHalfSection(key, "second_half", "2nd")}
                                                 </div>
                                             </div>
@@ -1079,8 +1140,8 @@ const MCTC = () => {
 
                                     // ─── TASK VIEW: Flat list ───
                                     const dayTasks = getVisibleDayEntries(key);
-                                    // Removed slice so all tasks are rendered!
-                                    const visibleDayTasks = dayTasks;
+                                    const visibleDayTasks = dayTasks.slice(0, 2);
+                                    const hiddenTaskCount = Math.max(dayTasks.length - visibleDayTasks.length, 0);
 
                                     const isDropHere = dropTarget?.dayKey === key;
                                     const isDragging = dragData !== null;
@@ -1182,13 +1243,19 @@ const MCTC = () => {
                                                                 );
                                                             })
                                                         ) : (
-                                                            <div className="flex items-center justify-center pt-2">
-                                                                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
-                                                                    No items
-                                                                </p>
-                                                            </div>
+                                                            <p className="pt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
+                                                                No items
+                                                            </p>
                                                         )}
                                                     </div>
+
+                                                    {hiddenTaskCount > 0 && (
+                                                        <div className="mt-2 pt-1">
+                                                            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 leading-none">
+                                                                {hiddenTaskCount} more
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1236,6 +1303,9 @@ const MCTC = () => {
                     <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
                         {/* Half-wise place + task entry */}
                         {headerView === "place" && canManageEntries && placePopupRows.map((row, halfIndex) => {
+                            if (halfIndex === 1 && placePopupRows[0]?.mode === "full_day_visit") {
+                                return null;
+                            }
                             const isLeave = row.mode === "leave";
                             const halfType = row.halfLabel === "Half 2" ? "second_half" : "first_half";
 
@@ -1244,8 +1314,9 @@ const MCTC = () => {
                                     {/* Half header */}
                                     <div className="mb-3 flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2">
-                                            <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-black ${halfIndex === 0 ? "bg-blue-600 text-white" : "bg-indigo-600 text-white"
-                                                }`}>
+                                            <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-black ${
+                                                halfIndex === 0 ? "bg-blue-600 text-white" : "bg-indigo-600 text-white"
+                                            }`}>
                                                 {halfIndex + 1}
                                             </span>
                                             <div>
@@ -1268,11 +1339,14 @@ const MCTC = () => {
                                             >
                                                 <option value="office">Office</option>
                                                 <option value="visit">Visit</option>
+                                                {halfIndex === 0 && (
+                                                    <option value="full_day_visit">Full Day Visit</option>
+                                                )}
                                                 <option value="leave">Leave</option>
                                             </select>
                                         </label>
 
-                                        {row.mode === "visit" ? (
+                                        {(row.mode === "visit" || row.mode === "full_day_visit") ? (
                                             <label className="min-w-0">
                                                 <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                                                     Company Name
@@ -1395,7 +1469,6 @@ const MCTC = () => {
                                                 {canManageEntries && (
                                                     <button
                                                         onClick={() => removeTask(activeDayPopup, task.id)}
-                                                        disabled={task.isDashboardTask}
                                                         className="rounded-md bg-slate-100 p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-red-500"
                                                     >
                                                         <X size={12} strokeWidth={3} />
@@ -1434,14 +1507,61 @@ const MCTC = () => {
                             </button>
                         </div>
                     ) : (
-                        <div className="mt-2 flex items-center justify-end gap-2 shrink-0">
-                            <button
-                                type="button"
-                                onClick={closeDayPopup}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100"
-                            >
-                                Close
-                            </button>
+                        <div className="mt-3 shrink-0 space-y-2 border-t border-slate-100 pt-3">
+                            {canManageEntries && (
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={quickTaskInput.half}
+                                        onChange={(e) => setQuickTaskInput(prev => ({ ...prev, half: e.target.value }))}
+                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 shrink-0"
+                                    >
+                                        <option value="first_half">Half 1</option>
+                                        <option value="second_half">Half 2</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        value={quickTaskInput.label}
+                                        onChange={(e) => setQuickTaskInput(prev => ({ ...prev, label: e.target.value }))}
+                                        onKeyDown={async (e) => {
+                                            if (e.key === "Enter" && quickTaskInput.label.trim()) {
+                                                await addTask(activeDayPopup, quickTaskInput.label.trim(), "task", quickTaskInput.half);
+                                                setQuickTaskInput(prev => ({ ...prev, label: "" }));
+                                            }
+                                        }}
+                                        placeholder="Add a task and press Enter..."
+                                        className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={!quickTaskInput.label.trim() || isSaving}
+                                        onClick={async () => {
+                                            if (!quickTaskInput.label.trim()) return;
+                                            await addTask(activeDayPopup, quickTaskInput.label.trim(), "task", quickTaskInput.half);
+                                            setQuickTaskInput(prev => ({ ...prev, label: "" }));
+                                        }}
+                                        className="rounded-xl bg-blue-600 px-3 py-2 text-[10px] font-black uppercase text-white shadow-sm transition-colors hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 shrink-0"
+                                    >
+                                        <Plus size={14} strokeWidth={3} />
+                                    </button>
+                                </div>
+                            )}
+                            <div className="flex items-center justify-between gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => downloadDayTaskPdf(activeDayPopup)}
+                                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition-colors hover:bg-[#1e293b] hover:text-white hover:border-[#1e293b]"
+                                >
+                                    <Download size={13} strokeWidth={2.5} />
+                                    PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={closeDayPopup}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1598,6 +1718,16 @@ const MCTC = () => {
                                 PDF
                             </button>
                         )}
+                        {headerView === "task" && (
+                            <button
+                                type="button"
+                                onClick={generateTaskPDF}
+                                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm transition-all hover:bg-[#1e293b] hover:text-white hover:border-[#1e293b] active:scale-95"
+                            >
+                                <Download size={13} strokeWidth={2.5} />
+                                PDF
+                            </button>
+                        )}
                     </div>
 
                     <div className="min-w-0 text-center justify-self-center">
@@ -1619,22 +1749,14 @@ const MCTC = () => {
                             <ChevronLeft size={12} className="sm:w-4 sm:h-4 md:w-5 md:h-5" strokeWidth={3} />
                         </button>
 
-                        <MonthYearPicker
-                            selectedMonth={currentDate.getMonth() + 1}
-                            selectedYear={currentDate.getFullYear()}
-                            onChange={(y, m) => {
-                                setCurrentDate(new Date(y, m - 1, 1));
-                            }}
-                            label={
-                                <h2 className="flex items-center justify-center gap-0.5 sm:gap-1 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black text-[#1e293b] whitespace-nowrap cursor-pointer block">
-                                    {monthNames[currentDate.getMonth()].substring(0, 3)}
-                                    <span className="font-light text-slate-200 hidden sm:inline">/</span>
-                                    <span className="hidden sm:inline">{currentDate.getFullYear()}</span>
-                                    <span className="sm:hidden text-[8px]">{currentDate.getFullYear().toString().substring(2)}</span>
-                                </h2>
-                            }
-                            className="min-w-20 sm:min-w-35 md:min-w-45 px-1 sm:px-2 md:px-4 text-center"
-                        />
+                        <div className="min-w-20 sm:min-w-35 md:min-w-45 px-1 sm:px-2 md:px-4 text-center">
+                            <h2 className="flex items-center justify-center gap-0.5 sm:gap-1 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black text-[#1e293b] whitespace-nowrap">
+                                {monthNames[currentDate.getMonth()].substring(0, 3)}
+                                <span className="font-light text-slate-200 hidden sm:inline">/</span>
+                                <span className="hidden sm:inline">{currentDate.getFullYear()}</span>
+                                <span className="sm:hidden text-[8px]">{currentDate.getFullYear().toString().substring(2)}</span>
+                            </h2>
+                        </div>
 
                         <button
                             onClick={handleNextMonth}

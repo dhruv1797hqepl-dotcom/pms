@@ -16,15 +16,19 @@ class ProjectSerializer(serializers.ModelSerializer):
     created_by_email = serializers.ReadOnlyField(source="created_by.email")
 
     # --------------------
-    # SGM (FIXED)
+    # SGM — now fully optional
     # --------------------
     assigned_sgm_email = serializers.SerializerMethodField()
     assigned_sgm_name = serializers.SerializerMethodField()
     assigned_sgm_details = serializers.SerializerMethodField()
-    assigned_sgm = serializers.PrimaryKeyRelatedField(read_only=True)
+    assigned_sgm = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role__in=["SGM", "COO"]),
+        required=False,
+        allow_null=True,
+    )
 
     assigned_hqepl = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role="HQEPL"),
+        queryset=User.objects.filter(role__in=["HQEPL", "COO"]),
         required=False,
         allow_null=True
     )
@@ -66,7 +70,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     senior_team_details = serializers.SerializerMethodField()
 
     # --------------------
-    # Internal Team (WRITE) - Accepting User IDs
+    # Internal Team (WRITE) — user IDs, optional
     # --------------------
     assigned_employees = serializers.ListField(
         child=serializers.IntegerField(),
@@ -87,6 +91,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
             "client", "client_name",
 
+            # SGM (optional)
             "assigned_sgm",
             "assigned_sgm_name",
             "assigned_sgm_email",
@@ -108,6 +113,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "senior_team_emails",
             "senior_team_details",
 
+            # Employees (optional)
             "assigned_employees",
             "team_members_details",
 
@@ -125,13 +131,8 @@ class ProjectSerializer(serializers.ModelSerializer):
     # VALIDATION
     # ====================
     def _get_sgm_scoped_employee_ids(self, user, client):
-        """
-        Employees that an SGM can allocate for a specific client.
-        Source of truth is the client's explicit internal team assignment.
-        """
         if not client:
             return set()
-
         return {
             employee_id
             for employee_id in client.internal_team.values_list("id", flat=True)
@@ -142,7 +143,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         client = attrs.get('client', getattr(self.instance, 'client', None))
         request = self.context.get("request")
 
-        # Validate Internal Employees (User IDs)
+        # Validate Internal Employees (User IDs) — optional
         assigned_employees_ids = attrs.get('assigned_employees')
         if assigned_employees_ids is not None:
             valid_user_ids = set(
@@ -151,12 +152,14 @@ class ProjectSerializer(serializers.ModelSerializer):
 
             if request and request.user.role == User.SGM:
                 valid_user_ids = self._get_sgm_scoped_employee_ids(request.user, client)
-
-                # Keep updates possible even when legacy assignments exist.
                 if self.instance:
                     valid_user_ids.update(
                         self.instance.assigned_employees.values_list("user_id", flat=True)
                     )
+
+            # COO follows same employee pool rules as ADMIN (all employees are valid)
+            if request and request.user.role == User.COO:
+                pass  # valid_user_ids already contains all EMPLOYEE users
 
             invalid_ids = [uid for uid in assigned_employees_ids if uid not in valid_user_ids]
             if invalid_ids:
@@ -175,12 +178,8 @@ class ProjectSerializer(serializers.ModelSerializer):
                     "assigned_hqepl": "Selected HQEPL is not assigned to this client."
                 })
 
-        # Validate External Team (User Objects or IDs depending on field type)
-        # external_team uses PrimaryKeyRelatedField(User), so it gets User objects.
         external_team = attrs.get('external_team')
         if client and external_team:
-            # client.external_members is ExternalTeam model related_name="external_members"
-            # ExternalTeam has user field. So values_list('user__id') gives User IDs.
             valid_ext_ids = set(client.external_members.values_list('user__id', flat=True))
             invalid_users = [u for u in external_team if u.id not in valid_ext_ids]
             if invalid_users:
@@ -210,15 +209,10 @@ class ProjectSerializer(serializers.ModelSerializer):
         return project
 
     def _set_employees(self, project, user_ids):
-        # Map User IDs -> Employee Objects
         employees = Employee.objects.filter(user__id__in=user_ids)
         project.assigned_employees.set(employees)
 
     def _sync_project_team(self, project):
-        """
-        Keep ProjectTeam in sync with Project M2M fields so all endpoints
-        expose the same effective team and removals are reflected immediately.
-        """
         existing_team = ProjectTeam.objects.filter(project=project).first()
         has_any_members = project.assigned_employees.exists() or project.external_team.exists()
         if not has_any_members and not existing_team:
@@ -232,24 +226,22 @@ class ProjectSerializer(serializers.ModelSerializer):
         team.internal_members.set(internal_users)
         team.external_members.set(project.external_team.all())
 
-
     # ====================
     # READ-ONLY HELPERS
     # ====================
+
+    # --- SGM ---
     def _get_effective_sgm(self, obj):
         if obj.assigned_sgm:
             return obj.assigned_sgm
-
         if obj.client_id and hasattr(obj.client, "assigned_sgms"):
             return obj.client.assigned_sgms.order_by("id").first()
-
         return None
 
     def get_assigned_sgm_name(self, obj):
         sgm = self._get_effective_sgm(obj)
         if not sgm:
             return None
-
         full_name = f"{sgm.first_name or ''} {sgm.last_name or ''}".strip()
         return full_name or sgm.username or sgm.email
 
@@ -269,6 +261,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             }
         return None
 
+    # --- HQEPL ---
     def get_assigned_hqepl_name(self, obj):
         hqepl = getattr(obj, 'assigned_hqepl', None)
         if not hqepl:
@@ -288,6 +281,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "full_name": f"{hqepl.first_name or ''} {hqepl.last_name or ''}".strip() or hqepl.username or hqepl.email,
         }
 
+    # --- Internal team ---
     def get_team_members_details(self, obj):
         members = []
         seen_ids = set()
@@ -302,7 +296,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                 "designation": emp.designation,
             })
 
-        # Backward-compatible fallback for legacy data still present in ProjectTeam.
         team = ProjectTeam.objects.filter(project=obj).first()
         if team:
             for member in team.internal_members.all():
@@ -333,7 +326,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                 "role": "EXTERNAL",
             })
 
-        # Backward-compatible fallback for legacy data still present in ProjectTeam.
         team = ProjectTeam.objects.filter(project=obj).first()
         if team:
             for member in team.external_members.all():
@@ -358,7 +350,6 @@ class ProjectSerializer(serializers.ModelSerializer):
     def get_senior_team_details(self, obj):
         members = []
         seen_ids = set()
-
         for user in obj.senior_team.all():
             seen_ids.add(user.id)
             members.append({
@@ -367,8 +358,8 @@ class ProjectSerializer(serializers.ModelSerializer):
                 "email": user.email,
                 "role": "SENIOR",
             })
-
         return members
+
 
 class ActionPlanSerializer(serializers.ModelSerializer):
     project_name = serializers.ReadOnlyField(source="project.name")
@@ -388,7 +379,7 @@ class ActionTaskSerializer(serializers.ModelSerializer):
         choices=[
             ('none', 'None'),
             ('document', 'Document'),
-            ('discuss', 'Discuss'),  # Legacy alias accepted on input.
+            ('discuss', 'Discuss'),
             ('training', 'Training'),
             ('resource', 'Resource'),
         ],
@@ -410,28 +401,6 @@ class ActionTaskSerializer(serializers.ModelSerializer):
         model = ActionTask
         fields = "__all__"
         read_only_fields = ("assigned_by", "status", "action_plan")
-
-    def get_assigned_by_display(self, obj):
-        request = self.context.get("request")
-
-        if request and request.user.role == "EXTERNAL":
-             # Logic to hide internal name if needed, or just return name
-             # User code had: if obj.assigned_by.user_type == "internal": return "HQEPL Team"
-             # But User model fields might be different. 
-             # I'll stick to simple logic or what user provided. 
-             # User provided: 
-             # if request and request.user.user_type == "external":
-             #    if obj.assigned_by.user_type == "internal": return "HQEPL Team"
-             
-             # But I recall User model has 'role', not 'user_type'.
-             # And 'role' values are 'ADMIN', 'HQEPL', 'SGM', 'EMPLOYEE', 'EXTERNAL'.
-             # So I should adapt logic to match `role`.
-             pass
-        
-        # Adapting to known User model (role field):
-        if obj.assigned_by:
-             return obj.assigned_by.get_full_name()
-        return None
 
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:
