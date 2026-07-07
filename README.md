@@ -16,7 +16,7 @@ The repository is structured as a monorepo containing both the frontend client a
 ### 1. Backend (Server)
 Navigate to the `server` directory, install Python dependencies, run migrations, and start the development server.
 ```bash
-cd server
+source venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
