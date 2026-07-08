@@ -530,6 +530,12 @@ const EmployeeDashboard = () => {
   const [clientMetaMap, setClientMetaMap] = useState({});
   const [selectedClients, setSelectedClients] = useState([]);
   const [includeAllTasks, setIncludeAllTasks] = useState(true);
+  const [includeOverdueTasks, setIncludeOverdueTasks] = useState(true);
+
+  const filterTasksByOverdueCheckbox = (tasks) => {
+    if (includeOverdueTasks) return tasks;
+    return tasks.filter((task) => getEffectiveTaskStatus(task) !== "over_due");
+  };
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -1190,8 +1196,8 @@ const EmployeeDashboard = () => {
   const filterTasksByClient = (tasks) => tasks.filter(isClientSelected);
 
   const filteredDashboardStats = useMemo(() => {
-    const activeTasks = filterTasksByClient(myTasks.filter(isTaskInDateRange));
-    const doneTasks = filterTasksByClient(completedTasks.filter(isTaskInDateRange));
+    const activeTasks = filterTasksByOverdueCheckbox(filterTasksByClient(myTasks.filter(isTaskInDateRange)));
+    const doneTasks = filterTasksByOverdueCheckbox(filterTasksByClient(completedTasks.filter(isTaskInDateRange)));
 
     const allTasks = [...activeTasks, ...doneTasks];
     const delayedCount = allTasks.filter((task) => getEffectiveTaskStatus(task) === "delay_completion").length;
@@ -1226,7 +1232,7 @@ const EmployeeDashboard = () => {
         { name: "Overdue", value: overdueCount, color: "#ef4444" },
       ]
     };
-  }, [myTasks, completedTasks, includeAllTasks, startDate, endDate, selectedClientSet]);
+  }, [myTasks, completedTasks, includeAllTasks, includeOverdueTasks, startDate, endDate, selectedClientSet]);
 
 
   // AUTO-FETCH LOGIC
@@ -2759,7 +2765,7 @@ const EmployeeDashboard = () => {
             </div>
 
             <div className="h-[220px] relative">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <PieChart>
                   <Pie
                     data={filteredDashboardStats.chart_data}
@@ -2897,7 +2903,17 @@ const EmployeeDashboard = () => {
         {/* ===== TASK OVERVIEW TABLE (Tasks Assigned TO Me - Active) ===== */}
         <Table
           title="My Tasks"
-          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(myTasks)))))}
+          extraHeader={
+            <label className="flex items-center gap-2 text-[12px] text-slate-700 cursor-pointer font-semibold ml-4 bg-white px-2 py-1 rounded-md border border-slate-200">
+              <input
+                type="checkbox"
+                checked={includeOverdueTasks}
+                onChange={(e) => setIncludeOverdueTasks(e.target.checked)}
+                className="accent-red-500"
+              /> Show Overdue
+            </label>
+          }
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(filterTasksByOverdueCheckbox(myTasks))))))}
           mode="overview"
           onQuickComplete={handleDirectComplete}
           onReportComplete={openCompletionModal}
@@ -2914,7 +2930,7 @@ const EmployeeDashboard = () => {
         <Table
           title="Upcoming 7 Days Tasks"
           data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(
-            myTasks.filter(t => {
+            filterTasksByOverdueCheckbox(myTasks).filter(t => {
               if (!t.target_date) return false;
               const today = new Date();
               today.setHours(0, 0, 0, 0);
@@ -2940,7 +2956,7 @@ const EmployeeDashboard = () => {
         {/* ===== COMPLETED TASKS TABLE (Tasks Assigned TO Me - Completed) ===== */}
         <Table
           title="Completed Tasks"
-          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(completedTasks)))))}
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(filterTasksByOverdueCheckbox(completedTasks))))))}
           mode="completed"
           currentUserId={currentUser?.id}
           onDeleteTask={requestDeleteTask}
@@ -2950,7 +2966,7 @@ const EmployeeDashboard = () => {
         {/* ===== ASSIGNED TASKS TABLE (Tasks I Assigned to Others) ===== */}
         <Table
           title="Delegated Tasks"
-          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(delegatedTasks)))))}
+          data={filterTasks(filterTasksByStatus(filterTasksByDateRange(filterTasksByRevision(filterTasksByClient(filterTasksByOverdueCheckbox(delegatedTasks))))))}
           mode="assigned"
           currentUserId={currentUser?.id}
           onDeleteTask={requestDeleteTask}
@@ -3008,11 +3024,10 @@ const EmployeeDashboard = () => {
                         <button
                           type="submit"
                           disabled={isSubmittingCompletion}
-                          className={`w-full font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 ${
-                            isSubmittingCompletion
-                              ? "bg-slate-400 text-white cursor-not-allowed"
-                              : "bg-emerald-500 text-white shadow-emerald-100 hover:bg-emerald-600"
-                          }`}
+                          className={`w-full font-black py-5 rounded-3xl text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 ${isSubmittingCompletion
+                            ? "bg-slate-400 text-white cursor-not-allowed"
+                            : "bg-emerald-500 text-white shadow-emerald-100 hover:bg-emerald-600"
+                            }`}
                         >
                           {isSubmittingCompletion ? (
                             <>
@@ -3234,11 +3249,10 @@ const EmployeeDashboard = () => {
                   <button
                     onClick={handleBulkAssignSubmit}
                     disabled={bulkTasks.length === 0 || isAssigningBulk}
-                    className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${
-                      bulkTasks.length > 0 && !isAssigningBulk
-                        ? "bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95"
-                        : "bg-slate-100 text-slate-300 cursor-not-allowed"
-                    }`}
+                    className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex gap-2 items-center transition-all ${bulkTasks.length > 0 && !isAssigningBulk
+                      ? "bg-emerald-500 text-white shadow-emerald-200 hover:bg-emerald-600 active:scale-95"
+                      : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                      }`}
                   >
                     {isAssigningBulk ? (
                       <>
@@ -3618,11 +3632,10 @@ const EmployeeDashboard = () => {
                     <button
                       type="submit"
                       disabled={isAssigningSingle}
-                      className={`w-full font-black py-4 rounded-3xl text-sm uppercase tracking-widest shadow-xl flex justify-center gap-2 items-center transition-all active:scale-95 ${
-                        isAssigningSingle
-                          ? "bg-slate-400 text-white cursor-not-allowed"
-                          : "bg-slate-900 text-white shadow-slate-200 hover:bg-black"
-                      }`}
+                      className={`w-full font-black py-4 rounded-3xl text-sm uppercase tracking-widest shadow-xl flex justify-center gap-2 items-center transition-all active:scale-95 ${isAssigningSingle
+                        ? "bg-slate-400 text-white cursor-not-allowed"
+                        : "bg-slate-900 text-white shadow-slate-200 hover:bg-black"
+                        }`}
                     >
                       {isAssigningSingle ? (
                         <>
@@ -3661,7 +3674,8 @@ const Table = ({
   currentUserId,
   onDeleteTask,
   onViewHistory,
-  loading
+  loading,
+  extraHeader
 }) => {
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -3995,6 +4009,7 @@ const Table = ({
         <div className="px-8 py-5 border-b font-black uppercase text-xs tracking-widest bg-slate-50 text-slate-600 flex justify-between items-center">
           <div className="flex items-center gap-4">
             {title}
+            {extraHeader && <div>{extraHeader}</div>}
           </div>
 
           <div className="flex items-center gap-6">
@@ -4033,7 +4048,7 @@ const Table = ({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left" style={{borderCollapse: 'separate', borderSpacing: 0}}>
+          <table className="w-full text-left" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead className="bg-white border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <tr>
                 <th className="px-4 py-3 sticky left-0 z-20 bg-white w-[80px] min-w-[80px]">Task ID</th>
@@ -4291,11 +4306,11 @@ const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, cl
           });
         }
       };
-      
+
       updatePosition();
       window.addEventListener('resize', updatePosition);
       window.addEventListener('scroll', updatePosition, true);
-      
+
       return () => {
         window.removeEventListener('resize', updatePosition);
         window.removeEventListener('scroll', updatePosition, true);
@@ -4304,7 +4319,7 @@ const AutocompleteInput = ({ value, onChange, options, placeholder, disabled, cl
   }, [show]);
 
   const dropdown = show && suggestions.length > 0 && !disabled ? (
-    <ul 
+    <ul
       className="absolute z-[99999] bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-y-auto mt-1 custom-scrollbar animate-in fade-in zoom-in-95 duration-100"
       style={{
         top: `${dropdownPos.top}px`,
