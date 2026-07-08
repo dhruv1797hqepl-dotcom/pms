@@ -347,12 +347,6 @@ const DDTMETable = () => {
           // 4. Fetch Man-Day Entries
           const entriesRes = await api.get(`ddtme/man-day-entries/?client_id=${clientId}&month=${selectedMonth}&year=${selectedYear}`);
 
-          // Debug: Log full response to see structure
-          console.log('FULL entries response:', entriesRes);
-          console.log('Response data type:', typeof entriesRes.data);
-          console.log('Is array?', Array.isArray(entriesRes.data));
-          console.log('Response data:', entriesRes.data);
-
           // Handle both paginated and non-paginated responses
           let entriesData = [];
           if (Array.isArray(entriesRes.data)) {
@@ -363,9 +357,6 @@ const DDTMETable = () => {
             // If it's an object but not paginated, try to extract
             entriesData = entriesRes.data.results || [];
           }
-
-          console.log('Normalized entriesData:', entriesData);
-          console.log('Number of entries:', entriesData.length);
 
           // Populate manDayData
           const mapping = {};
@@ -386,10 +377,8 @@ const DDTMETable = () => {
               on: entry.plan_hours == null ? '0' : String(entry.plan_hours),
               off: entry.off_hours == null ? '0' : String(entry.off_hours)
             };
-            console.log('Adding manday entry:', { key, entry });
           });
           setManDayData(mapping);
-          console.log('Final manDayData mapping:', mapping);
 
         } catch (error) {
           console.error("Failed to fetch DDTME data", error);

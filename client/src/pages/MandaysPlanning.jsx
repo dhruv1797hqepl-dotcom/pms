@@ -139,24 +139,19 @@ const MandaysPlanning = () => {
 
     // For role-scoped users, skip until their profile has loaded.
     if ((isSgm || isEmployee) && isCurrentUserLoading) {
-      console.log('[MandaysPlanning] Skipping fetch — user profile still loading');
       return;
     }
 
     // Build a stable key for this particular fetch.
     const fetchKey = `${selectedMonth}-${selectedYear}-${currentUserProfileId}-${refreshTick}-${selectedSgm}-${selectedEmployee}`;
 
-    console.log('[MandaysPlanning] useEffect fired | fetchKey:', fetchKey, '| prev:', fetchKeyRef.current, '| isLoading:', isCurrentUserLoading);
-
     // Bail out if we already fetched for this exact key.
     if (fetchKeyRef.current === fetchKey) {
-      console.log('[MandaysPlanning] BLOCKED duplicate fetch for key:', fetchKey);
       return;
     }
     fetchKeyRef.current = fetchKey;
 
     const fetchPlanningData = async () => {
-      console.log('[MandaysPlanning] >>> ACTUALLY CALLING API for key:', fetchKey);
       try {
         setIsLoading(true);
         setErrorMessage('');

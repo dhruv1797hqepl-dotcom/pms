@@ -948,6 +948,158 @@ const MCTC = () => {
     };
 
     /* ============================
+       PDF DOWNLOAD (Task View)
+    ============================ */
+
+    const generateTaskPDF = () => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const monthLabel = `${monthNames[month]} ${year}`;
+
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 10;
+
+        // Title
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text(`MCTC Task Report`, margin, 16);
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.text(monthLabel, margin, 23);
+        let gridTop = 30;
+        if (isMemberView) {
+            doc.setFontSize(10);
+            doc.text(`Employee: ${targetUserLabel}`, margin, 29);
+            gridTop = 36;
+        }
+
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const weeks = calendarWeeks;
+        const gridX = margin;
+        const gridWidth = pageW - margin * 2;
+        const colWidth = gridWidth / 7;
+        const headerRowHeight = 9;
+        const footerReserve = 12;
+        const availableHeight = pageH - gridTop - headerRowHeight - footerReserve;
+        const rowHeight = availableHeight / Math.max(weeks.length, 1);
+
+        const truncateText = (text, maxWidth, fontSize) => {
+            doc.setFontSize(fontSize);
+            let str = String(text || "");
+            if (doc.getTextWidth(str) <= maxWidth) return str;
+            while (str.length > 0 && doc.getTextWidth(`${str}…`) > maxWidth) {
+                str = str.slice(0, -1);
+            }
+            return `${str}…`;
+        };
+
+        // Header row
+        weeks.length && dayNames.forEach((name, idx) => {
+            const x = gridX + idx * colWidth;
+            const isSun = idx === 0;
+            doc.setFillColor(...(isSun ? [254, 226, 226] : [241, 245, 249]));
+            doc.rect(x, gridTop, colWidth, headerRowHeight, "F");
+            doc.setDrawColor(203, 213, 225);
+            doc.rect(x, gridTop, colWidth, headerRowHeight, "S");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(...(isSun ? [185, 28, 28] : [51, 65, 85]));
+            doc.text(name.toUpperCase(), x + colWidth / 2, gridTop + headerRowHeight / 2 + 1.2, { align: "center" });
+        });
+
+        // Body grid
+        weeks.forEach((week, weekIndex) => {
+            const y = gridTop + headerRowHeight + weekIndex * rowHeight;
+
+            week.forEach((cell, dayIndex) => {
+                const x = gridX + dayIndex * colWidth;
+                const isSun = dayIndex === 0;
+
+                doc.setDrawColor(226, 232, 240);
+                if (!cell) {
+                    doc.setFillColor(250, 250, 251);
+                    doc.rect(x, y, colWidth, rowHeight, "F");
+                    doc.rect(x, y, colWidth, rowHeight, "S");
+                    return;
+                }
+
+                doc.setFillColor(...(isSun ? [254, 242, 242] : [255, 255, 255]));
+                doc.rect(x, y, colWidth, rowHeight, "F");
+                doc.rect(x, y, colWidth, rowHeight, "S");
+
+                // Day badge
+                const badgeSize = 6;
+                const badgeX = x + 3;
+                const badgeY = y + 3;
+                doc.setFillColor(...(isSun ? [185, 28, 28] : [30, 41, 59]));
+                doc.roundedRect(badgeX, badgeY, badgeSize, badgeSize, 1.2, 1.2, "F");
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                doc.text(String(cell.day), badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 1.1, { align: "center" });
+
+                const textX = x + 3;
+                let cursorY = badgeY + badgeSize + 4;
+
+                if (isSun) {
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(7);
+                    doc.setTextColor(185, 28, 28);
+                    doc.text("SUNDAY", textX, cursorY);
+                    return;
+                }
+
+                const dayTasks = getVisibleDayEntries(cell.key);
+                const maxTextWidth = colWidth - 6;
+
+                dayTasks.forEach((task, tIdx) => {
+                    if (cursorY > y + rowHeight - 4) return; // Prevent overflow
+
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(6.5);
+                    
+                    let prefix = "• ";
+                    if (task.entry_type === "task" || task.isDashboardTask) {
+                        prefix = "[T] ";
+                        doc.setFont("helvetica", "bold");
+                    }
+                    
+                    if (isLinkedTaskCompleted(task)) {
+                        doc.setTextColor(21, 128, 61); // Green
+                    } else if (task.isDashboardTask) {
+                        doc.setTextColor(29, 78, 216); // Blue
+                    } else {
+                        doc.setTextColor(71, 85, 105); // Slate
+                    }
+
+                    const label = truncateText(prefix + (task.label || task.title || ""), maxTextWidth, 6.5);
+                    doc.text(label, textX, cursorY);
+                    cursorY += 3.5;
+                });
+            });
+        });
+
+        // Footer
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(150);
+            doc.text(
+                `Generated on ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}  •  Page ${i} of ${pageCount}`,
+                margin,
+                pageH - 6
+            );
+        }
+
+        const safeName = isMemberView ? `_${targetUserLabel.replace(/\s+/g, "_")}` : "";
+        doc.save(`MCTC_Tasks_${monthNames[month]}_${year}${safeName}.pdf`);
+    };
+
+    /* ============================
        REVISION BADGE
     ============================ */
 
@@ -1150,6 +1302,9 @@ const MCTC = () => {
                                         <div
                                             key={key}
                                             onClick={() => openDayPopup(key)}
+                                            onDragOver={(e) => handleDragOver(e, key, "first_half")}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={(e) => handleDrop(e, key, "first_half")}
                                             className={`flex h-full min-h-0 flex-col ${cellBorderClass} bg-white cursor-pointer hover:bg-slate-50/80 transition-all relative ${
                                                 isDropHere ? "ring-2 ring-indigo-400 ring-inset bg-indigo-50/50 z-10" : ""
                                             }`}
@@ -1289,7 +1444,9 @@ const MCTC = () => {
                 >
                     <div className="mb-3 md:mb-4 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
                         <div className="min-w-0">
-                            <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Place Planning</p>
+                            <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                {headerView === "place" ? "Place Planning" : "Task Planning"}
+                            </p>
                             <h3 className="text-base md:text-lg font-black text-slate-800 truncate">{formatDayLabel(activeDayPopup)}</h3>
                         </div>
                         <button
@@ -1486,6 +1643,46 @@ const MCTC = () => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Task View: Add Task directly */}
+                        {headerView === "task" && canManageEntries && (
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Quick Add Task</p>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        id="quick-add-task-input"
+                                        placeholder="Enter task description..."
+                                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        onKeyDown={async (e) => {
+                                            if (e.key === "Enter") {
+                                                const val = e.target.value.trim();
+                                                if (val) {
+                                                    await addTask(activeDayPopup, val, "task", "first_half");
+                                                    e.target.value = "";
+                                                    await fetchMonthEntries();
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            const input = document.getElementById("quick-add-task-input");
+                                            const val = input?.value.trim();
+                                            if (val) {
+                                                await addTask(activeDayPopup, val, "task", "first_half");
+                                                input.value = "";
+                                                await fetchMonthEntries();
+                                            }
+                                        }}
+                                        disabled={isSaving}
+                                        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {canManageEntries && headerView === "place" ? (
