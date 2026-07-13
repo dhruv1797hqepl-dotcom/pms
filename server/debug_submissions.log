@@ -1,0 +1,8 @@
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=34 | M=None | Y=None | Count=1
+INFO:root:Sub Found: Jajoo Glass - 7/2026 (Approved)
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 34 | Month: 7 | Year: 2026 | Count: 0
+WARNING:django.request:Forbidden: /api/ddfms/plans/
+INFO:root:User: csc@herequality.com (ADMIN) | ClientID: 34 | Month: 7 | Year: 2026 | Count: 0
+INFO:root:SubReq: User=csc@herequality.com (ADMIN) | Role=ADMIN | CID=34 | M=7 | Y=2026 | Count=1
+INFO:root:Sub Found: Jajoo Glass - 7/2026 (Approved)
+INFO:django.utils.autoreload:/home/mann/HQEPL/PMS/server/ddtme/views.py changed, reloading.

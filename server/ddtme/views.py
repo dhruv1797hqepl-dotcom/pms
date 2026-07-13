@@ -616,13 +616,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def list(self, request, *args, **kwargs):
-        print("\n=== ManDayEntry LIST called ===")
-        print(f"Pagination class: {self.pagination_class}")
-        response = super().list(request, *args, **kwargs)
-        print(f"Response type: {type(response.data)}")
-        print(f"Response data (first 5): {response.data[:5] if isinstance(response.data, list) else response.data}")
-        print("=== End LIST ===\n")
-        return response
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -649,29 +643,20 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
                 models.Q(additional_task__isnull=False)  # additional tasks not project-scoped
             )
 
-        print(f"\n=== ManDayEntry Query Debug ===")
-        print(f"User: {self.request.user} | Role: {getattr(self.request.user, 'role', 'N/A')}")
-        print(f"Client ID: {client_id} | Month: {month} | Year: {year} | Employee ID: {employee_id}")
-        print(f"Initial queryset count: {queryset.count()}")
-
         if client_id:
             queryset = queryset.filter(
                 models.Q(big_task__project__client__id=client_id) |
                 models.Q(additional_task__client_id=client_id)
             )
-            print(f"After client filter, count: {queryset.count()}")
         
-        if month: 
+        if month:
             queryset = queryset.filter(month=month)
-            print(f"After month filter, count: {queryset.count()}")
-            
-        if year: 
+
+        if year:
             queryset = queryset.filter(year=year)
-            print(f"After year filter, count: {queryset.count()}")
-            
-        if employee_id: 
+
+        if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
-            print(f"After employee filter, count: {queryset.count()}")
 
         # Mandays planning should only consume approved DDTME values.
         if approved_only and client_id and month and year:
@@ -684,9 +669,7 @@ class ManDayEntryViewSet(viewsets.ModelViewSet):
             if not is_approved:
                 return queryset.none()
 
-        print(f"Final queryset count: {queryset.count()}")
-        print(f"Sample entries: {list(queryset[:3].values())}")
-        print("=== End Debug ===\n")
+
         
         return queryset
 
