@@ -62,6 +62,7 @@ const NotFound = () => {
     ADMIN: '/admin',
     HQEPL: '/hqepl',
     MLS: '/mls',
+    COO: '/coo',
     EMPLOYEE: '/employee',
     SGM: '/sgm',
     SENIOR: '/senior',
@@ -108,6 +109,7 @@ const App = () => {
             <Route path="/client" element={P(<ClientProfile />)} />
             <Route path="/hqepl"  element={P(<HQEPLProfile />)} />
             <Route path="/mls"    element={P(<HQEPLProfile />)} />
+            <Route path="/coo"    element={P(<HQEPLProfile />)} />
 
             {/* ── Clients & Projects ────────────────────────────── */}
             <Route path="/clients"                                   element={P(<ClientManagement />)} />

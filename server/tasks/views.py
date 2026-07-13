@@ -12,6 +12,7 @@ from datetime import timedelta
 from .models import Task
 from .serializers import TaskSerializer
 from .excel_utils import ExcelTaskImporter
+from .weekly_email import send_weekly_score_email as _send_weekly_score_email
 from projects.models import Project, ActionTask
 from sgm.models import ProjectTeam
 from employees.models import Employee
@@ -880,3 +881,38 @@ class TaskViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=False, methods=['post'], url_path='send-weekly-score-email')
+    def send_weekly_score_email(self, request):
+        """
+        Trigger the weekly score PDF email report.
+        POST /api/tasks/send-weekly-score-email/
+        Optional body: { "week_start": "YYYY-MM-DD", "week_end": "YYYY-MM-DD", "recipients": ["email@example.com"] }
+        """
+        from datetime import date as date_type
+
+        body = request.data or {}
+
+        week_start = None
+        week_end   = None
+        recipients = body.get('recipients', None)
+
+        if body.get('week_start') and body.get('week_end'):
+            try:
+                week_start = date_type.fromisoformat(body['week_start'])
+                week_end   = date_type.fromisoformat(body['week_end'])
+            except (ValueError, TypeError):
+                return Response(
+                    {'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        result = _send_weekly_score_email(
+            week_start=week_start,
+            week_end=week_end,
+            recipients=recipients,
+        )
+
+        if result.get('success'):
+            return Response(result, status=status.HTTP_200_OK)
+        return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

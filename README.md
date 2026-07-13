@@ -20,7 +20,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py runserver
+clear; python manage.py runserver
 ```
 *For detailed instructions, see [server/README.md](./server/README.md).*
 
@@ -29,7 +29,7 @@ In a new terminal, navigate to the `client` directory, install npm packages, and
 ```bash
 cd client
 npm install
-npm run dev
+clear; npm run dev
 ```
 *For detailed instructions, see [client/README.md](./client/README.md).*
 
